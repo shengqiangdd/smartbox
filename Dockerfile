@@ -4,8 +4,8 @@ FROM node:18-alpine AS builder
 WORKDIR /app
 
 # 安装前端依赖
-COPY frontend/package.json frontend/package-lock.json ./frontend/
-RUN cd frontend && npm ci
+COPY frontend/package.json ./frontend/
+RUN cd frontend && npm install
 
 # 构建前端
 COPY frontend/ ./frontend/
@@ -17,8 +17,8 @@ FROM node:18-alpine
 WORKDIR /app
 
 # 安装后端依赖
-COPY bridge/package.json bridge/package-lock.json ./bridge/
-RUN cd bridge && npm ci --production
+COPY bridge/package.json ./bridge/
+RUN cd bridge && npm install --production
 
 # 复制后端源码
 COPY bridge/ ./bridge/
