@@ -12,7 +12,11 @@ import { useSshStore } from '../../stores/ssh-store'
 import ConnectionForm from './ConnectionForm'
 import type { SshConnection } from '../../types/ssh'
 
-export default function ConnectionList() {
+interface Props {
+  onConnect?: (connectionId: string) => void
+}
+
+export default function ConnectionList({ onConnect }: Props) {
   const connections = useSshStore((s) => s.connections)
   const deleteConnection = useSshStore((s) => s.deleteConnection)
   const selectConnection = useSshStore((s) => s.selectConnection)
@@ -48,6 +52,14 @@ export default function ConnectionList() {
 
   const isActive = (connId: string) =>
     sessions.some((s) => s.connectionId === connId && s.status === 'connected')
+
+  const handleConnect = (connId: string) => {
+    if (onConnect) {
+      onConnect(connId)
+    } else {
+      selectConnection(connId)
+    }
+  }
 
   return (
     <div className="flex h-full flex-col p-4">
@@ -152,7 +164,7 @@ export default function ConnectionList() {
                       {/* 操作按钮 */}
                       <div className="hidden gap-0.5 group-hover:flex">
                         <button
-                          onClick={() => selectConnection(conn.id)}
+                          onClick={() => handleConnect(conn.id)}
                           className="btn-icon text-emerald-500 hover:bg-emerald-500/10"
                           title="连接"
                         >
