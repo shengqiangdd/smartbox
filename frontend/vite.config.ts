@@ -5,7 +5,9 @@ import path from 'path'
 
 export default defineConfig({
   build: {
-    minify: 'esbuild', // Node 18 兼容（terser 不可用）
+    minify: 'esbuild',
+    // terser 在 Node 18 环境有兼容问题，用 esbuild 替代
+    // Node 22+ 环境可改为 terser 以获得更好的压缩效果
   },
   plugins: [
     react(),
@@ -40,7 +42,6 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        // 不缓存 API 和 WebSocket 请求
         navigateFallbackDenylist: [/^\/api/, /^\/ws/],
         runtimeCaching: [
           {
@@ -49,7 +50,6 @@ export default defineConfig({
           },
         ],
       },
-      // Node 18 兼容: 不压缩 SW（terser 在 Node 18 下不可用）
       minify: false,
     }),
   ],

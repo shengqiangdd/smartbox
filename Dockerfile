@@ -1,5 +1,5 @@
 # ===== 构建阶段 =====
-FROM node:18-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -12,7 +12,7 @@ COPY frontend/ ./frontend/
 RUN cd frontend && npm run build
 
 # ===== 运行阶段 =====
-FROM node:18-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 
