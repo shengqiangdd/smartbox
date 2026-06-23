@@ -1,13 +1,19 @@
 /**
- * SmartBox 插件管理器
+ * SmartBox 插件管理器 (沙箱版)
+ *
+ * 使用 iframe 沙箱隔离执行插件代码，替代原有的 new Function() 方式。
  *
  * 负责：
  * 1. 从后端 /api/plugins 获取插件清单
- * 2. 动态加载插件的 plugin.js
- * 3. 在插件 Store 中注册/注销插件
+ * 2. 下载插件 JS 代码
+ * 3. 创建 iframe 沙箱并在其中执行
+ * 4. 通过 postMessage 与沙箱通信
+ * 5. 在插件 Store 中注册/注销插件
  */
 
 import { usePluginStore } from '../stores/plugin-store'
+import { pluginSandboxManager } from './pluginSandboxManager'
+import type { PluginSandboxHandle } from '../components/PluginSandbox'
 import type { PluginManifest } from '../types/plugin'
 
 export interface PluginCatalogItem {
@@ -43,9 +49,6 @@ export interface PluginLoadResult {
  */
 export async function fetchPlugins(): Promise<PluginCatalogItem[]> {
   try {
-    const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:'
-    const host = window.location.host
-    // 开发环境下直接请求后端端口
     const baseUrl = `http://localhost:3001`
 
     const response = await fetch(`${baseUrl}/api/plugins`)
@@ -61,24 +64,44 @@ export async function fetchPlugins(): Promise<PluginCatalogItem[]> {
 }
 
 /**
- * 加载单个插件的 JS 文件
+ * 获取插件 JS 代码
  */
-export async function loadPluginScript(plugin: PluginCatalogItem): Promise<PluginLoadResult> {
+export async function fetchPluginCode(entry: string): Promise<string> {
+  const baseUrl = `http://localhost:3001`
+  const response = await fetch(`${baseUrl}${entry}`)
+  if (!response.ok) {
+    throw new Error(`Failed to load plugin JS: HTTP ${response.status}`)
+  }
+  return await response.text()
+}
+
+/**
+ * 获取插件 manifest（从后端）
+ */
+export async function fetchPluginManifest(pluginId: string): Promise<any> {
+  const baseUrl = `http://localhost:3001`
+  const response = await fetch(`${baseUrl}/api/plugins/${pluginId}/manifest.json`)
+  if (!response.ok) {
+    throw new Error(`Failed to load manifest: HTTP ${response.status}`)
+  }
+  return await response.json()
+}
+
+/**
+ * 加载单个插件到沙箱
+ *
+ * @param plugin 插件清单条目
+ * @param onSandboxReady 沙箱就绪回调（用于组件绑定 iframe 引用）
+ * @returns 加载结果
+ */
+export async function loadPluginToSandbox(
+  plugin: PluginCatalogItem,
+): Promise<PluginLoadResult> {
   try {
-    const baseUrl = `http://localhost:3001`
-    const response = await fetch(`${baseUrl}${plugin.entry}`)
-    if (!response.ok) {
-      throw new Error(`Failed to load plugin JS: HTTP ${response.status}`)
-    }
+    // 1. 下载插件代码
+    const code = await fetchPluginCode(plugin.entry)
 
-    const code = await response.text()
-
-    // 创建并注入 <script> 标签来执行插件代码
-    // 插件代码会调用 SmartBox.getPluginAPI() 注册自己
-    await executePluginCode(plugin.id, code)
-
-    // 将插件注册到 Store
-    const store = usePluginStore.getState()
+    // 2. 构建 PluginManifest
     const manifest: PluginManifest = {
       id: plugin.id,
       name: plugin.name,
@@ -97,11 +120,12 @@ export async function loadPluginScript(plugin: PluginCatalogItem): Promise<Plugi
         id: p.id,
         name: p.title || p.id,
         icon: p.icon,
-        position: 'main',
+        position: 'main' as const,
       })),
     }
 
-    // 检查是否已经注册（防止重复）
+    // 3. 将插件注册到 Store（标记为已加载，后续由 PluginSandbox 组件执行）
+    const store = usePluginStore.getState()
     if (!store.getPlugin(plugin.id)) {
       store.registerPlugin(manifest, {} as any)
     }
@@ -114,62 +138,63 @@ export async function loadPluginScript(plugin: PluginCatalogItem): Promise<Plugi
 }
 
 /**
- * 执行插件代码（包裹在 IIFE 中以确保作用域隔离）
+ * 创建沙箱回调处理器
+ * 返回一组回调函数，用于 PluginSandbox 组件
  */
-async function executePluginCode(pluginId: string, code: string): Promise<void> {
-  // 先清理可能存在的旧插件全局状态
-  cleanupPluginGlobals(pluginId)
-
-  // 使用 Function 构造函数执行（比 eval 更安全，但仍有风险）
-  // 插件代码应使用 SmartBox.getPluginAPI() 来注册自身
-  try {
-    const wrappedCode = `
-      (function(pluginId) {
-        try {
-          ${code}
-        } catch (err) {
-          console.error('[Plugin:' + pluginId + '] Execution error:', err);
-        }
-      })("${pluginId}");
-    `
-    // eslint-disable-next-line no-new-func
-    const fn = new Function(wrappedCode)
-    fn()
-  } catch (err: any) {
-    throw new Error(`Plugin execution failed: ${err.message}`)
+export function createSandboxHandlers(pluginId: string) {
+  return {
+    onCommandRegistered: (command: { id: string; label?: string; description?: string }) => {
+      pluginSandboxManager.addCommand(pluginId, command)
+    },
+    onPanelRegistered: (panel: { id: string; name?: string }) => {
+      pluginSandboxManager.addPanel(pluginId, panel)
+    },
+    onNotification: (message: string, type: 'info' | 'success' | 'error') => {
+      window.dispatchEvent(
+        new CustomEvent('smartbox-notification', {
+          detail: { message, type },
+        }),
+      )
+    },
+    onError: (error: string) => {
+      console.error(`[Plugin:${pluginId}] Sandbox error:`, error)
+    },
+    onReady: (handle: PluginSandboxHandle) => {
+      pluginSandboxManager.register(pluginId, {
+        id: pluginId,
+        name: pluginId,
+        version: '1.0.0',
+        description: '',
+        author: '',
+        entry: '',
+        commands: [],
+        panels: [],
+      } as any, handle)
+    },
   }
 }
 
 /**
- * 清理插件的全局状态
- */
-function cleanupPluginGlobals(pluginId: string) {
-  // 从 Store 中注销旧实例
-  const store = usePluginStore.getState()
-  if (store.getPlugin(pluginId)) {
-    store.unregisterPlugin(pluginId)
-  }
-}
-
-/**
- * 卸载插件
+ * 卸载插件（销毁沙箱）
  */
 export function unloadPlugin(pluginId: string) {
+  // 从 Store 注销
   const store = usePluginStore.getState()
   store.unregisterPlugin(pluginId)
+  // 销毁沙箱
+  pluginSandboxManager.unregister(pluginId)
 }
 
 /**
- * 加载所有可用插件
+ * 执行沙箱中的插件命令
  */
-export async function loadAllPlugins(): Promise<PluginLoadResult[]> {
-  const plugins = await fetchPlugins()
-  const results: PluginLoadResult[] = []
+export function executeSandboxCommand(pluginId: string, commandId: string): boolean {
+  return pluginSandboxManager.executeCommand(pluginId, commandId)
+}
 
-  for (const plugin of plugins) {
-    const result = await loadPluginScript(plugin)
-    results.push(result)
-  }
-
-  return results
+/**
+ * 同步编辑器内容到插件的沙箱
+ */
+export function syncEditorToSandbox(content: string | null, language: string | null, pluginId?: string) {
+  pluginSandboxManager.syncEditorContent(content, language, pluginId)
 }

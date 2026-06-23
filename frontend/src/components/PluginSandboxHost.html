@@ -1,0 +1,232 @@
+<!--
+  PluginSandboxHost.html
+  iframe 沙箱宿主页面 — 在隔离环境中加载和执行插件代码。
+  插件只能通过 postMessage 与主应用通信，无法访问主应用 DOM/全局变量。
+-->
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="referrer" content="no-referrer">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: transparent;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: #e2e8f0;
+    overflow: auto;
+  }
+  /* 插件自定义样式作用域自动隔离在 iframe 内 */
+  #plugin-root { min-height: 100%; padding: 4px; }
+</style>
+</head>
+<body>
+<div id="plugin-root"></div>
+<script>
+(function() {
+  'use strict';
+
+  // ─── 与主应用的 postMessage 通信层 ───
+
+  let messageSeq = 0;
+  const pendingCalls = new Map(); // seq -> { resolve, reject, timeout }
+
+  function sendToHost(type, payload) {
+    const seq = ++messageSeq;
+    window.parent.postMessage({
+      source: 'smartbox-plugin-sandbox',
+      pluginId: __PLUGIN_ID__,
+      seq: seq,
+      type: type,
+      payload: payload || {}
+    }, '*'); // 来源由主应用校验
+    return seq;
+  }
+
+  // 发送请求并等待响应（异步 RPC）
+  function callHost(type, payload, timeoutMs) {
+    return new Promise((resolve, reject) => {
+      const seq = sendToHost(type, payload);
+      const timer = setTimeout(() => {
+        pendingCalls.delete(seq);
+        reject(new Error('Plugin API call timeout: ' + type));
+      }, timeoutMs || 5000);
+      pendingCalls.set(seq, { resolve, reject, timer });
+    });
+  }
+
+  // 监听主应用的回复
+  window.addEventListener('message', function(event) {
+    // 只接受主应用的消息
+    if (event.data && event.data.source === 'smartbox-host') {
+      const msg = event.data;
+      if (msg.seq && pendingCalls.has(msg.seq)) {
+        const pending = pendingCalls.get(msg.seq);
+        clearTimeout(pending.timer);
+        pendingCalls.delete(msg.seq);
+        if (msg.error) {
+          pending.reject(new Error(msg.error));
+        } else {
+          pending.resolve(msg.result);
+        }
+      }
+    }
+  });
+
+  // ─── 受限的 localStorage 代理 ───
+
+  const STORAGE_PREFIX = 'smartbox_plugin_' + __PLUGIN_ID__ + '_';
+  const MAX_STORAGE_CHARS = 1024 * 50; // 50KB 配额
+
+  function getStorageUsage() {
+    let total = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(STORAGE_PREFIX)) {
+        total += (key.length + (localStorage.getItem(key) || '').length);
+      }
+    }
+    return total;
+  }
+
+  const sandboxStorage = {
+    getItem(key) {
+      try {
+        return localStorage.getItem(STORAGE_PREFIX + key);
+      } catch(e) { return null; }
+    },
+    setItem(key, value) {
+      try {
+        const fullKey = STORAGE_PREFIX + key;
+        const oldVal = localStorage.getItem(fullKey);
+        const oldLen = oldVal ? oldVal.length : 0;
+        const newLen = value ? value.length : 0;
+        const usage = getStorageUsage() - oldLen + newLen;
+        if (usage > MAX_STORAGE_CHARS) {
+          console.warn('[PluginSandbox] Storage quota exceeded (max 50KB)');
+          return;
+        }
+        localStorage.setItem(fullKey, value);
+      } catch(e) { /* quota exceeded */ }
+    },
+    removeItem(key) {
+      try { localStorage.removeItem(STORAGE_PREFIX + key); } catch(e) {}
+    },
+    clear() {
+      try {
+        const keys = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith(STORAGE_PREFIX)) keys.push(k);
+        }
+        keys.forEach(k => localStorage.removeItem(k));
+      } catch(e) {}
+    },
+    get length() {
+      let count = 0;
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(STORAGE_PREFIX)) count++;
+      }
+      return count;
+    }
+  };
+
+  // ─── 受限的 PluginAPI（暴露给插件） ───
+
+  const pluginAPI = Object.freeze({
+    // ── 注册 ──
+    registerCommand: function(command, handler) {
+      // 将 handler 注册在 iframe 内，由主应用通过消息触发
+      __commandHandlers__[command.id] = handler;
+      sendToHost('registerCommand', { command: JSON.parse(JSON.stringify(command)) });
+    },
+
+    registerPanel: function(panel, renderFn) {
+      __panelRenderers__[panel.id] = renderFn;
+      sendToHost('registerPanel', { panel: JSON.parse(JSON.stringify(panel)) });
+    },
+
+    // ── 编辑器 ──
+    getEditorContent: function() {
+      // 同步等待（简化版：实际应返回 cached 值）
+      // 首次加载时主应用会推送到 iframe
+      return __cachedEditorContent__;
+    },
+
+    setEditorContent: function(content) {
+      __cachedEditorContent__ = content;
+      sendToHost('setEditorContent', { content: content });
+    },
+
+    getCurrentFileLanguage: function() {
+      return __cachedLanguage__;
+    },
+
+    // ── 通知 ──
+    showNotification: function(message, type) {
+      sendToHost('showNotification', { message: String(message), type: type || 'info' });
+    },
+
+    // ── 受限存储 ──
+    storage: Object.freeze({
+      get: function(key) { return sandboxStorage.getItem(key); },
+      set: function(key, value) { sandboxStorage.setItem(key, value); },
+      remove: function(key) { sandboxStorage.removeItem(key); },
+      clear: function() { sandboxStorage.clear(); }
+    }),
+
+    // ── 面板根元素 ──
+    getRootElement: function() {
+      return document.getElementById('plugin-root');
+    },
+
+    // ── 环境信息 ──
+    getPluginId: function() { return __PLUGIN_ID__; },
+    getPluginInfo: function() { return Object.freeze({ ...__PLUGIN_MANIFEST__ }); },
+
+    // ── 网络请求（通过主应用代理） ──
+    fetch: function(url, options) {
+      return callHost('fetch', { url: String(url), options: options || {} });
+    }
+  });
+
+  // ── 内部状态 ──
+  var __commandHandlers__ = {};
+  var __panelRenderers__ = {};
+  var __cachedEditorContent__ = null;
+  var __cachedLanguage__ = null;
+  var __PLUGIN_ID__ = '';
+  var __PLUGIN_MANIFEST__ = {};
+
+  // 从主应用接受数据更新
+  window.addEventListener('message', function(event) {
+    if (event.data && event.data.source === 'smartbox-host') {
+      const msg = event.data;
+      if (msg.type === 'updateEditorContent') {
+        __cachedEditorContent__ = msg.content;
+        __cachedLanguage__ = msg.language || null;
+      } else if (msg.type === 'executeCommand') {
+        var handler = __commandHandlers__[msg.commandId];
+        if (handler) {
+          try { handler(msg.args || []); } catch(e) {
+            console.error('[Plugin:' + __PLUGIN_ID__ + '] Command error:', e);
+          }
+        }
+      }
+    }
+  });
+
+  // ── 暴露 SmartBox 全局对象给插件 ──
+  window.SmartBox = Object.freeze({
+    getPluginAPI: function() { return pluginAPI; }
+  });
+
+  // 通知主应用：沙箱就绪
+  sendToHost('sandboxReady', {});
+
+})();
+</script>
+</body>
+</html>
