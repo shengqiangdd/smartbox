@@ -15,9 +15,11 @@ export interface PluginManifest {
 export interface PluginCommand {
   id: string
   name: string
+  label?: string
   description?: string
   shortcut?: string
   icon?: string
+  keywords?: string[]
 }
 
 export interface PluginPanel {
