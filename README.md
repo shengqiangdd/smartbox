@@ -69,6 +69,33 @@ cd frontend && npm run build
 # 后端会自动托管静态文件
 ```
 
+## 🐳 Docker 一键部署
+
+### 前提条件
+
+- 安装 [Docker](https://docs.docker.com/engine/install/) 和 [Docker Compose](https://docs.docker.com/compose/install/)
+
+### 启动服务
+
+```bash
+# 拉取镜像并启动
+docker compose pull
+docker compose up -d
+
+# 查看日志
+docker compose logs -f
+
+# 停止服务
+docker compose down
+```
+
+### 访问地址
+
+- 前端：http://localhost:3001
+- 健康检查：http://localhost:3001/api/health
+
+> 💡 Docker 镜像由 GitHub Actions 自动构建并推送至 **ghcr.io/shengqiangdd/smartbox**，每次推送 `main` 分支都会自动更新 `latest` 标签。
+
 ## 🧩 插件开发
 
 ### 目录结构
