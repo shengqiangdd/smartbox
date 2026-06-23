@@ -1,10 +1,10 @@
 /**
- * SmartBox SSH Bridge
- * 
+ * SmartBox SSH Bridge (Express + express-ws)
+ *
  * 轻量级 WebSocket → SSH 代理服务
  * 浏览器无法直接连接 SSH 协议，此服务作为桥梁，
  * 将 WebSocket 消息转发到 SSH/SFTP 连接。
- * 
+ *
  * 消息协议（JSON）：
  * - { type: 'connect', connectionId, host, port, username, password?, privateKey? }
  * - { type: 'disconnect', connectionId }
@@ -13,72 +13,41 @@
  * - { type: 'sftp', connectionId, operation, ... } // SFTP 操作
  */
 
-import { WebSocketServer } from 'ws'
-import http from 'node:http'
+import express from 'express'
+import expressWs from 'express-ws'
+import cors from 'cors'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { Client } from 'ssh2'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-
 const PORT = parseInt(process.env.BRIDGE_PORT || '3001', 10)
-const connections = new Map() // connectionId → { ws, ssh?, sftp? }
-
-// ─── HTTP API 服务器 ───
 
 const pluginsDir = path.resolve(__dirname, '..', 'plugins')
 const frontendDist = path.resolve(__dirname, '..', 'frontend', 'dist')
 
-const server = http.createServer((req, res) => {
-  // CORS
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+// 连接管理器: connectionId → { ws, ssh?, sftp? }
+const connections = new Map()
 
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204)
-    res.end()
-    return
-  }
+// ─── Express 应用 ───
 
-  const url = new URL(req.url, `http://${req.headers.host}`)
-  const pathname = url.pathname
+const app = express()
+expressWs(app)
 
-  // API: /api/plugins — 扫描 plugins 目录返回清单
-  if (pathname === '/api/plugins' && req.method === 'GET') {
-    return handleGetPlugins(req, res)
-  }
+// 中间件
+app.use(cors())
+app.use(express.json())
 
-  // API: /api/plugins/:id/plugin.js — 返回指定插件的 JS 文件
-  const pluginJsMatch = pathname.match(/^\/api\/plugins\/([^/]+)\/plugin\.js$/)
-  if (pluginJsMatch && req.method === 'GET') {
-    return handleGetPluginJs(req, res, pluginJsMatch[1])
-  }
+// ========== HTTP API 路由 ==========
 
-  // API: /api/plugins/:id/manifest.json — 返回指定插件的清单
-  const manifestMatch = pathname.match(/^\/api\/plugins\/([^/]+)\/manifest\.json$/)
-  if (manifestMatch && req.method === 'GET') {
-    return handleGetPluginManifest(req, res, manifestMatch[1])
-  }
-
-  // 健康检查
-  if (pathname === '/api/health' && req.method === 'GET') {
-    res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }))
-    return
-  }
-
-  // 静态文件服务（前端构建产物）
-  if (req.method === 'GET') {
-    return serveStatic(req, res, pathname)
-  }
-
-  res.writeHead(404)
-  res.end('Not Found')
+// 健康检查
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', uptime: process.uptime() })
 })
 
-// 插件 API 处理
-function handleGetPlugins(req, res) {
+// 获取插件列表
+app.get('/api/plugins', (req, res) => {
   try {
     const plugins = []
     if (fs.existsSync(pluginsDir)) {
@@ -106,120 +75,59 @@ function handleGetPlugins(req, res) {
         }
       }
     }
-    res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ plugins }))
+    res.json({ plugins })
   } catch (err) {
-    res.writeHead(500, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ error: err.message }))
-  }
-}
-
-function handleGetPluginJs(req, res, pluginId) {
-  const pluginDir = path.join(pluginsDir, pluginId)
-  const jsPath = path.join(pluginDir, 'plugin.js')
-  if (fs.existsSync(jsPath)) {
-    let content = fs.readFileSync(jsPath, 'utf-8')
-    res.writeHead(200, {
-      'Content-Type': 'application/javascript',
-      'Cache-Control': 'no-cache',
-    })
-    res.end(content)
-  } else {
-    res.writeHead(404)
-    res.end(JSON.stringify({ error: 'Plugin JS not found' }))
-  }
-}
-
-function handleGetPluginManifest(req, res, pluginId) {
-  const manifestPath = path.join(pluginsDir, pluginId, 'manifest.json')
-  if (fs.existsSync(manifestPath)) {
-    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'))
-    res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify(manifest))
-  } else {
-    res.writeHead(404)
-    res.end(JSON.stringify({ error: 'Manifest not found' }))
-  }
-}
-
-function serveStatic(req, res, pathname) {
-  // 安全：防止路径穿越
-  const safePath = pathname.replace(/\.\.\//g, '').replace(/\.\./g, '')
-  let filePath = path.join(frontendDist, safePath === '/' ? 'index.html' : safePath)
-
-  if (!fs.existsSync(filePath)) {
-    filePath = path.join(frontendDist, 'index.html')
-  }
-
-  const extMap = {
-    '.html': 'text/html',
-    '.js': 'application/javascript',
-    '.css': 'text/css',
-    '.json': 'application/json',
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.svg': 'image/svg+xml',
-    '.ico': 'image/x-icon',
-    '.woff': 'font/woff',
-    '.woff2': 'font/woff2',
-  }
-
-  const ext = path.extname(filePath)
-  const contentType = extMap[ext] || 'application/octet-stream'
-
-  try {
-    const content = fs.readFileSync(filePath)
-    res.writeHead(200, { 'Content-Type': contentType })
-    res.end(content)
-  } catch {
-    res.writeHead(404)
-    res.end('Not Found')
-  }
-}
-
-// ─── WebSocket 服务器（noServer 模式，手动绑定到 HTTP） ───
-
-const wss = new WebSocketServer({ noServer: true })
-
-// 手动处理 WebSocket 升级请求
-server.on('upgrade', (request, socket, head) => {
-  // 只处理 /ws 路径的 WebSocket 请求
-  const url = new URL(request.url, `http://${request.headers.host}`)
-  if (url.pathname === '/ws') {
-    wss.handleUpgrade(request, socket, head, (ws) => {
-      wss.emit('connection', ws, request)
-    })
-  } else {
-    socket.destroy()
+    res.status(500).json({ error: err.message })
   }
 })
 
-console.log(`[SmartBox Bridge] Server listening on port ${PORT}`)
+// 获取单个插件的 JS 文件
+app.get('/api/plugins/:id/plugin.js', (req, res) => {
+  const pluginDir = path.join(pluginsDir, req.params.id)
+  const jsPath = path.join(pluginDir, 'plugin.js')
+  if (fs.existsSync(jsPath)) {
+    const content = fs.readFileSync(jsPath, 'utf-8')
+    res.setHeader('Content-Type', 'application/javascript')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.send(content)
+  } else {
+    res.status(404).json({ error: 'Plugin JS not found' })
+  }
+})
 
-wss.on('connection', (ws, req) => {
+// 获取单个插件的 Manifest
+app.get('/api/plugins/:id/manifest.json', (req, res) => {
+  const manifestPath = path.join(pluginsDir, req.params.id, 'manifest.json')
+  if (fs.existsSync(manifestPath)) {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'))
+    res.json(manifest)
+  } else {
+    res.status(404).json({ error: 'Manifest not found' })
+  }
+})
+
+// ========== WebSocket 路由 ==========
+
+app.ws('/ws', (ws, req) => {
   const clientId = `client-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   console.log(`[Bridge] Client connected: ${clientId} (${req.socket.remoteAddress})`)
 
   // 心跳检测
   let heartbeatTimer = null
-
   const startHeartbeat = () => {
     heartbeatTimer = setInterval(() => {
-      if (ws.readyState === ws.OPEN) {
-        ws.ping()
-      }
+      try { ws.ping() } catch (_) { /* ignore */ }
     }, 30000)
   }
-
   const stopHeartbeat = () => {
     if (heartbeatTimer) {
       clearInterval(heartbeatTimer)
       heartbeatTimer = null
     }
   }
-
   startHeartbeat()
 
+  // 消息处理
   ws.on('message', (raw) => {
     try {
       const msg = JSON.parse(raw.toString())
@@ -245,9 +153,8 @@ wss.on('connection', (ws, req) => {
   })
 })
 
-/**
- * 消息路由
- */
+// ========== 消息路由 ==========
+
 function handleMessage(ws, clientId, msg) {
   const { type, connectionId, ...payload } = msg
 
@@ -261,19 +168,19 @@ function handleMessage(ws, clientId, msg) {
       break
 
     case 'disconnect':
-      handleDisconnect(connectionId)
+      cleanupConnection(connectionId)
       break
 
     case 'exec':
-      handleExec(connectionId, payload.data)
+      handleExec(ws, connectionId, payload)
       break
 
     case 'resize':
-      handleResize(connectionId, payload.cols, payload.rows)
+      handleResize(ws, connectionId, payload)
       break
 
     case 'sftp':
-      handleSftp(connectionId, payload)
+      handleSftp(ws, connectionId, payload)
       break
 
     default:
@@ -281,9 +188,8 @@ function handleMessage(ws, clientId, msg) {
   }
 }
 
-/**
- * SSH 连接处理
- */
+// ========== SSH 连接处理 ==========
+
 async function handleConnect(ws, connectionId, config) {
   const { host, port, username, password, privateKey } = config
 
@@ -292,9 +198,6 @@ async function handleConnect(ws, connectionId, config) {
   }
 
   try {
-    // 动态导入 ssh2
-    const { Client } = await import('ssh2')
-
     const ssh = new Client()
     const connState = { ws, ssh, sftp: null, connectionId }
 
@@ -302,25 +205,18 @@ async function handleConnect(ws, connectionId, config) {
       console.log(`[SSH] Connected: ${username}@${host}:${port} (${connectionId})`)
       connections.set(connectionId, connState)
 
-      ws.send(JSON.stringify({
-        type: 'connected',
-        connectionId,
-      }))
+      ws.send(JSON.stringify({ type: 'connected', connectionId }))
 
-      // 启动 SFTP
+      // 启动 SFTP session
       ssh.sftp((err, sftp) => {
         if (!err) {
           connState.sftp = sftp
-          ws.send(JSON.stringify({
-            type: 'sftp-ready',
-            connectionId,
-          }))
+          ws.send(JSON.stringify({ type: 'sftp-ready', connectionId }))
         }
       })
     })
 
     ssh.on('data', (data) => {
-      // 终端输出数据转发到前端
       if (ws.readyState === ws.OPEN) {
         ws.send(JSON.stringify({
           type: 'data',
@@ -334,202 +230,269 @@ async function handleConnect(ws, connectionId, config) {
       console.log(`[SSH] Connection closed: ${connectionId}`)
       connections.delete(connectionId)
       if (ws.readyState === ws.OPEN) {
-        ws.send(JSON.stringify({
-          type: 'disconnected',
-          connectionId,
-        }))
+        ws.send(JSON.stringify({ type: 'disconnected', connectionId }))
       }
     })
 
     ssh.on('error', (err) => {
-      console.error(`[SSH] Connection error (${connectionId}):`, err.message)
-      connections.delete(connectionId)
+      console.error(`[SSH] Error (${connectionId}):`, err.message)
       sendError(ws, connectionId, 'SSH_ERROR', err.message)
     })
 
-    const sshConfig = {
+    ssh.connect({
       host,
       port: port || 22,
       username,
+      password: password || undefined,
+      privateKey: privateKey || undefined,
       readyTimeout: 10000,
       keepaliveInterval: 10000,
       keepaliveCountMax: 3,
-    }
+    })
 
-    if (password) {
-      sshConfig.password = password
-    } else if (privateKey) {
-      sshConfig.privateKey = privateKey
-    }
-
-    ssh.connect(sshConfig)
   } catch (err) {
-    sendError(ws, connectionId, 'SSH_INIT_ERROR', 'SSH 初始化失败: ' + err.message)
+    console.error(`[SSH] Connection failed (${connectionId}):`, err.message)
+    sendError(ws, connectionId, 'CONNECT_FAILED', err.message)
   }
 }
 
-function handleDisconnect(connectionId) {
-  cleanupConnection(connectionId)
+// ========== 终端执行 ==========
+
+function handleExec(ws, connectionId, payload) {
+  const conn = connections.get(connectionId)
+  if (!conn || !conn.ssh) {
+    return sendError(ws, connectionId, 'NOT_CONNECTED', 'SSH 未连接')
+  }
+
+  const { data } = payload
+
+  if (data === '\x03') {
+    // Ctrl+C — 终止当前命令
+    // SSH2 没有直接发送中断的 API，这里通过 session 模拟
+    conn.ssh.emit('close')
+    ws.send(JSON.stringify({ type: 'data', connectionId, data: '^C\n' }))
+    return
+  }
+
+  conn.ssh.exec(data, (err, stream) => {
+    if (err) {
+      return sendError(ws, connectionId, 'EXEC_ERROR', err.message)
+    }
+
+    stream.on('data', (chunk) => {
+      if (ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'data',
+          connectionId,
+          data: chunk.toString('base64'),
+        }))
+      }
+    })
+
+    stream.stderr.on('data', (chunk) => {
+      if (ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'data',
+          connectionId,
+          data: chunk.toString('base64'),
+        }))
+      }
+    })
+
+    stream.on('close', (code) => {
+      ws.send(JSON.stringify({
+        type: 'exec-end',
+        connectionId,
+        code,
+      }))
+    })
+  })
 }
 
-function handleExec(connectionId, data) {
+// ========== 终端大小调整 ==========
+
+function handleResize(ws, connectionId, payload) {
   const conn = connections.get(connectionId)
-  if (!conn || !conn.ssh) return
+  if (!conn || !conn.ssh) {
+    return sendError(ws, connectionId, 'NOT_CONNECTED', 'SSH 未连接')
+  }
 
-  // 将 base64 解码后的数据写入 SSH 终端
-  const buf = Buffer.from(data, 'base64')
-  conn.ssh.write(buf.toString('utf-8'))
-}
-
-function handleResize(connectionId, cols, rows) {
-  const conn = connections.get(connectionId)
-  if (!conn || !conn.ssh) return
-
-  // pty 大小调整（通过 window-change 信号）
-  try {
-    conn.ssh.setWindow(rows || 24, cols || 80, 0, 0)
-  } catch (err) {
-    console.error(`[SSH] Resize error (${connectionId}):`, err.message)
+  const { cols, rows } = payload
+  if (conn.session) {
+    conn.session.setWindow(rows || 24, cols || 80, 0, 0)
   }
 }
 
-/**
- * SFTP 操作处理
- */
-async function handleSftp(connectionId, payload) {
+// ========== SFTP 操作 ==========
+
+function handleSftp(ws, connectionId, payload) {
   const conn = connections.get(connectionId)
   if (!conn || !conn.sftp) {
-    return sendError(null, connectionId, 'SFTP_NOT_READY', 'SFTP 未就绪')
+    return sendError(ws, connectionId, 'SFTP_NOT_READY', 'SFTP 未就绪')
   }
 
-  const { operation, path, ...params } = payload
-  const sftp = conn.sftp
-  const ws = conn.ws
+  const { operation } = payload
 
-  try {
-    switch (operation) {
-      case 'list': {
-        const files = await readDir(sftp, path)
-        ws.send(JSON.stringify({ type: 'sftp-result', connectionId, operation, path, files }))
-        break
-      }
-      case 'read': {
-        const content = await readFile(sftp, path)
-        ws.send(JSON.stringify({ type: 'sftp-result', connectionId, operation, path, content: content.toString('base64') }))
-        break
-      }
-      case 'write': {
-        const { content } = params
-        await writeFile(sftp, path, Buffer.from(content, 'base64'))
-        ws.send(JSON.stringify({ type: 'sftp-result', connectionId, operation, path, success: true }))
-        break
-      }
-      case 'rename': {
-        const { newPath } = params
-        await renameFile(sftp, path, newPath)
-        ws.send(JSON.stringify({ type: 'sftp-result', connectionId, operation, path, success: true }))
-        break
-      }
-      case 'delete': {
-        await deleteFile(sftp, path)
-        ws.send(JSON.stringify({ type: 'sftp-result', connectionId, operation, path, success: true }))
-        break
-      }
-      case 'mkdir': {
-        await makeDir(sftp, path)
-        ws.send(JSON.stringify({ type: 'sftp-result', connectionId, operation, path, success: true }))
-        break
-      }
-      case 'chmod': {
-        const { mode } = params
-        await chmodFile(sftp, path, mode)
-        ws.send(JSON.stringify({ type: 'sftp-result', connectionId, operation, path, success: true }))
-        break
-      }
-      default:
-        sendError(ws, connectionId, 'UNKNOWN_SFTP_OP', `未知 SFTP 操作: ${operation}`)
+  switch (operation) {
+    case 'list': {
+      const { path: dirPath } = payload
+      conn.sftp.readdir(dirPath || '.', (err, list) => {
+        if (err) return sendError(ws, connectionId, 'SFTP_ERROR', err.message)
+        ws.send(JSON.stringify({
+          type: 'sftp-result',
+          connectionId,
+          operation: 'list',
+          data: list.map(item => ({
+            filename: item.filename,
+            longname: item.longname,
+            attrs: {
+              size: item.attrs.size,
+              mode: item.attrs.mode,
+              uid: item.attrs.uid,
+              gid: item.attrs.gid,
+              atime: item.attrs.atime,
+              mtime: item.attrs.mtime,
+              isDirectory: (item.attrs.mode & 0o40000) !== 0,
+            },
+          })),
+        }))
+      })
+      break
     }
-  } catch (err) {
-    sendError(ws, connectionId, 'SFTP_ERROR', `${operation} 失败: ${err.message}`)
+
+    case 'stat': {
+      const { path: targetPath } = payload
+      conn.sftp.stat(targetPath, (err, attrs) => {
+        if (err) return sendError(ws, connectionId, 'SFTP_ERROR', err.message)
+        ws.send(JSON.stringify({
+          type: 'sftp-result',
+          connectionId,
+          operation: 'stat',
+          data: { size: attrs.size, mode: attrs.mode, mtime: attrs.mtime },
+        }))
+      })
+      break
+    }
+
+    case 'readdir': {
+      const { path: dirPath } = payload
+      // 与 list 相同，语义别名
+      conn.sftp.readdir(dirPath || '.', (err, list) => {
+        if (err) return sendError(ws, connectionId, 'SFTP_ERROR', err.message)
+        ws.send(JSON.stringify({
+          type: 'sftp-result',
+          connectionId,
+          operation: 'readdir',
+          data: list.map(item => ({
+            filename: item.filename,
+            longname: item.longname,
+            attrs: {
+              size: item.attrs.size,
+              mode: item.attrs.mode,
+              uid: item.attrs.uid,
+              gid: item.attrs.gid,
+              atime: item.attrs.atime,
+              mtime: item.attrs.mtime,
+              isDirectory: (item.attrs.mode & 0o40000) !== 0,
+            },
+          })),
+        }))
+      })
+      break
+    }
+
+    case 'readfile': {
+      const { path: filePath } = payload
+      conn.sftp.readFile(filePath, (err, data) => {
+        if (err) return sendError(ws, connectionId, 'SFTP_ERROR', err.message)
+        ws.send(JSON.stringify({
+          type: 'sftp-result',
+          connectionId,
+          operation: 'readfile',
+          data: data.toString('base64'),
+        }))
+      })
+      break
+    }
+
+    case 'writefile': {
+      const { path: filePath, content } = payload
+      const buf = Buffer.from(content, 'base64')
+      conn.sftp.writeFile(filePath, buf, (err) => {
+        if (err) return sendError(ws, connectionId, 'SFTP_ERROR', err.message)
+        ws.send(JSON.stringify({
+          type: 'sftp-result',
+          connectionId,
+          operation: 'writefile',
+          success: true,
+        }))
+      })
+      break
+    }
+
+    case 'mkdir': {
+      const { path: dirPath } = payload
+      conn.sftp.mkdir(dirPath, (err) => {
+        if (err) return sendError(ws, connectionId, 'SFTP_ERROR', err.message)
+        ws.send(JSON.stringify({
+          type: 'sftp-result',
+          connectionId,
+          operation: 'mkdir',
+          success: true,
+        }))
+      })
+      break
+    }
+
+    case 'rmdir': {
+      const { path: dirPath } = payload
+      conn.sftp.rmdir(dirPath, (err) => {
+        if (err) return sendError(ws, connectionId, 'SFTP_ERROR', err.message)
+        ws.send(JSON.stringify({
+          type: 'sftp-result',
+          connectionId,
+          operation: 'rmdir',
+          success: true,
+        }))
+      })
+      break
+    }
+
+    case 'unlink': {
+      const { path: filePath } = payload
+      conn.sftp.unlink(filePath, (err) => {
+        if (err) return sendError(ws, connectionId, 'SFTP_ERROR', err.message)
+        ws.send(JSON.stringify({
+          type: 'sftp-result',
+          connectionId,
+          operation: 'unlink',
+          success: true,
+        }))
+      })
+      break
+    }
+
+    case 'rename': {
+      const { fromPath, toPath } = payload
+      conn.sftp.rename(fromPath, toPath, (err) => {
+        if (err) return sendError(ws, connectionId, 'SFTP_ERROR', err.message)
+        ws.send(JSON.stringify({
+          type: 'sftp-result',
+          connectionId,
+          operation: 'rename',
+          success: true,
+        }))
+      })
+      break
+    }
+
+    default:
+      sendError(ws, connectionId, 'UNKNOWN_OPERATION', `未知 SFTP 操作: ${operation}`)
   }
 }
 
-// SFTP 辅助函数（Promise 封装）
-function readDir(sftp, dir) {
-  return new Promise((resolve, reject) => {
-    sftp.readdir(dir, (err, list) => {
-      if (err) return reject(err)
-      resolve(list.map((f) => ({
-        name: f.filename,
-        path: (dir === '/' ? '' : dir) + '/' + f.filename,
-        type: f.attrs.isDirectory() ? 'directory' : 'file',
-        size: f.attrs.size,
-        modifyTime: f.attrs.mtime * 1000,
-        permissions: f.attrs.mode.toString(8).slice(-3),
-        owner: f.attrs.uid?.toString() || '',
-        group: f.attrs.gid?.toString() || '',
-      })))
-    })
-  })
-}
+// ========== 连接清理 ==========
 
-function readFile(sftp, filePath) {
-  return new Promise((resolve, reject) => {
-    sftp.readFile(filePath, (err, data) => {
-      if (err) return reject(err)
-      resolve(data)
-    })
-  })
-}
-
-function writeFile(sftp, filePath, data) {
-  return new Promise((resolve, reject) => {
-    sftp.writeFile(filePath, data, (err) => {
-      if (err) return reject(err)
-      resolve()
-    })
-  })
-}
-
-function renameFile(sftp, oldPath, newPath) {
-  return new Promise((resolve, reject) => {
-    sftp.rename(oldPath, newPath, (err) => {
-      if (err) return reject(err)
-      resolve()
-    })
-  })
-}
-
-function deleteFile(sftp, filePath) {
-  return new Promise((resolve, reject) => {
-    sftp.unlink(filePath, (err) => {
-      if (err) return reject(err)
-      resolve()
-    })
-  })
-}
-
-function makeDir(sftp, dirPath) {
-  return new Promise((resolve, reject) => {
-    sftp.mkdir(dirPath, { mode: 0o755 }, (err) => {
-      if (err) return reject(err)
-      resolve()
-    })
-  })
-}
-
-function chmodFile(sftp, filePath, mode) {
-  return new Promise((resolve, reject) => {
-    sftp.chmod(filePath, parseInt(mode, 8), (err) => {
-      if (err) return reject(err)
-      resolve()
-    })
-  })
-}
-
-/**
- * 清理连接
- */
 function cleanupConnection(connectionId) {
   const conn = connections.get(connectionId)
   if (!conn) return
@@ -546,13 +509,11 @@ function cleanupConnection(connectionId) {
   connections.delete(connectionId)
 }
 
-/**
- * 错误响应辅助
- */
+// ========== 错误响应辅助 ==========
+
 function sendError(ws, connectionId, code, message) {
-  const target = ws || wss.clients.values().next().value
-  if (target && target.readyState === target.OPEN) {
-    target.send(JSON.stringify({
+  if (ws.readyState === ws.OPEN) {
+    ws.send(JSON.stringify({
       type: 'error',
       connectionId,
       code,
@@ -561,23 +522,29 @@ function sendError(ws, connectionId, code, message) {
   }
 }
 
-// 优雅关闭
-process.on('SIGTERM', () => {
-  console.log('[Bridge] Shutting down...')
-  for (const [connId] of connections) {
-    cleanupConnection(connId)
-  }
-  wss.close()
-  process.exit(0)
-})
+// ========== 静态文件服务 ==========
 
-process.on('SIGINT', () => {
-  console.log('[Bridge] Shutting down (SIGINT)...')
-  for (const [connId] of connections) {
-    cleanupConnection(connId)
-  }
-  wss.close()
-  process.exit(0)
-})
+if (fs.existsSync(frontendDist)) {
+  app.use(express.static(frontendDist))
 
-console.log(`[SmartBox Bridge] Ready for connections on ws://0.0.0.0:${PORT}`)
+  // SPA 支持：所有非 API 路由返回 index.html
+  app.use((req, res) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/ws')) {
+      return res.status(404).json({ error: 'Not Found' })
+    }
+    const filePath = path.join(frontendDist, 'index.html')
+    if (fs.existsSync(filePath)) {
+      res.sendFile(filePath)
+    } else {
+      res.status(404).json({ error: 'Not Found' })
+    }
+  })
+}
+
+// ========== 启动服务器 ==========
+
+app.listen(PORT, () => {
+  console.log(`[SmartBox Bridge] Server listening on port ${PORT}`)
+  console.log(`   API:  http://localhost:${PORT}/api/health`)
+  console.log(`   WS:   ws://localhost:${PORT}/ws`)
+})
