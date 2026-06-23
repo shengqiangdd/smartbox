@@ -1,0 +1,187 @@
+name: Cleanup Old Runs and Packages
+
+on:
+  schedule:
+    # 每周日凌晨 3 点运行
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+    # 支持手动触发
+    inputs:
+      dry_run:
+        description: 'Dry run (仅预览，不删除)'
+        type: boolean
+        default: false
+      keep_days:
+        description: '保留最近多少天的记录'
+        type: number
+        default: 30
+      keep_min_runs:
+        description: '每个 workflow 至少保留多少条记录'
+        type: number
+        default: 5
+
+jobs:
+  cleanup-actions:
+    name: Cleanup Actions Runs
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Delete old workflow runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          KEEP_DAYS: ${{ github.event.inputs.keep_days || '30' }}
+          KEEP_MIN: ${{ github.event.inputs.keep_min_runs || '5' }}
+        run: |
+          set -e
+          CUTOFF=$(date -d "-${KEEP_DAYS} days" +%s)
+          echo "🗑️ 清理策略: 保留 ${KEEP_DAYS} 天内 且 至少 ${KEEP_MIN} 条记录"
+          echo "⏰ 截止时间戳: ${CUTOFF} ($(date -d @${CUTOFF}))"
+
+          # 获取所有 workflow 名称
+          WORKFLOWS=$(gh api "/repos/${{ github.repository }}/actions/workflows" --jq '.workflows[].name')
+          echo "发现 workflows: $WORKFLOWS"
+
+          for WF in $WORKFLOWS; do
+            echo ""
+            echo "=== Workflow: ${WF} ==="
+
+            # 获取所有 runs，按创建时间降序
+            RUNS=$(gh api "/repos/${{ github.repository }}/actions/runs?per_page=100" \
+              --jq '[.workflow_runs[] | select(.name == "'"${WF}"'")] | sort_by(.created_at) | reverse')
+
+            TOTAL=$(echo "$RUNS" | jq 'length')
+            echo "  总数: ${TOTAL}"
+
+            DELETED=0
+            SKIPPED_KEEP=0
+            SKIPPED_RECENT=0
+
+            for i in $(seq 0 $(($TOTAL - 1))); do
+              RUN_ID=$(echo "$RUNS" | jq -r ".[${i}].id")
+              CREATED=$(echo "$RUNS" | jq -r ".[${i}].created_at")
+              CREATED_TS=$(date -d "${CREATED}" +%s)
+
+              # 前 KEEP_MIN 条保留 (最近完成的)
+              if [ "$i" -lt "$KEEP_MIN" ]; then
+                echo "  ↳ (#${i}) 保留(最近): #${RUN_ID} ${CREATED}"
+                SKIPPED_KEEP=$((SKIPPED_KEEP + 1))
+                continue
+              fi
+
+              # 在截止日期内的保留
+              if [ "$CREATED_TS" -ge "$CUTOFF" ]; then
+                echo "  ↳ (#${i}) 保留(较新): #${RUN_ID} ${CREATED}"
+                SKIPPED_RECENT=$((SKIPPED_RECENT + 1))
+                continue
+              fi
+
+              # 删除
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "  🔍 (Dry Run) 将删除: #${RUN_ID} ${CREATED}"
+              else
+                echo "  🗑️ 删除: #${RUN_ID} ${CREATED}"
+                gh api -X DELETE "/repos/${{ github.repository }}/actions/runs/${RUN_ID}" --silent
+              fi
+              DELETED=$((DELETED + 1))
+            done
+
+            echo "  结果: 删除${DELETED} | 保留(较新)${SKIPPED_RECENT} | 保留(最少)${SKIPPED_KEEP}"
+          done
+
+  cleanup-packages:
+    name: Cleanup Old Package Versions
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - name: Delete old container versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          KEEP_DAYS: ${{ github.event.inputs.keep_days || '30' }}
+          KEEP_MIN: ${{ github.event.inputs.keep_min_runs || '5' }}
+        run: |
+          set -e
+          CUTOFF=$(date -d "-${KEEP_DAYS} days" +%s)
+          echo "🗑️ 清理 Packages: 保留 ${KEEP_DAYS} 天内 且 至少 ${KEEP_MIN} 个版本"
+
+          # 获取仓库关联的容器包
+          PACKAGES=$(gh api "/repos/${{ github.repository }}/packages?package_type=docker" --jq '.[].name' 2>/dev/null || echo "")
+          if [ -z "$PACKAGES" ]; then
+            echo "没有找到 Docker 包，尝试从 ghcr.io 查询..."
+            OWNER="${{ github.repository_owner }}"
+            for PKG in "smartbox"; do
+              echo "检查包: ${PKG}"
+              VERSIONS=$(gh api "/users/${OWNER}/packages/container/${PKG}/versions" --jq '.[] | {id: .id, tags: .metadata.container.tags, created: .created_at}' 2>/dev/null || echo "")
+              if [ -z "$VERSIONS" ]; then
+                echo "  没有找到 (可能需要 read:packages 权限)"
+                continue
+              fi
+
+              TOTAL=$(echo "$VERSIONS" | jq -s 'length')
+              echo "  版本总数: ${TOTAL}"
+
+              # 按创建时间排序，最新的在前
+              ALL=$(echo "$VERSIONS" | jq -s 'sort_by(.created) | reverse')
+              DELETED=0
+
+              for i in $(seq 0 $(($TOTAL - 1))); do
+                VID=$(echo "$ALL" | jq -r ".[${i}].id")
+                CREATED=$(echo "$ALL" | jq -r ".[${i}].created")
+                TAGS=$(echo "$ALL" | jq -r ".[${i}].tags | join(\", \")")
+                CREATED_TS=$(date -d "${CREATED}" +%s)
+
+                # 前 KEEP_MIN 个保留
+                if [ "$i" -lt "$KEEP_MIN" ]; then
+                  echo "  ↳ (#${i}) 保留(最近): tags=[${TAGS}] ${CREATED}"
+                  continue
+                fi
+
+                # 在截止日期内的保留
+                if [ "$CREATED_TS" -ge "$CUTOFF" ]; then
+                  echo "  ↳ (#${i}) 保留(较新): tags=[${TAGS}] ${CREATED}"
+                  continue
+                fi
+
+                # 跳过带 latest 或版本 tag 的
+                if echo "$TAGS" | grep -qE '(latest|v?[0-9]+\.[0-9]+)'; then
+                  echo "  ↳ (#${i}) 保留(有标签): tags=[${TAGS}] ${CREATED}"
+                  continue
+                fi
+
+                if [ "$DRY_RUN" = "true" ]; then
+                  echo "  🔍 (Dry Run) 将删除版本: id=${VID} tags=[${TAGS}] ${CREATED}"
+                else
+                  echo "  🗑️ 删除版本: id=${VID} tags=[${TAGS}] ${CREATED}"
+                  gh api -X DELETE "/users/${OWNER}/packages/container/${PKG}/versions/${VID}" --silent 2>/dev/null || \
+                    echo "  ⚠️ 删除失败 (可能无权限或版本被保护)"
+                fi
+                DELETED=$((DELETED + 1))
+              done
+              echo "  ${PKG}: 删除了 ${DELETED} 个旧版本"
+            done
+          else
+            echo "找到包: $PACKAGES"
+            # TODO: 如果通过 repo API 找到包，补充相应清理逻辑
+          fi
+
+  report:
+    name: Generate Cleanup Report
+    needs: [cleanup-actions, cleanup-packages]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summary
+        run: |
+          echo "## 🧹 清理报告" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | 状态 |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Actions Runs | ${{ needs.cleanup-actions.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "| Packages | ${{ needs.cleanup-packages.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**策略**: 保留最近 ${{ github.event.inputs.keep_days || '30' }} 天 + 至少 ${{ github.event.inputs.keep_min_runs || '5' }} 条" >> $GITHUB_STEP_SUMMARY
