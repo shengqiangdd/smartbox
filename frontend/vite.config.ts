@@ -5,9 +5,10 @@ import path from 'path'
 
 export default defineConfig({
   build: {
-    minify: 'esbuild',
-    // terser 在 Node 18 环境有兼容问题，用 esbuild 替代
-    // Node 22+ 环境可改为 terser 以获得更好的压缩效果
+    minify: 'terser',
+    terserOptions: {
+      compress: { drop_console: true },
+    },
   },
   plugins: [
     react(),
