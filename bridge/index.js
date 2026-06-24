@@ -538,30 +538,76 @@ function handleSftp(ws, connectionId, requestId, payload) {
 
   switch (operation) {
     case 'list': {
-      if (!conn.sftp) return sendError(ws, connectionId, requestId, 'SFTP_NOT_READY', 'SFTP 未就绪（列表需要 SFTP）')
       const { path: dirPath } = payload
-      const readPath = dirPath === '/' ? '.' : dirPath.replace(/\/+$/, '')
-      const prefix = dirPath === '/' ? '/' : (dirPath || '').replace(/\/+$/, '') + '/'
-      conn.sftp.readdir(readPath, (err, list) => {
-        if (err) return sendError(ws, connectionId, requestId, 'SFTP_ERROR', err.message)
-        sendJson(ws, {
-          type: 'sftp-result',
-          connectionId,
-          requestId,
-          operation: 'list',
-          files: (list || []).map(item => ({
-            name: item.filename,
-            path: prefix + item.filename,
-            type: (item.attrs.mode && (item.attrs.mode & 0o40000)) ? 'directory' : 'file',
-            _longnameType: (item.longname && item.longname.startsWith('d')) ? 'directory' : undefined,
-            size: item.attrs.size,
-            modifyTime: item.attrs.mtime * 1000,
-            permissions: item.attrs.mode ? (item.attrs.mode & 0o777).toString(8) : '755',
-            owner: '',
-            group: '',
-          })),
+      const absPath = dirPath === '/' ? '/' : dirPath.replace(/\/+$/, '')
+
+      // 优先用 SFTP，如果不可用或者读取失败则走 sudo ls
+      const doSftpList = () => {
+        if (!conn.sftp) return doSudoList()
+        const readPath = absPath === '/' ? '/' : absPath
+        const prefix = absPath === '/' ? '/' : absPath + '/'
+        conn.sftp.readdir(readPath, (err, list) => {
+          if (err) {
+            if (isPermissionError(err)) {
+              console.log(`[SFTP] list permission denied, falling back to sudo: ${absPath}`)
+              return doSudoList()
+            }
+            return sendError(ws, connectionId, requestId, 'SFTP_ERROR', err.message)
+          }
+          sendJson(ws, {
+            type: 'sftp-result',
+            connectionId,
+            requestId,
+            operation: 'list',
+            files: (list || []).map(item => ({
+              name: item.filename,
+              path: prefix + item.filename,
+              type: (item.attrs.mode && (item.attrs.mode & 0o40000)) ? 'directory' : 'file',
+              _longnameType: (item.longname && item.longname.startsWith('d')) ? 'directory' : undefined,
+              size: item.attrs.size,
+              modifyTime: item.attrs.mtime * 1000,
+              permissions: item.attrs.mode ? (item.attrs.mode & 0o777).toString(8) : '755',
+              owner: '',
+              group: '',
+            })),
+          })
         })
-      })
+      }
+
+      // sudo ls 降级：从 ls -1F 输出解析文件名和类型（F 后缀标记目录/可执行）
+      const doSudoList = () => {
+        // ls -1F: 一列一个，目录末尾加 /，符号链接加 @，可执行加 *
+        const cmd = `sudo ls -1aF ${escapeShellArg(absPath)} 2>/dev/null`
+        sudoExec(conn, cmd, (err, stdout) => {
+          if (err) return sendError(ws, connectionId, requestId, 'SUDO_ERROR', `列表失败: ${err.message}`)
+          const lines = stdout.split('\n').filter(n => n && n !== '.' && n !== '..' && n !== './' && n !== '../')
+          const prefix = absPath === '/' ? '/' : absPath + '/'
+          sendJson(ws, {
+            type: 'sftp-result',
+            connectionId,
+            requestId,
+            operation: 'list',
+            files: lines.map(raw => {
+              // ls -1F 标记: / = 目录, * = 可执行, @ = 符号链接, | = FIFO, = = socket
+              const suffix = raw.slice(-1)
+              const name = (suffix === '/' || suffix === '*' || suffix === '@' || suffix === '|' || suffix === '=')
+                ? raw.slice(0, -1) : raw
+              return {
+                name,
+                path: prefix + name,
+                type: suffix === '/' ? 'directory' : 'file',
+                size: 0,
+                modifyTime: 0,
+                permissions: '755',
+                owner: '',
+                group: '',
+              }
+            }),
+          })
+        })
+      }
+
+      doSftpList()
       break
     }
 
@@ -582,18 +628,21 @@ function handleSftp(ws, connectionId, requestId, payload) {
     }
 
     case 'readfile': {
-      if (!conn.sftp) return sendError(ws, connectionId, requestId, 'SFTP_NOT_READY', 'SFTP 未就绪（读取需要 SFTP）')
       const { path: filePath } = payload
-      conn.sftp.readFile(filePath, (err, data) => {
-        if (err) return sendError(ws, connectionId, requestId, 'SFTP_ERROR', err.message)
-        sendJson(ws, {
-          type: 'sftp-result',
-          connectionId,
-          requestId,
-          operation: 'readfile',
-          data: data.toString('base64'),
+      if (conn.sftp) {
+        conn.sftp.readFile(filePath, (err, data) => {
+          if (!err) {
+            return sendJson(ws, { type: 'sftp-result', connectionId, requestId, operation: 'readfile', data: data.toString('base64') })
+          }
+          if (!isPermissionError(err)) {
+            return sendError(ws, connectionId, requestId, 'SFTP_ERROR', err.message)
+          }
+          console.log(`[SFTP] readfile permission denied, falling back to sudo: ${filePath}`)
+          readFileWithSudo(ws, conn, connectionId, requestId, filePath)
         })
-      })
+      } else {
+        readFileWithSudo(ws, conn, connectionId, requestId, filePath)
+      }
       break
     }
 
@@ -723,6 +772,23 @@ function writeFileWithSudo(ws, conn, connectionId, requestId, filePath, buf) {
       if (err2) return sendError(ws, connectionId, requestId, 'SUDO_ERROR', `写入失败: ${err2.message}`)
       sendJson(ws, { type: 'sftp-result', connectionId, requestId, operation: 'writefile', success: true })
     })
+  })
+}
+
+function readFileWithSudo(ws, conn, connectionId, requestId, filePath) {
+  const cmd = `sudo cat ${escapeShellArg(filePath)} 2>/dev/null && echo '---BASE64---' && sudo base64 ${escapeShellArg(filePath)} 2>/dev/null`
+  sudoExec(conn, cmd, (err, stdout) => {
+    if (err) return sendError(ws, connectionId, requestId, 'SUDO_ERROR', `读取失败: ${err.message}`)
+    // 取 base64 编码部分（避免二进制内容被截断）
+    const parts = stdout.split('---BASE64---\n')
+    const b64Content = (parts[1] || '').trim()
+    if (b64Content) {
+      sendJson(ws, { type: 'sftp-result', connectionId, requestId, operation: 'readfile', data: b64Content })
+    } else {
+      // base64 命令不可用时 fallback 到普通输出（有损，但聊胜于无）
+      const text = (parts[0] || '').trim()
+      sendJson(ws, { type: 'sftp-result', connectionId, requestId, operation: 'readfile', data: Buffer.from(text, 'utf-8').toString('base64') })
+    }
   })
 }
 
