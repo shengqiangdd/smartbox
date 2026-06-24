@@ -4,19 +4,29 @@ import FileManager from '../../modules/file-manager/FileManager'
 import PluginsPage from '../../modules/plugins/PluginsPage'
 import SettingsPanel from '../../modules/settings/SettingsPanel'
 
+const NAVS = ['ssh', 'files', 'plugins', 'settings'] as const
+
+const PAGES: Record<string, React.ReactNode> = {
+  ssh: <SshPlaceholder />,
+  files: <FileManager />,
+  plugins: <PluginsPage />,
+  settings: <SettingsPanel />,
+}
+
 export default function MainContent() {
   const activeNav = useAppStore((s) => s.activeNav)
 
-  const sections: Record<string, React.ReactNode> = {
-    ssh: <SshPlaceholder />,
-    files: <FileManager />,
-    plugins: <PluginsPage />,
-    settings: <SettingsPanel />,
-  }
-
   return (
     <main className="flex flex-1 flex-col overflow-hidden">
-      {sections[activeNav] || <SshPlaceholder />}
+      {NAVS.map((nav) => (
+        <div
+          key={nav}
+          className="flex h-full w-full flex-1 flex-col overflow-hidden"
+          style={{ display: nav === activeNav ? 'flex' : 'none' }}
+        >
+          {PAGES[nav] || null}
+        </div>
+      ))}
     </main>
   )
 }
