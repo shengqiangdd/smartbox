@@ -510,8 +510,32 @@ function isPermissionError(err) {
 
 /**
  * 通过 SSH exec 执行 sudo 命令，返回退出码和标准输出
+ * 关键：用 pty 模式执行 sudo，避免某些系统 requiretty 导致失败
  */
 function sudoExec(conn, command, callback) {
+  // 某些系统 sudo 需要 tty 才能运行，所以用 pty 模式
+  conn.ssh.exec(command, { pty: true }, (err, stream) => {
+    if (err) return callback(err)
+    let stdout = ''
+    let stderr = ''
+    stream.on('data', (chunk) => { stdout += chunk.toString('utf-8') })
+    stream.stderr.on('data', (chunk) => { stderr += chunk.toString('utf-8') })
+    stream.on('close', (exitCode) => {
+      if (exitCode !== 0) {
+        callback(new Error(stderr.trim() || `命令退出码: ${exitCode}`))
+      } else {
+        callback(null, stdout)
+      }
+    })
+    // 结束 stdin 避免 sudo 挂起等待输入
+    stream.end()
+  })
+}
+
+/**
+ * 通过 exec 执行命令（无 sudo），用于 stat 等辅助查询
+ */
+function plainExec(conn, command, callback) {
   conn.ssh.exec(command, { pty: false }, (err, stream) => {
     if (err) return callback(err)
     let stdout = ''
@@ -520,7 +544,7 @@ function sudoExec(conn, command, callback) {
     stream.stderr.on('data', (chunk) => { stderr += chunk.toString('utf-8') })
     stream.on('close', (exitCode) => {
       if (exitCode !== 0) {
-        callback(new Error(stderr.trim() || `sudo 命令退出码: ${exitCode}`))
+        callback(new Error(stderr.trim() || `命令退出码: ${exitCode}`))
       } else {
         callback(null, stdout)
       }
@@ -574,36 +598,44 @@ function handleSftp(ws, connectionId, requestId, payload) {
         })
       }
 
-      // sudo ls 降级：从 ls -1F 输出解析文件名和类型（F 后缀标记目录/可执行）
+      // sudo ls 降级：用 sudo ls -la 解析类型
       const doSudoList = () => {
-        // ls -1F: 一列一个，目录末尾加 /，符号链接加 @，可执行加 *
-        const cmd = `sudo ls -1aF ${escapeShellArg(absPath)} 2>/dev/null`
-        sudoExec(conn, cmd, (err, stdout) => {
+        // ls -la 第一列首字符: d=目录, l=符号链接(指向目录), -=普通文件
+        const listCmd = `sudo ls -la ${escapeShellArg(absPath)} 2>/dev/null | tail -n +2`
+        sudoExec(conn, listCmd, (err, stdout) => {
           if (err) return sendError(ws, connectionId, requestId, 'SUDO_ERROR', `列表失败: ${err.message}`)
-          const lines = stdout.split('\n').filter(n => n && n !== '.' && n !== '..' && n !== './' && n !== '../')
           const prefix = absPath === '/' ? '/' : absPath + '/'
-          sendJson(ws, {
-            type: 'sftp-result',
-            connectionId,
-            requestId,
-            operation: 'list',
-            files: lines.map(raw => {
-              // ls -1F 标记: / = 目录, * = 可执行, @ = 符号链接, | = FIFO, = = socket
-              const suffix = raw.slice(-1)
-              const name = (suffix === '/' || suffix === '*' || suffix === '@' || suffix === '|' || suffix === '=')
-                ? raw.slice(0, -1) : raw
-              return {
-                name,
-                path: prefix + name,
-                type: suffix === '/' ? 'directory' : 'file',
-                size: 0,
-                modifyTime: 0,
-                permissions: '755',
-                owner: '',
-                group: '',
+          const entries = []  // { name: string, isDir: boolean }
+          for (const line of stdout.split('\n')) {
+            if (!line || line.length < 2) continue
+            const typeChar = line[0]
+            if (typeChar === 't' || line.startsWith('total ')) continue
+            // 用简单方法提取文件名：最后的空格后内容，去掉可能的箭头(->)和跟随的路径
+            // ls -la 结尾可能包含: name -> /target
+            const match = line.match(/^.\S+\s+\d+\s+\S+\s+\S+\s+\d+\s+\S+\s+\S+\s+\S+\s+(.+)$/)
+            if (match) {
+              let rawName = match[1]
+              // 去掉符号链接的 -> /target
+              const arrowIdx = rawName.indexOf(' -> ')
+              if (arrowIdx > 0) rawName = rawName.substring(0, arrowIdx)
+              if (rawName !== '.' && rawName !== '..') {
+                entries.push({ name: rawName, isDir: typeChar === 'd' || typeChar === 'l' })
               }
-            }),
+            }
+          }
+          const files = entries.map(function(e) {
+            return {
+              name: e.name,
+              path: prefix + e.name,
+              type: e.isDir ? 'directory' : 'file',
+              size: 0,
+              modifyTime: 0,
+              permissions: '755',
+              owner: '',
+              group: '',
+            }
           })
+          sendJson(ws, { type: 'sftp-result', connectionId, requestId, operation: 'list', files })
         })
       }
 
@@ -755,52 +787,83 @@ function handleSftp(ws, connectionId, requestId, payload) {
 // ========== sudo 降级实现 ==========
 
 function writeFileWithSudo(ws, conn, connectionId, requestId, filePath, buf) {
-  // 先创建父目录（如果不存在）
+  // 先创建父目录
   const parentDir = filePath.includes('/') ? filePath.substring(0, filePath.lastIndexOf('/')) : '.'
-  const createParentCmd = `sudo mkdir -p ${escapeShellArg(parentDir)}`
+  const mkdirCmd = `sudo mkdir -p ${escapeShellArg(parentDir)}`
 
-  sudoExec(conn, createParentCmd, (err) => {
-    if (err) {
-      // 父目录创建失败不是致命错误，继续尝试写文件
-      console.log(`[sudo-writefile] mkdir -p warning: ${err.message}`)
+  sudoExec(conn, mkdirCmd, () => {
+    // 用 printf + 十六进制转义写入，避免管道/引号/特殊字符问题
+    // 方法：将 base64 写到一个临时文件，然后 sudo mv 到目标位置
+    // 但更简单：直接 sudo sh -c "printf '%s' > file" 也不行
+    // 最稳健：sftp 先传到 /tmp，然后 sudo mv
+    if (conn.sftp) {
+      // 用 SFTP 写到临时文件，再 sudo mv
+      const tmpPath = `/tmp/.smartbox_write_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      conn.sftp.writeFile(tmpPath, buf, (sftpErr) => {
+        if (sftpErr) {
+          // SFTP 连 /tmp 都写不了？最后手段：sudo sh -c ... 但用 base64
+          const b64 = buf.toString('base64')
+          const fallbackCmd = `echo '${b64}' | base64 -d | sudo tee ${escapeShellArg(filePath)} > /dev/null 2>&1`
+          return sudoExec(conn, fallbackCmd, (e) => {
+            if (e) return sendError(ws, connectionId, requestId, 'SUDO_ERROR', `写入失败: ${e.message}`)
+            sendJson(ws, { type: 'sftp-result', connectionId, requestId, operation: 'writefile', success: true })
+          })
+        }
+        // sudo mv 到目标位置
+        const mvCmd = `sudo mv ${escapeShellArg(tmpPath)} ${escapeShellArg(filePath)} && sudo chmod 644 ${escapeShellArg(filePath)}`
+        sudoExec(conn, mvCmd, (mvErr) => {
+          if (mvErr) return sendError(ws, connectionId, requestId, 'SUDO_ERROR', `移动失败: ${mvErr.message}`)
+          sendJson(ws, { type: 'sftp-result', connectionId, requestId, operation: 'writefile', success: true })
+        })
+      })
+    } else {
+      // 没有 SFTP，用 base64 管道法
+      const b64 = buf.toString('base64')
+      const cmd = `echo '${b64}' | base64 -d | sudo tee ${escapeShellArg(filePath)} > /dev/null`
+      sudoExec(conn, cmd, (e) => {
+        if (e) return sendError(ws, connectionId, requestId, 'SUDO_ERROR', `写入失败: ${e.message}`)
+        sendJson(ws, { type: 'sftp-result', connectionId, requestId, operation: 'writefile', success: true })
+      })
     }
-
-    // 用 base64 + base64 -d | sudo tee 写文件（避免特殊字符问题）
-    const b64Content = buf.toString('base64')
-    const cmd = `echo ${escapeShellArg(b64Content)} | base64 -d | sudo tee ${escapeShellArg(filePath)} > /dev/null`
-    sudoExec(conn, cmd, (err2) => {
-      if (err2) return sendError(ws, connectionId, requestId, 'SUDO_ERROR', `写入失败: ${err2.message}`)
-      sendJson(ws, { type: 'sftp-result', connectionId, requestId, operation: 'writefile', success: true })
-    })
   })
 }
 
 function readFileWithSudo(ws, conn, connectionId, requestId, filePath) {
-  const cmd = `sudo cat ${escapeShellArg(filePath)} 2>/dev/null && echo '---BASE64---' && sudo base64 ${escapeShellArg(filePath)} 2>/dev/null`
-  sudoExec(conn, cmd, (err, stdout) => {
-    if (err) return sendError(ws, connectionId, requestId, 'SUDO_ERROR', `读取失败: ${err.message}`)
-    // 取 base64 编码部分（避免二进制内容被截断）
-    const parts = stdout.split('---BASE64---\n')
-    const b64Content = (parts[1] || '').trim()
-    if (b64Content) {
-      sendJson(ws, { type: 'sftp-result', connectionId, requestId, operation: 'readfile', data: b64Content })
-    } else {
-      // base64 命令不可用时 fallback 到普通输出（有损，但聊胜于无）
-      const text = (parts[0] || '').trim()
-      sendJson(ws, { type: 'sftp-result', connectionId, requestId, operation: 'readfile', data: Buffer.from(text, 'utf-8').toString('base64') })
+  // 用 sudo cat 读取，然后 base64 编码转成一行返回
+  // 先判断文件大小，太大了就报错
+  const statCmd = `sudo stat -c%s ${escapeShellArg(filePath)} 2>/dev/null || sudo wc -c < ${escapeShellArg(filePath)} 2>/dev/null`
+  sudoExec(conn, statCmd, (statErr, statOut) => {
+    if (statErr) {
+      return sendError(ws, connectionId, requestId, 'SUDO_ERROR', `读取失败: ${statErr.message}`)
     }
+    const size = parseInt((statOut || '0').trim(), 10)
+    if (size > 10485760) { // 10MB
+      return sendError(ws, connectionId, requestId, 'FILE_TOO_LARGE', `文件过大 (${(size / 1024 / 1024).toFixed(1)}MB)，不支持在线查看`)
+    }
+    // 用 base64 编码输出（兼容所有系统，busybox 也有 base64）
+    const readCmd = `sudo base64 ${escapeShellArg(filePath)} 2>/dev/null || (sudo cat ${escapeShellArg(filePath)} | base64) 2>/dev/null`
+    sudoExec(conn, readCmd, (readErr, readOut) => {
+      if (readErr) return sendError(ws, connectionId, requestId, 'SUDO_ERROR', `读取失败: ${readErr.message}`)
+      const b64 = readOut.replace(/\s+/g, '') // 去掉换行/空格
+      if (b64) {
+        sendJson(ws, { type: 'sftp-result', connectionId, requestId, operation: 'readfile', data: b64 })
+      } else {
+        // base64 不可用，用 cat 直接输出（仅文本）
+        const fallbackCmd = `sudo cat ${escapeShellArg(filePath)} 2>/dev/null`
+        sudoExec(conn, fallbackCmd, (catErr, catOut) => {
+          if (catErr) return sendError(ws, connectionId, requestId, 'SUDO_ERROR', `读取失败: ${catErr.message}`)
+          sendJson(ws, { type: 'sftp-result', connectionId, requestId, operation: 'readfile', data: Buffer.from(catOut || '', 'utf-8').toString('base64') })
+        })
+      }
+    })
   })
 }
 
 function mkdirWithSudo(ws, conn, connectionId, requestId, absPath) {
-  const cmd = `sudo mkdir -p ${escapeShellArg(absPath)}`
+  const cmd = `sudo mkdir -p ${escapeShellArg(absPath)} && sudo chmod 755 ${escapeShellArg(absPath)}`
   sudoExec(conn, cmd, (err) => {
     if (err) return sendError(ws, connectionId, requestId, 'SUDO_ERROR', `创建目录失败: ${err.message}`)
-    // 设置目录权限为 0755
-  const chmodCmd = `sudo chmod 755 ${escapeShellArg(absPath)}`
-  sudoExec(conn, chmodCmd, () => {
     sendJson(ws, { type: 'sftp-result', connectionId, requestId, operation: 'mkdir', success: true })
-  })
   })
 }
 
