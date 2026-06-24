@@ -39,6 +39,7 @@ import {
 } from 'lucide-react'
 import { useFileStore } from '../../stores/file-store'
 import { getWsClient } from '../../services/websocket'
+import { AlertModal, ConfirmModal } from '../../components/ConfirmModal'
 import type { SftpEntry } from '../../types/ssh'
 import type { WsClient } from '../../services/websocket'
 
@@ -335,6 +336,17 @@ export default function SftpBrowser({
   const [createName, setCreateName] = useState('')
   const [previewEntry, setPreviewEntry] = useState<SftpEntry | null>(null)
   const [sftpReady, setSftpReady] = useState(false)
+  // 弹窗提示（替代 alert）
+  const [alertModal, setAlertModal] = useState<{ title: string; message: string } | null>(null)
+  // 确认模态框（替代 confirm）
+  const [confirmModal, setConfirmModal] = useState<{
+    title: string
+    message: string
+    variant?: 'danger' | 'default'
+    confirmText?: string
+    onConfirm: () => void
+    onCancel: () => void
+  } | null>(null)
 
   const wsClient = getWsClient()
   const wsRef = useRef(wsClient)
@@ -433,19 +445,32 @@ export default function SftpBrowser({
 
   const handleDelete = async (entry: SftpEntry) => {
     if (!sessionId) return
-    if (!confirm(`确定删除 ${entry.type === 'directory' ? '目录' : '文件'} "${entry.name}" 吗？`)) return
-    try {
-      await wsRef.current.request({
-        type: 'sftp',
-        connectionId: sessionId,
-        operation: entry.type === 'directory' ? 'rmdir' : 'unlink',
-        path: entry.path,
-      })
-      refresh()
-    } catch (err) {
-      alert('删除失败: ' + (err as Error).message)
-    }
-    setContextMenu(null)
+    // 先用确认模态框
+    setConfirmModal({
+      title: '确认删除',
+      message: `确定删除 ${entry.type === 'directory' ? '目录' : '文件'} "${entry.name}" 吗？`,
+      variant: 'danger',
+      confirmText: '删除',
+      onConfirm: async () => {
+        setConfirmModal(null)
+        try {
+          await wsRef.current.request({
+            type: 'sftp',
+            connectionId: sessionId,
+            operation: entry.type === 'directory' ? 'rmdir' : 'unlink',
+            path: entry.path,
+          })
+          refresh()
+        } catch (err) {
+          setAlertModal({ title: '删除失败', message: (err as Error).message })
+        }
+        setContextMenu(null)
+      },
+      onCancel: () => {
+        setConfirmModal(null)
+        setContextMenu(null)
+      },
+    })
   }
 
   const handleRename = async (entry: SftpEntry, newName: string) => {
@@ -465,7 +490,7 @@ export default function SftpBrowser({
       setRenaming(null)
       refresh()
     } catch (err) {
-      alert('重命名失败: ' + (err as Error).message)
+      setAlertModal({ title: '重命名失败', message: (err as Error).message })
     }
     setContextMenu(null)
   }
@@ -497,7 +522,7 @@ export default function SftpBrowser({
           await new Promise(r => setTimeout(r, 500))
           continue
         }
-        alert('创建失败: ' + msg)
+        setAlertModal({ title: '创建失败', message: msg })
         return
       }
     }
@@ -537,7 +562,7 @@ export default function SftpBrowser({
         })
       }
     } catch (err) {
-      alert('打开失败: ' + (err as Error).message)
+      setAlertModal({ title: '打开失败', message: (err as Error).message })
     }
   }
 
@@ -565,7 +590,7 @@ export default function SftpBrowser({
         a.href = dataUrl; a.download = entry.name; a.click()
       }
     } catch (err) {
-      alert('下载失败: ' + (err as Error).message)
+      setAlertModal({ title: '下载失败', message: (err as Error).message })
     }
     setContextMenu(null)
   }
@@ -878,6 +903,28 @@ export default function SftpBrowser({
           onClose={() => setPreviewEntry(null)}
           onSaved={() => refresh()}
           onOpenInEditor={openInEditor}
+        />
+      )}
+
+      {/* ── Alert 弹窗 ── */}
+      <AlertModal
+        open={!!alertModal}
+        title={alertModal?.title || ''}
+        message={alertModal?.message || ''}
+        onClose={() => setAlertModal(null)}
+      />
+
+      {/* ── Confirm 弹窗 ── */}
+      {confirmModal && (
+        <ConfirmModal
+          open={!!confirmModal}
+          title={confirmModal.title}
+          message={confirmModal.message}
+          confirmText={confirmModal.confirmText}
+          cancelText="取消"
+          variant={confirmModal.variant || 'default'}
+          onConfirm={confirmModal.onConfirm}
+          onCancel={confirmModal.onCancel}
         />
       )}
     </div>

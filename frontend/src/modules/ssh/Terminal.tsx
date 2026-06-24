@@ -55,10 +55,17 @@ export default function TerminalView({ connectionId, sessionId, className = '', 
  const fitAddonRef = useRef<FitAddon | null>(null)
  const connectedRef = useRef(false)
  const disposedRef = useRef(false)
+ /** generation ID：每次 mount 递增，防止旧实例的异步回调污染新实例 */
+ const genRef = useRef(0)
  const wsClient = getWsClient()
 
- // 初始化 xterm 实例
- const initTerminal = useCallback(() => {
+ useEffect(() => {
+ if (!containerRef.current) return
+
+ genRef.current += 1
+ const gen = genRef.current
+ disposedRef.current = false
+
  const term = new XTerm({
  cursorBlink: true,
  cursorStyle: 'block',
@@ -72,6 +79,9 @@ export default function TerminalView({ connectionId, sessionId, className = '', 
  screenReaderMode: false,
  disableStdin: false,
  allowProposedApi: true,
+ // 给予初始 cols/rows 防止 Viewport 在 DOM 渲染前访问 undefined dimensions
+ cols: 80,
+ rows: 24,
  })
 
  const fitAddon = new FitAddon()
@@ -80,23 +90,13 @@ export default function TerminalView({ connectionId, sessionId, className = '', 
  term.loadAddon(fitAddon)
  term.loadAddon(searchAddon)
 
- return { term, fitAddon, searchAddon }
- }, [])
-
- useEffect(() => {
- if (!containerRef.current) return
-
- disposedRef.current = false
- const result = initTerminal()
- if (!result) return
- const { term, fitAddon } = result
-
  const container = containerRef.current
  term.open(container)
 
  // 延迟执行 fit 确保容器已渲染
  const fitTimer = setTimeout(() => {
- if (containerRef.current && containerRef.current.offsetWidth > 0 && containerRef.current.offsetHeight > 0) {
+ const c = containerRef.current
+ if (c && c.offsetWidth > 0 && c.offsetHeight > 0 && gen === genRef.current) {
  try { fitAddon.fit() } catch { /* ignore */ }
  }
  }, 50)
@@ -170,16 +170,15 @@ export default function TerminalView({ connectionId, sessionId, className = '', 
  })
 
  // Resize 监听 — 用 rAF 确保 DOM 就绪后再 fit
- const doFit = () => {
- if (disposedRef.current) return
+ const observer = new ResizeObserver(() => {
+ if (gen !== genRef.current) return
  requestAnimationFrame(() => {
- if (disposedRef.current) return
- const container = containerRef.current
- if (!container || container.offsetWidth === 0 || container.offsetHeight === 0) return
+ if (gen !== genRef.current) return
+ const c = containerRef.current
+ if (!c || c.offsetWidth === 0 || c.offsetHeight === 0) return
  try { fitAddon.fit() } catch { /* ignore */ }
  })
- }
- const observer = new ResizeObserver(doFit)
+ })
  observer.observe(container)
 
  // 发送 resize 到后端
@@ -192,29 +191,9 @@ export default function TerminalView({ connectionId, sessionId, className = '', 
  })
  })
 
- // 定时检查 term 是否还存活（避免残留 rAF 导致崩溃）
- const healthCheck = setInterval(() => {
- if (disposedRef.current) {
- clearInterval(healthCheck)
- return
- }
- if (!document.contains(container)) {
- clearInterval(healthCheck)
- disposedRef.current = true
- observer.disconnect()
- try {
- if (terminalRef.current) {
- terminalRef.current.dispose()
- terminalRef.current = null
- }
- } catch {}
- }
- }, 3000)
-
+ // 清理函数
  return () => {
- disposedRef.current = true
  clearTimeout(fitTimer)
- clearInterval(healthCheck)
  observer.disconnect()
  unsubData()
  unsubConnected()
@@ -224,7 +203,7 @@ export default function TerminalView({ connectionId, sessionId, className = '', 
  terminalRef.current = null
  fitAddonRef.current = null
  }
- }, [connectionId, sessionId])
+ }, [connectionId, sessionId, onTerminalData])
 
  return (
  <div
