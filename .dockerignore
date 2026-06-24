@@ -1,0 +1,31 @@
+# 依赖 — 交给 Dockerfile 里的 npm install 重新安装
+node_modules/
+bridge/node_modules/
+frontend/node_modules/
+
+# 构建产物
+frontend/dist/
+dist/
+build/
+out/
+
+# 本地环境
+.env
+.env.local
+.env.*.local
+.git/
+.gitignore
+.gitattributes
+
+# 文档和源文件不需要
+*.md
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git history
+.git/
