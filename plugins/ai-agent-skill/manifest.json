@@ -1,0 +1,38 @@
+{
+  "id": "ai-agent-skill",
+  "name": "AI Agent 技能生成器",
+  "version": "1.0.0",
+  "description": "根据自然语言描述自动生成 AI Agent 技能脚本，支持自定义提示词和命令生成",
+  "author": "SmartBox",
+  "icon": "wand",
+  "commands": [
+    {
+      "id": "ai-skill-generate",
+      "label": "生成 Shell 脚本",
+      "description": "根据文本描述自动生成可执行的 Shell 脚本",
+      "icon": "terminal",
+      "keywords": ["ai", "agent", "skill", "生成", "脚本", "shell", "bash"]
+    },
+    {
+      "id": "ai-skill-format-prompt",
+      "label": "提示词优化",
+      "description": "优化和格式化自然语言提示词，使其更适合 AI Agent 使用",
+      "icon": "message-square",
+      "keywords": ["prompt", "提示词", "优化", "格式", "ai"]
+    },
+    {
+      "id": "ai-skill-command-wizard",
+      "label": "命令向导",
+      "description": "分步引导式创建自定义 AI Agent 技能",
+      "icon": "list-checks",
+      "keywords": ["wizard", "向导", "命令", "自定义"]
+    }
+  ],
+  "panels": [
+    {
+      "id": "ai-skill-panel",
+      "title": "AI 技能工具",
+      "icon": "wand"
+    }
+  ]
+}

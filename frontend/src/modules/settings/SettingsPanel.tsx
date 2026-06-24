@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import {
   Settings,
   Moon,
@@ -12,39 +12,12 @@ import {
   Check,
   ChevronDown,
   Server,
+  Pencil,
 } from 'lucide-react'
 import { useAppStore } from '../../stores/app-store'
 import { useAiStore } from '../../stores/ai-store'
-
-// 预设模型列表，免费模型排前面
-const FREE_MODELS = [
-  { value: 'google/gemma-4-27b-it:free', label: 'Gemma 4 27B (免费)', provider: 'Google' },
-  { value: 'meta-llama/llama-4-maverick:free', label: 'Llama 4 Maverick (免费)', provider: 'Meta' },
-  { value: 'mistralai/mistral-small-3.1-24b-instruct:free', label: 'Mistral Small 3.1 24B (免费)', provider: 'Mistral' },
-  { value: 'qwen/qwen2.5-72b-instruct:free', label: 'Qwen 2.5 72B (免费)', provider: 'Alibaba' },
-  { value: 'cohere/command-r7b-12-2024:free', label: 'Command R7B (免费)', provider: 'Cohere' },
-  { value: 'deepseek/deepseek-chat:free', label: 'DeepSeek V3 (免费)', provider: 'DeepSeek' },
-]
-
-const PAID_MODELS = [
-  { value: 'openai/gpt-4o', label: 'GPT-4o', provider: 'OpenAI' },
-  { value: 'openai/gpt-4o-mini', label: 'GPT-4o Mini', provider: 'OpenAI' },
-  { value: 'openai/o3-mini', label: 'O3 Mini', provider: 'OpenAI' },
-  { value: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet', provider: 'Anthropic' },
-  { value: 'anthropic/claude-3.7-sonnet', label: 'Claude 3.7 Sonnet', provider: 'Anthropic' },
-  { value: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash', provider: 'Google' },
-  { value: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro', provider: 'Google' },
-  { value: 'deepseek/deepseek-chat', label: 'DeepSeek V3', provider: 'DeepSeek' },
-  { value: 'meta-llama/llama-4-maverick', label: 'Llama 4 Maverick', provider: 'Meta' },
-  { value: 'mistralai/mistral-small-3.1-24b-instruct', label: 'Mistral Small 3.1', provider: 'Mistral' },
-]
-
-// OpenRouter 支持的 endpoint 列表
-const API_ENDPOINTS = [
-  { value: 'https://openrouter.ai/api/v1', label: 'OpenRouter (默认)' },
-  { value: 'https://api.openai.com/v1', label: 'OpenAI' },
-  { value: 'https://api.anthropic.com/v1', label: 'Anthropic' },
-]
+import { AI_PROVIDERS } from '../../types/ai'
+import type { AiProvider } from '../../types/ai'
 
 export default function SettingsPanel() {
   const theme = useAppStore((s) => s.theme)
@@ -55,8 +28,10 @@ export default function SettingsPanel() {
 
   const [showApiKey, setShowApiKey] = useState(false)
   const [showModelSelector, setShowModelSelector] = useState(false)
+  const [showProviderSelector, setShowProviderSelector] = useState(false)
   const [customModel, setCustomModel] = useState('')
   const [showCustomInput, setShowCustomInput] = useState(false)
+  const [customBaseUrl, setCustomBaseUrl] = useState('')
 
   const themeOptions = [
     { value: 'dark' as const, label: '深色', icon: Moon },
@@ -64,13 +39,35 @@ export default function SettingsPanel() {
     { value: 'system' as const, label: '跟随系统', icon: Monitor },
   ]
 
-  const allModels = [...FREE_MODELS, { value: '---', label: '──────────', provider: '' }, ...PAID_MODELS]
+  // ── Provider 切换 ──
+  const currentProvider = AI_PROVIDERS.find((p) => p.id === aiConfig.provider) || AI_PROVIDERS[0]
 
-  const selectedModelLabel = allModels.find(m => m.value === aiConfig.model)?.label
-    || FREE_MODELS[0].label
+  const handleSelectProvider = useCallback((provider: AiProvider) => {
+    if (provider.id === 'custom') {
+      setAiConfig({
+        provider: 'custom',
+        model: '',
+        baseUrl: customBaseUrl || '',
+        customBaseUrl: true,
+      })
+      setShowProviderSelector(false)
+      return
+    }
+    setAiConfig({
+      provider: provider.id as any,
+      baseUrl: provider.baseUrl,
+      model: provider.defaultModel,
+      customBaseUrl: false,
+    })
+    setShowProviderSelector(false)
+    setShowCustomInput(false)
+  }, [setAiConfig, customBaseUrl])
 
-  const handleSelectModel = (modelValue: string) => {
-    if (modelValue === '---') return
+  // ── 模型切换 ──
+  const allModels = currentProvider.models
+  const selectedModelLabel = allModels.find((m) => m.value === aiConfig.model)?.label || aiConfig.model
+
+  const handleSelectModel = useCallback((modelValue: string) => {
     if (modelValue === '__custom__') {
       setShowCustomInput(true)
       setShowModelSelector(false)
@@ -79,15 +76,15 @@ export default function SettingsPanel() {
     setAiConfig({ model: modelValue })
     setShowModelSelector(false)
     setShowCustomInput(false)
-  }
+  }, [setAiConfig])
 
-  const handleSetCustomModel = () => {
+  const handleSetCustomModel = useCallback(() => {
     if (customModel.trim()) {
       setAiConfig({ model: customModel.trim() })
       setShowCustomInput(false)
       setCustomModel('')
     }
-  }
+  }, [customModel, setAiConfig])
 
   return (
     <div className="flex h-full flex-col overflow-y-auto p-6">
@@ -122,6 +119,9 @@ export default function SettingsPanel() {
               )
             })}
           </div>
+          <p className="mt-2 text-[11px] text-slate-600">
+            当前为纯深色主题，切换浅色模式会调整主要背景色
+          </p>
         </section>
 
         {/* ─── AI 配置 ─── */}
@@ -131,21 +131,81 @@ export default function SettingsPanel() {
             AI Agent 配置
           </h3>
 
-          {/* API Endpoint */}
+          {/* Provider 选择 */}
           <div className="mb-3">
             <label className="mb-1.5 flex items-center gap-1 text-xs text-slate-500">
               <Globe size={12} />
-              API 端点
+              AI 服务商
             </label>
-            <select
-              value={aiConfig.baseUrl}
-              onChange={(e) => setAiConfig({ baseUrl: e.target.value })}
-              className="input"
-            >
-              {API_ENDPOINTS.map((ep) => (
-                <option key={ep.value} value={ep.value}>{ep.label}</option>
-              ))}
-            </select>
+            <div className="relative">
+              <button
+                onClick={() => setShowProviderSelector(!showProviderSelector)}
+                className="input flex items-center justify-between text-left"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-200">{currentProvider.name}</span>
+                  {currentProvider.description && (
+                    <span className="text-[10px] text-slate-500">{currentProvider.description}</span>
+                  )}
+                </div>
+                <ChevronDown size={14} className="text-slate-500 shrink-0" />
+              </button>
+
+              {showProviderSelector && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowProviderSelector(false)} />
+                  <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-lg border border-slate-700 bg-slate-800 shadow-xl overflow-hidden">
+                    {AI_PROVIDERS.map((provider) => (
+                      <button
+                        key={provider.id}
+                        onClick={() => handleSelectProvider(provider)}
+                        className={`flex w-full items-center gap-2 px-3 py-2.5 text-xs transition-colors hover:bg-slate-700 ${
+                          aiConfig.provider === provider.id ? 'bg-slate-700/50 text-smartbox-400' : 'text-slate-300'
+                        }`}
+                      >
+                        <div className="flex-1 text-left">
+                          <div className="font-medium">{provider.name}</div>
+                          {provider.description && (
+                            <div className="mt-0.5 text-[10px] text-slate-500">{provider.description}</div>
+                          )}
+                        </div>
+                        {aiConfig.provider === provider.id && <Check size={12} className="shrink-0" />}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* API Endpoint - 可编辑版本 */}
+          <div className="mb-3">
+            <label className="mb-1.5 flex items-center gap-1 text-xs text-slate-500">
+              <Globe size={12} />
+              API Base URL
+              <button
+                onClick={() => setAiConfig({ customBaseUrl: !aiConfig.customBaseUrl })}
+                className={`ml-2 inline-flex items-center gap-1 text-[10px] transition-colors ${
+                  aiConfig.customBaseUrl ? 'text-smartbox-400' : 'text-slate-600 hover:text-slate-400'
+                }`}
+              >
+                <Pencil size={10} />
+                {aiConfig.customBaseUrl ? '自定义模式' : '预设模式'}
+              </button>
+            </label>
+            {aiConfig.customBaseUrl ? (
+              <input
+                value={aiConfig.baseUrl}
+                onChange={(e) => setAiConfig({ baseUrl: e.target.value })}
+                className="input"
+                placeholder="https://api.example.com/v1"
+              />
+            ) : (
+              <div className="input flex items-center justify-between text-sm text-slate-400 cursor-not-allowed bg-slate-800/30">
+                <span>{currentProvider.baseUrl || aiConfig.baseUrl}</span>
+                <span className="text-[10px] text-slate-600">预设</span>
+              </div>
+            )}
           </div>
 
           {/* API Key */}
@@ -154,7 +214,13 @@ export default function SettingsPanel() {
               <Key size={12} />
               API Key
               <a
-                href="https://openrouter.ai/keys"
+                href={currentProvider.id === 'openrouter' ? 'https://openrouter.ai/keys' :
+                      currentProvider.id === 'openai' ? 'https://platform.openai.com/api-keys' :
+                      currentProvider.id === 'anthropic' ? 'https://console.anthropic.com/' :
+                      currentProvider.id === 'google' ? 'https://aistudio.google.com/apikey' :
+                      currentProvider.id === 'deepseek' ? 'https://platform.deepseek.com/api_keys' :
+                      currentProvider.id === 'siliconflow' ? 'https://cloud.siliconflow.cn/account/ak' :
+                      '#'}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="ml-1 inline-flex items-center gap-0.5 text-smartbox-400 hover:text-smartbox-300"
@@ -169,7 +235,9 @@ export default function SettingsPanel() {
                 value={aiConfig.apiKey}
                 onChange={(e) => setAiConfig({ apiKey: e.target.value })}
                 className="input pr-20"
-                placeholder="sk-or-v1-..."
+                placeholder={currentProvider.id === 'openrouter' ? 'sk-or-v1-...' :
+                            currentProvider.id === 'openai' ? 'sk-...' :
+                            currentProvider.id === 'anthropic' ? 'sk-ant-...' : '输入 API Key'}
                 autoComplete="off"
               />
               </form>
@@ -187,10 +255,13 @@ export default function SettingsPanel() {
             <label className="mb-1.5 flex items-center gap-1 text-xs text-slate-500">
               <MessageSquare size={12} />
               模型
-              <span className="ml-1 text-[10px] text-emerald-500/70">免费模型已置顶</span>
+              {currentProvider.models.some((m) => m.free) && (
+                <span className="ml-1 text-[10px] text-emerald-500/70">
+                  {currentProvider.models.filter((m) => m.free).length} 个免费模型
+                </span>
+              )}
             </label>
 
-            {/* 自定义模型输入 */}
             {showCustomInput ? (
               <div className="flex items-center gap-2">
                 <input
@@ -198,7 +269,7 @@ export default function SettingsPanel() {
                   onChange={(e) => setCustomModel(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleSetCustomModel() }}
                   className="input flex-1"
-                  placeholder="输入模型名称，如 openai/gpt-4o"
+                  placeholder="输入模型名称"
                   autoFocus
                 />
                 <button onClick={handleSetCustomModel} className="btn-primary text-xs whitespace-nowrap">
@@ -215,54 +286,80 @@ export default function SettingsPanel() {
                   className="input flex items-center justify-between text-left"
                 >
                   <span className="text-slate-200">{selectedModelLabel || aiConfig.model}</span>
-                  <ChevronDown size={14} className="text-slate-500" />
+                  <ChevronDown size={14} className="text-slate-500 shrink-0" />
                 </button>
 
                 {showModelSelector && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setShowModelSelector(false)} />
                     <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[300px] overflow-y-auto rounded-lg border border-slate-700 bg-slate-800 shadow-xl">
-                      {/* 免费模型组 */}
-                      <div className="border-b border-slate-700/50 px-3 py-1.5 text-[10px] uppercase tracking-wider text-emerald-400/70">
-                        🆓 免费模型
-                      </div>
-                      {FREE_MODELS.map((model) => (
+                      {currentProvider.models.length === 0 && currentProvider.id === 'custom' ? (
                         <button
-                          key={model.value}
-                          onClick={() => handleSelectModel(model.value)}
-                          className={`flex w-full items-center gap-2 px-3 py-2 text-xs transition-colors hover:bg-slate-700 ${
-                            aiConfig.model === model.value ? 'bg-slate-700/50 text-smartbox-400' : 'text-slate-300'
-                          }`}
+                          onClick={() => handleSelectModel('__custom__')}
+                          className="flex w-full items-center gap-2 px-3 py-2.5 text-xs text-slate-400 hover:bg-slate-700"
                         >
-                          <span className="flex-1">{model.label}</span>
-                          {aiConfig.model === model.value && <Check size={12} className="shrink-0" />}
+                          ✏️ 输入自定义模型名称...
                         </button>
-                      ))}
+                      ) : (
+                        <>
+                          {/* 免费模型组 */}
+                          {currentProvider.models.some((m) => m.free) && (
+                            <>
+                              <div className="border-b border-slate-700/50 px-3 py-1.5 text-[10px] uppercase tracking-wider text-emerald-400/70">
+                                🆓 免费模型
+                              </div>
+                              {currentProvider.models.filter((m) => m.free).map((model) => (
+                                <button
+                                  key={model.value}
+                                  onClick={() => handleSelectModel(model.value)}
+                                  className={`flex w-full items-center gap-2 px-3 py-2 text-xs transition-colors hover:bg-slate-700 ${
+                                    aiConfig.model === model.value ? 'bg-slate-700/50 text-smartbox-400' : 'text-slate-300'
+                                  }`}
+                                >
+                                  <span className="flex-1">{model.label}</span>
+                                  {model.description && (
+                                    <span className="text-[10px] text-slate-500">{model.description}</span>
+                                  )}
+                                  {aiConfig.model === model.value && <Check size={12} className="shrink-0" />}
+                                </button>
+                              ))}
+                            </>
+                          )}
 
-                      {/* 付费模型组 */}
-                      <div className="border-b border-t border-slate-700/50 px-3 py-1.5 text-[10px] uppercase tracking-wider text-slate-500">
-                        💰 付费模型
-                      </div>
-                      {PAID_MODELS.map((model) => (
-                        <button
-                          key={model.value}
-                          onClick={() => handleSelectModel(model.value)}
-                          className={`flex w-full items-center gap-2 px-3 py-2 text-xs transition-colors hover:bg-slate-700 ${
-                            aiConfig.model === model.value ? 'bg-slate-700/50 text-smartbox-400' : 'text-slate-300'
-                          }`}
-                        >
-                          <span className="flex-1">{model.label}</span>
-                          {aiConfig.model === model.value && <Check size={12} className="shrink-0" />}
-                        </button>
-                      ))}
+                          {/* 付费/其他模型 */}
 
-                      {/* 自定义模型 */}
-                      <button
-                        onClick={() => handleSelectModel('__custom__')}
-                        className="flex w-full items-center gap-2 border-t border-slate-700/50 px-3 py-2 text-xs text-slate-400 hover:bg-slate-700"
-                      >
-                        ✏️ 输入自定义模型...
-                      </button>
+                          {currentProvider.models.filter((m) => !m.free).length > 0 && (
+                            <>
+                              <div className="border-b border-t border-slate-700/50 px-3 py-1.5 text-[10px] uppercase tracking-wider text-slate-500">
+                                💰 其他模型
+                              </div>
+                              {currentProvider.models.filter((m) => !m.free).map((model) => (
+                                <button
+                                  key={model.value}
+                                  onClick={() => handleSelectModel(model.value)}
+                                  className={`flex w-full items-center gap-2 px-3 py-2 text-xs transition-colors hover:bg-slate-700 ${
+                                    aiConfig.model === model.value ? 'bg-slate-700/50 text-smartbox-400' : 'text-slate-300'
+                                  }`}
+                                >
+                                  <span className="flex-1">{model.label}</span>
+                                  {model.description && (
+                                    <span className="text-[10px] text-slate-500">{model.description}</span>
+                                  )}
+                                  {aiConfig.model === model.value && <Check size={12} className="shrink-0" />}
+                                </button>
+                              ))}
+                            </>
+                          )}
+
+                          {/* 自定义模型入口 */}
+                          <button
+                            onClick={() => handleSelectModel('__custom__')}
+                            className="flex w-full items-center gap-2 border-t border-slate-700/50 px-3 py-2 text-xs text-slate-400 hover:bg-slate-700"
+                          >
+                            ✏️ 输入自定义模型...
+                          </button>
+                        </>
+                      )}
                     </div>
                   </>
                 )}
@@ -310,11 +407,12 @@ export default function SettingsPanel() {
             关于
           </h3>
           <div className="rounded-lg border border-slate-700/50 bg-slate-900/50 px-4 py-3 text-xs text-slate-500">
-            <p className="font-medium text-slate-400">智盒 SmartBox v0.2.0</p>
+            <p className="font-medium text-slate-400">智盒 SmartBox v0.3.0</p>
             <p className="mt-1">可插拔 AI 增强的网页版工具箱</p>
             <p className="mt-1">技术栈: React 18 + Vite 6 + CodeMirror 6 + xterm.js + Express 5 + SSH2</p>
+            <p className="mt-1">内置 AI Agent 技能生成器 + 提示词模板库插件</p>
             <p className="mt-2 text-[10px] text-slate-600">
-              AI 功能由 OpenRouter API 提供支持 · 所有数据加密传输
+              AI 功能由 OpenRouter / OpenAI / Claude / Gemini 等 API 提供支持 · 所有数据加密传输
             </p>
           </div>
         </section>

@@ -33,8 +33,10 @@ export const useAiStore = create<AiState>()(
     (set) => ({
       config: {
         apiKey: '',
-        model: 'meta-llama/llama-3.1-8b-instruct:free',
+        model: 'google/gemma-4-27b-it:free',
         baseUrl: 'https://openrouter.ai/api/v1',
+        provider: 'openrouter',
+        customBaseUrl: false,
         enabled: false,
       },
       messages: [],
@@ -85,8 +87,10 @@ export const useAiStore = create<AiState>()(
 
       getDefaultConfig: () => ({
         apiKey: '',
-        model: 'meta-llama/llama-3.1-8b-instruct:free',
+        model: 'google/gemma-4-27b-it:free',
         baseUrl: 'https://openrouter.ai/api/v1',
+        provider: 'openrouter',
+        customBaseUrl: false,
         enabled: false,
       }),
     }),

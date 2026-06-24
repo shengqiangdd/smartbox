@@ -8,7 +8,7 @@ export default function Layout() {
   const rightPanelOpen = useAppStore((s) => s.rightPanelOpen)
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-slate-950">
+    <div className="flex h-screen flex-col overflow-hidden bg-slate-950 dark:bg-slate-950">
       <div className="flex flex-1 overflow-hidden">
         {/* 桌面端侧边栏 */}
         <div className="hidden md:flex">

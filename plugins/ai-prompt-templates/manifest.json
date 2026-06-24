@@ -1,0 +1,59 @@
+{
+  "id": "ai-prompt-templates",
+  "name": "AI 提示词模板库",
+  "version": "1.0.0",
+  "description": "内置多种 AI 提示词模板，一键插入：代码审查、重构建议、性能优化、安全审计、文档生成等",
+  "author": "SmartBox",
+  "icon": "file-text",
+  "commands": [
+    {
+      "id": "prompt-code-review",
+      "label": "代码审查",
+      "description": "生成代码审查提示词，对当前代码进行全面审查",
+      "icon": "search",
+      "keywords": ["review", "审查", "code", "代码", "检查"]
+    },
+    {
+      "id": "prompt-refactor",
+      "label": "重构建议",
+      "description": "生成代码重构优化建议提示词",
+      "icon": "refresh-cw",
+      "keywords": ["refactor", "重构", "优化", "improve"]
+    },
+    {
+      "id": "prompt-fix-bugs",
+      "label": "Bug 修复",
+      "description": "生成 Bug 分析和修复建议提示词",
+      "icon": "bug",
+      "keywords": ["bug", "fix", "修复", "debug", "错误"]
+    },
+    {
+      "id": "prompt-generate-docs",
+      "label": "文档生成",
+      "description": "生成代码文档注释和 README 提示词",
+      "icon": "book-open",
+      "keywords": ["docs", "文档", "documentation", "readme", "注释"]
+    },
+    {
+      "id": "prompt-security-audit",
+      "label": "安全审计",
+      "description": "生成代码安全审计提示词",
+      "icon": "shield",
+      "keywords": ["security", "安全", "audit", "审计", "vulnerability"]
+    },
+    {
+      "id": "prompt-unit-test",
+      "label": "单元测试生成",
+      "description": "生成单元测试用例提示词",
+      "icon": "check-square",
+      "keywords": ["test", "测试", "unit", "单元测试", "jest"]
+    }
+  ],
+  "panels": [
+    {
+      "id": "prompt-templates-panel",
+      "title": "提示词模板",
+      "icon": "file-text"
+    }
+  ]
+}
