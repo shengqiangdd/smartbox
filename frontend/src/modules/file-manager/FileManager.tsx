@@ -8,7 +8,7 @@
  * - 标签栏：多标签编辑，状态持久化
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import {
   FileCode2,
   X,
@@ -17,11 +17,11 @@ import {
   Loader2,
 } from 'lucide-react'
 import { useSshStore } from '../../stores/ssh-store'
+import { useAppStore } from '../../stores/app-store'
 import { useFileStore } from '../../stores/file-store'
 import { getWsClient } from '../../services/websocket'
 import SftpBrowser from '../ssh/SftpBrowser'
 import CodeMirrorEditor from '../../components/CodeMirrorEditor'
-import type { SftpEntry } from '../../types/ssh'
 
 // ─── 工具函数 ───
 
@@ -45,17 +45,18 @@ function getFileIcon(name: string) {
 
 export default function FileManager() {
   const connections = useSshStore((s) => s.connections)
+  const removeSession = useSshStore((s) => s.removeSession)
   const addSession = useSshStore((s) => s.addSession)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [activeConnId, setActiveConnId] = useState<string | null>(null)
-  const [sftpSessionId, setSftpSessionId] = useState<string | null>(null)
   const [connecting, setConnecting] = useState(false)
   const wsClient = getWsClient()
   const fileStore = useFileStore()
   const connectingRef = useRef(false)
 
-  // 状态持久化路径缓存
-  const [connPathCache] = useState(() => new Map<string, string>())
+  // ─── 持久化状态（切换标签页后恢复） ───
+  const sidebarOpen = useAppStore((s) => s.fmSidebarOpen)
+  const setSidebarOpen = useAppStore((s) => s.setFmSidebarOpen)
+  const fmState = useAppStore((s) => s.fmSftpState)
+  const setFmState = useAppStore((s) => s.setFmSftpState)
 
   // 连接并打开 SFTP
   const connectAndSftp = useCallback(async (connId: string) => {
@@ -64,7 +65,6 @@ export default function FileManager() {
 
     connectingRef.current = true
     setConnecting(true)
-    setActiveConnId(connId)
 
     // 清除已有 session
     const store = useSshStore.getState()
@@ -86,7 +86,6 @@ export default function FileManager() {
         password: conn.password,
         privateKey: conn.privateKey,
       })
-      setSftpSessionId(sessionId)
       addSession({
         id: sessionId,
         connectionId: connId,
@@ -96,15 +95,21 @@ export default function FileManager() {
         terminalCols: 80,
         terminalRows: 24,
       })
+      // 更新持久化状态
+      setFmState({
+        connId,
+        sessionId,
+        pathCache: fmState.pathCache,
+      })
       // 恢复上次路径
-      return connPathCache.get(connId) || '/'
+      return fmState.pathCache[connId] || '/'
     } catch (err) {
       console.error('SFTP 连接失败:', err)
     } finally {
       connectingRef.current = false
       setConnecting(false)
     }
-  }, [connections, wsClient, addSession, connPathCache])
+  }, [connections, wsClient, addSession, fmState, setFmState, removeSession])
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -122,8 +127,8 @@ export default function FileManager() {
             </button>
           </div>
           <SftpBrowser
-            sessionId={sftpSessionId}
-            activeConnId={activeConnId}
+            sessionId={fmState.sessionId}
+            activeConnId={fmState.connId}
             connectionOptions={connections.map(c => ({ id: c.id, name: c.name, host: c.host }))}
             onConnect={connectAndSftp}
             connecting={connecting}
@@ -150,7 +155,7 @@ export default function FileManager() {
               <Loader2 size={12} className="animate-spin" /> 连接中...
             </span>
           )}
-          {!sftpSessionId && !connecting && (
+          {!fmState.sessionId && !connecting && (
             <span className="text-xs text-slate-600">在左侧文件浏览器中选择 SSH 连接以浏览远程文件</span>
           )}
           <div className="ml-auto flex items-center gap-1">
@@ -198,7 +203,7 @@ export default function FileManager() {
               <div className="text-center">
                 <FileCode2 size={48} className="mx-auto mb-3 text-slate-600" />
                 <p className="text-sm text-slate-500">
-                  {sftpSessionId ? '在左侧文件浏览器中双击文件打开编辑' : '请先连接 SSH 服务器'}
+                  {fmState.sessionId ? '在左侧文件浏览器中双击文件打开编辑' : '请先连接 SSH 服务器'}
                 </p>
                 <p className="mt-1 text-xs text-slate-600">
                   支持双击文件、右键「在编辑器中打开」、拖拽调整面板宽度

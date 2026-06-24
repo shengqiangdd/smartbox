@@ -9,6 +9,21 @@ interface RightPanelContent {
   component: React.ReactNode | null
 }
 
+/** SSH 页面分屏定义 */
+export interface SplitDef {
+  id: string
+  connectionId: string
+  sessionId: string
+  direction: 'vertical' | 'horizontal'
+}
+
+/** 文件管理页面连接状态 */
+export interface SftpState {
+  connId: string | null
+  sessionId: string | null
+  pathCache: Record<string, string>
+}
+
 interface AppState {
   // 导航
   activeNav: NavId
@@ -36,6 +51,22 @@ interface AppState {
   // 命令面板
   commandPaletteOpen: boolean
   setCommandPaletteOpen: (open: boolean) => void
+
+  // ─── SSH 页面持久化状态（切换标签页后恢复） ───
+  sshSidebarOpen: boolean
+  setSshSidebarOpen: (open: boolean) => void
+  sshSftpOpen: boolean
+  setSshSftpOpen: (open: boolean) => void
+  sshSplits: SplitDef[]
+  setSshSplits: (splits: SplitDef[] | ((prev: SplitDef[]) => SplitDef[])) => void
+  sshActiveSplitId: string | null
+  setSshActiveSplitId: (id: string | null) => void
+
+  // ─── 文件管理页面持久化状态 ───
+  fmSidebarOpen: boolean
+  setFmSidebarOpen: (open: boolean) => void
+  fmSftpState: SftpState
+  setFmSftpState: (state: SftpState) => void
 }
 
 export const useAppStore = create<AppState>()(
@@ -61,6 +92,22 @@ export const useAppStore = create<AppState>()(
 
       commandPaletteOpen: false,
       setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
+
+      // SSH 页面持久化状态
+      sshSidebarOpen: true,
+      setSshSidebarOpen: (open) => set({ sshSidebarOpen: open }),
+      sshSftpOpen: true,
+      setSshSftpOpen: (open) => set({ sshSftpOpen: open }),
+      sshSplits: [],
+      setSshSplits: (splits) => set((s) => ({ sshSplits: typeof splits === 'function' ? splits(s.sshSplits) : splits })),
+      sshActiveSplitId: null,
+      setSshActiveSplitId: (id) => set({ sshActiveSplitId: id }),
+
+      // 文件管理页面持久化状态
+      fmSidebarOpen: true,
+      setFmSidebarOpen: (open) => set({ fmSidebarOpen: open }),
+      fmSftpState: { connId: null, sessionId: null, pathCache: {} },
+      setFmSftpState: (state) => set({ fmSftpState: state }),
     }),
     {
       name: 'smartbox-app',
@@ -68,6 +115,14 @@ export const useAppStore = create<AppState>()(
         theme: state.theme,
         sidebarCollapsed: state.sidebarCollapsed,
         activeNav: state.activeNav,
+        // SSH 页面状态
+        sshSidebarOpen: state.sshSidebarOpen,
+        sshSftpOpen: state.sshSftpOpen,
+        sshSplits: state.sshSplits,
+        sshActiveSplitId: state.sshActiveSplitId,
+        // 文件管理页面状态
+        fmSidebarOpen: state.fmSidebarOpen,
+        fmSftpState: state.fmSftpState,
       }),
     },
   ),

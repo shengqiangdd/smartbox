@@ -10,11 +10,11 @@ import {
   Brain,
 } from 'lucide-react'
 import { useSshStore } from '../../stores/ssh-store'
-import { useAppStore } from '../../stores/app-store'
+import { useAppStore, type SplitDef } from '../../stores/app-store'
 import { getWsClient, type WsStatus } from '../../services/websocket'
 import ConnectionList from './ConnectionList'
 import TerminalView from './Terminal'
-import { SplitContainer, type SplitDef } from './Terminal'
+import { SplitContainer } from './Terminal'
 import SftpSidebar from './SftpSidebar'
 import AiSidebar from './AiSidebar'
 import type { SshSession } from '../../types/ssh'
@@ -32,14 +32,17 @@ export default function SshPlaceholder() {
 
   const [wsStatus, setWsStatus] = useState<WsStatus>('disconnected')
   const [connecting, setConnecting] = useState(false)
-  const [sftpOpen, setSftpOpen] = useState(true)
+  // ─── 持久化状态（切换标签页后恢复） ───
+  const sftpOpen = useAppStore((s) => s.sshSftpOpen)
+  const setSftpOpen = useAppStore((s) => s.setSshSftpOpen)
+  const sidebarOpen = useAppStore((s) => s.sshSidebarOpen)
+  const setSidebarOpen = useAppStore((s) => s.setSshSidebarOpen)
+  const splits = useAppStore((s) => s.sshSplits)
+  const setSplits = useAppStore((s) => s.setSshSplits)
+  const activeSplitId = useAppStore((s) => s.sshActiveSplitId)
+  const setActiveSplitId = useAppStore((s) => s.setSshActiveSplitId)
   const [aiOpen, setAiOpen] = useState(false)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
   const aiEnabled = useAiStore((s) => s.config.enabled)
-
-  // 分屏状态
-  const [splits, setSplits] = useState<SplitDef[]>([])
-  const [activeSplitId, setActiveSplitId] = useState<string | null>(null)
 
   // 用 ref 追踪连接状态，防止闭包过期
   const connectingRef = useRef(false)
