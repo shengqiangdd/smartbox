@@ -179,15 +179,20 @@ export default function TerminalView({ connectionId, sessionId, className = '', 
 
   // 定时检查 term 是否还存活（避免残留 rAF 导致崩溃）
   const healthCheck = setInterval(() => {
-    if (disposedRef.current || !document.contains(container)) {
+    if (disposedRef.current) {
       clearInterval(healthCheck)
-      if (!disposedRef.current) {
-        // 容器已从 DOM 摘除，标记销毁
-        disposedRef.current = true
-        observer.disconnect()
-        try { term.dispose() } catch {}
-      }
       return
+    }
+    if (!document.contains(container)) {
+      clearInterval(healthCheck)
+      disposedRef.current = true
+      observer.disconnect()
+      try {
+        if (terminalRef.current) {
+          terminalRef.current.dispose()
+          terminalRef.current = null
+        }
+      } catch {}
     }
   }, 3000)
 
@@ -200,14 +205,7 @@ export default function TerminalView({ connectionId, sessionId, className = '', 
  unsubConnected()
  unsubDisconnected()
  unsubError()
- // 将容器从 DOM 摘除确保 dispose 时 xterm 不会触发渲染
- const parent = container.parentNode
- const nextSib = container.nextSibling
- if (parent) parent.removeChild(container)
- term.dispose()
- // 放回 React 的 DOM 树
- if (parent && nextSib) parent.insertBefore(container, nextSib)
- else if (parent) parent.appendChild(container)
+ try { term.dispose() } catch {}
  terminalRef.current = null
  fitAddonRef.current = null
  }

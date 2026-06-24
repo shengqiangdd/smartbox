@@ -98,8 +98,11 @@ export default function SshPlaceholder() {
       }
       store.addSession(session)
       useAppStore.getState().addSshSession(sessionId)
-      store.selectConnection(sessionId)
-      setSidebarOpen(false)
+      // 仅非分屏连接时切换 selectedConnectionId（分屏自动建连不抢焦点）
+      if (!targetSessionId) {
+        store.selectConnection(sessionId)
+        setSidebarOpen(false)
+      }
       return sessionId
     } catch (err) {
       console.error('SSH 连接失败:', err)
