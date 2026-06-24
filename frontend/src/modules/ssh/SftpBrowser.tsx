@@ -115,6 +115,18 @@ function detectLanguage(filename: string): string {
   return map[ext] || 'text'
 }
 
+/** 兜底的复制方案：当 navigator.clipboard 不可用时使用 */
+function fallbackCopy(text: string) {
+  const ta = document.createElement('textarea')
+  ta.value = text
+  ta.style.position = 'fixed'
+  ta.style.left = '-9999px'
+  document.body.appendChild(ta)
+  ta.select()
+  try { document.execCommand('copy') } catch {}
+  document.body.removeChild(ta)
+}
+
 /** 按名称排序：目录在前，文件在后，字母序 */
 function sortEntries(entries: SftpEntry[]) {
   return {
@@ -785,7 +797,12 @@ export default function SftpBrowser({
               </button>
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(contextMenu.entry!.path)
+                  const path = contextMenu.entry!.path
+                  if (navigator.clipboard?.writeText) {
+                    navigator.clipboard.writeText(path).catch(() => fallbackCopy(path))
+                  } else {
+                    fallbackCopy(path)
+                  }
                   setContextMenu(null)
                 }}
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700"

@@ -523,10 +523,14 @@ function handleSftp(ws, connectionId, requestId, payload) {
           files: (list || []).map(item => ({
             name: item.filename,
             path: prefix + item.filename,
-            type: (item.attrs.mode & 0o40000) ? 'directory' : 'file',
+            // 部分 SFTP 实现不填充 mode，此时通过长列表格式（如果有）判断
+            // 核心判断：检查 S_IFDIR 标志位 (0o40000)，若无 mode 数据则默认 file
+            type: (item.attrs.mode && (item.attrs.mode & 0o40000)) ? 'directory' : 'file',
+            // 额外兜底：如果 item 有 longname，尝试从中提取目录标志
+            _longnameType: (item.longname && item.longname.startsWith('d')) ? 'directory' : undefined,
             size: item.attrs.size,
             modifyTime: item.attrs.mtime * 1000,
-            permissions: (item.attrs.mode & 0o777).toString(8),
+            permissions: item.attrs.mode ? (item.attrs.mode & 0o777).toString(8) : '755',
             owner: '',
             group: '',
           })),
@@ -583,7 +587,10 @@ function handleSftp(ws, connectionId, requestId, payload) {
 
     case 'mkdir': {
       const { path: dirPath } = payload
-      conn.sftp.mkdir(dirPath, (err) => {
+      // 确保使用绝对路径，避免相对路径歧义
+      const absPath = dirPath.startsWith('/') ? dirPath : '/' + dirPath
+      // 自定义 mode：0755 (八进制)
+      conn.sftp.mkdir(absPath, { mode: 0o755 }, (err) => {
         if (err) return sendError(ws, connectionId, requestId, 'SFTP_ERROR', err.message)
         sendJson(ws, {
           type: 'sftp-result',
