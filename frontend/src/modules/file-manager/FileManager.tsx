@@ -6,9 +6,10 @@
  * - 右侧：CodeMirror 编辑器（打开远程文件编辑）
  * - 文件双击 → 自动加载到 CodeMirror 编辑器标签页
  * - 标签栏：多标签编辑，状态持久化
+ * - 自动检测 SFTP session 有效性，失效自动重连
  */
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   FileCode2,
   X,
@@ -41,22 +42,69 @@ function getFileIcon(name: string) {
   }
 }
 
+/** 检查 sessionId 是否在后端还有效 */
+async function checkSessionAlive(sessionId: string): Promise<boolean> {
+  const wsClient = getWsClient()
+  try {
+    await wsClient.request({
+      type: 'sftp',
+      connectionId: sessionId,
+      operation: 'stat',
+      path: '/',
+    }, 5000)  // 5秒超时
+    return true
+  } catch {
+    return false
+  }
+}
+
 // ─── 主组件 ───
 
 export default function FileManager() {
   const connections = useSshStore((s) => s.connections)
   const removeSession = useSshStore((s) => s.removeSession)
   const addSession = useSshStore((s) => s.addSession)
+  const sessions = useSshStore((s) => s.sessions)
   const [connecting, setConnecting] = useState(false)
   const wsClient = getWsClient()
   const fileStore = useFileStore()
   const connectingRef = useRef(false)
+  const mountedRef = useRef(false)
 
   // ─── 持久化状态（切换标签页后恢复） ───
   const sidebarOpen = useAppStore((s) => s.fmSidebarOpen)
   const setSidebarOpen = useAppStore((s) => s.setFmSidebarOpen)
   const fmState = useAppStore((s) => s.fmSftpState)
   const setFmState = useAppStore((s) => s.setFmSftpState)
+
+  // 自动重连逻辑：如果 sessionId 存在但不在 sessions 列表中（后端已断开），则自动重连
+  useEffect(() => {
+    if (mountedRef.current) return
+    mountedRef.current = true
+
+    const checkAndReconnect = async () => {
+      const state = useSshStore.getState()
+      const cachedState = useAppStore.getState().fmSftpState
+
+      if (!cachedState.connId || !cachedState.sessionId) return
+      if (!cachedState.connId || !connections.find(c => c.id === cachedState.connId)) return
+
+      // 检查 session 是否还活在后端
+      const sessionStillExists = state.sessions.some(s => s.id === cachedState.sessionId && s.status === 'connected')
+      if (sessionStillExists) {
+        // session 存在，检查是否真的可用
+        const alive = await checkSessionAlive(cachedState.sessionId)
+        if (alive) return  // 一切正常，无需重连
+      }
+
+      // Session 不在了或不可用，自动重连
+      console.log('[FileManager] Session expired, auto-reconnecting...')
+      // 清除 sessionId，让用户看到连接选择器
+      setFmState({ connId: null, sessionId: null, pathCache: cachedState.pathCache })
+    }
+
+    checkAndReconnect()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 连接并打开 SFTP
   const connectAndSftp = useCallback(async (connId: string) => {
@@ -96,20 +144,24 @@ export default function FileManager() {
         terminalRows: 24,
       })
       // 更新持久化状态
+      const currentCache = useAppStore.getState().fmSftpState.pathCache
       setFmState({
         connId,
         sessionId,
-        pathCache: fmState.pathCache,
+        pathCache: currentCache,
       })
       // 恢复上次路径
-      return fmState.pathCache[connId] || '/'
+      return currentCache[connId] || '/'
     } catch (err) {
       console.error('SFTP 连接失败:', err)
     } finally {
       connectingRef.current = false
       setConnecting(false)
     }
-  }, [connections, wsClient, addSession, fmState, setFmState, removeSession])
+  }, [connections, wsClient, addSession, setFmState])
+
+  // 当前是否已连接
+  const isConnected = fmState.sessionId !== null && sessions.some(s => s.id === fmState.sessionId && s.status === 'connected')
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -155,7 +207,7 @@ export default function FileManager() {
               <Loader2 size={12} className="animate-spin" /> 连接中...
             </span>
           )}
-          {!fmState.sessionId && !connecting && (
+          {!isConnected && !connecting && (
             <span className="text-xs text-slate-600">在左侧文件浏览器中选择 SSH 连接以浏览远程文件</span>
           )}
           <div className="ml-auto flex items-center gap-1">
@@ -203,7 +255,7 @@ export default function FileManager() {
               <div className="text-center">
                 <FileCode2 size={48} className="mx-auto mb-3 text-slate-600" />
                 <p className="text-sm text-slate-500">
-                  {fmState.sessionId ? '在左侧文件浏览器中双击文件打开编辑' : '请先连接 SSH 服务器'}
+                  {isConnected ? '在左侧文件浏览器中双击文件打开编辑' : '请先连接 SSH 服务器'}
                 </p>
                 <p className="mt-1 text-xs text-slate-600">
                   支持双击文件、右键「在编辑器中打开」、拖拽调整面板宽度

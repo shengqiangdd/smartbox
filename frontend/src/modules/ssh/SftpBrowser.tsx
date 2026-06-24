@@ -365,7 +365,12 @@ export default function SftpBrowser({
         setTimeout(() => listDir(dirPath, true), 1000)
         return
       }
-      setError(msg)
+      // 如果连接已断开，在文件列表区显示提示
+      if (msg.includes('SSH 未连接') || msg.includes('未连接') || msg.includes('NOT_CONNECTED')) {
+        setError('SSH 连接已断开，请在连接列表中选择重新连接')
+      } else {
+        setError(msg)
+      }
       retryCountRef.current = 0
     } finally {
       setLoading(false)
@@ -456,21 +461,33 @@ export default function SftpBrowser({
   const handleCreate = async (type: 'file' | 'directory') => {
     if (!sessionId || !createName.trim()) return
     const fullPath = currentPath === '/' ? `/${createName}` : `${currentPath}/${createName}`
-    try {
-      const req: Record<string, unknown> = {
-        type: 'sftp',
-        connectionId: sessionId,
-        operation: type === 'directory' ? 'mkdir' : 'writefile',
-        path: fullPath,
+    // 重试最多3次，应对 SFTP_NOT_READY
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const req: Record<string, unknown> = {
+          type: 'sftp',
+          connectionId: sessionId,
+          operation: type === 'directory' ? 'mkdir' : 'writefile',
+          path: fullPath,
+        }
+        if (type === 'file') req.content = btoa('')
+        await wsRef.current.request(req, 10000)
+        setCreatingFile(false)
+        setCreatingDir(false)
+        setCreateName('')
+        refresh()
+        return
+      } catch (err) {
+        const msg = (err as Error).message
+        if (msg.includes('SFTP_NOT_READY') && attempt < 2) {
+          // SFTP 未就绪，等待500ms重试
+          console.log(`[SftpBrowser] SFTP not ready, retrying create (${attempt + 1}/3)...`)
+          await new Promise(r => setTimeout(r, 500))
+          continue
+        }
+        alert('创建失败: ' + msg)
+        return
       }
-      if (type === 'file') req.content = btoa('')
-      await wsRef.current.request(req)
-      setCreatingFile(false)
-      setCreatingDir(false)
-      setCreateName('')
-      refresh()
-    } catch (err) {
-      alert('创建失败: ' + (err as Error).message)
     }
   }
 

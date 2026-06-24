@@ -55,6 +55,9 @@ app.get('/api/plugins', (req, res) => {
       for (const entry of entries) {
         if (!entry.isDirectory()) continue
         const manifestPath = path.join(pluginsDir, entry.name, 'manifest.json')
+        const jsPath = path.join(pluginsDir, entry.name, 'plugin.js')
+        // 必须同时有 manifest.json 和 plugin.js 才算有效插件
+        if (!fs.existsSync(jsPath)) continue
         if (fs.existsSync(manifestPath)) {
           try {
             const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'))
