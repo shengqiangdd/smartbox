@@ -1,6 +1,10 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { LoadedPlugin, PluginCommand, PluginPanel, PluginManifest } from '../types/plugin'
+import { pluginSandboxManager } from '../services/pluginSandboxManager'
+
+/** 命令到插件的反向映射：commandId → pluginId */
+const commandToPlugin: Record<string, string> = {}
 
 interface PluginState {
   // 已加载插件
@@ -19,6 +23,8 @@ interface PluginState {
   // 命令操作
   executeCommand: (commandId: string) => void
   getCommands: () => PluginCommand[]
+  /** 注册命令到插件映射 */
+  mapCommandToPlugin: (commandId: string, pluginId: string) => void
 
   // 面板操作
   getPanels: () => PluginPanel[]
@@ -37,17 +43,25 @@ export const usePluginStore = create<PluginState>()(
           api,
           enabled: true,
         }
-        set((s) => ({
-          plugins: [...s.plugins, plugin],
-          commands: [
-            ...s.commands,
-            ...(manifest.commands?.map((c) => ({ ...c })) || []),
-          ],
-          panels: [
-            ...s.panels,
-            ...(manifest.panels?.map((p) => ({ ...p })) || []),
-          ],
-        }))
+        set((s) => {
+          // 注册命令到插件映射
+          if (manifest.commands) {
+            for (const cmd of manifest.commands) {
+              commandToPlugin[cmd.id] = manifest.id
+            }
+          }
+          return {
+            plugins: [...s.plugins, plugin],
+            commands: [
+              ...s.commands,
+              ...(manifest.commands?.map((c) => ({ ...c })) || []),
+            ],
+            panels: [
+              ...s.panels,
+              ...(manifest.panels?.map((p) => ({ ...p })) || []),
+            ],
+          }
+        })
         return manifest.id
       },
 
@@ -57,6 +71,10 @@ export const usePluginStore = create<PluginState>()(
           if (!plugin) return s
           const commandIds = new Set(plugin.manifest.commands?.map((c) => c.id) || [])
           const panelIds = new Set(plugin.manifest.panels?.map((p) => p.id) || [])
+          // 清理映射
+          for (const cid of commandIds) {
+            delete commandToPlugin[cid]
+          }
           return {
             plugins: s.plugins.filter((p) => p.manifest.id !== pluginId),
             commands: s.commands.filter((c) => !commandIds.has(c.id)),
@@ -80,13 +98,21 @@ export const usePluginStore = create<PluginState>()(
 
       getPlugin: (pluginId) => get().plugins.find((p) => p.manifest.id === pluginId),
 
-      executeCommand: (_commandId) => {
-        // 实际执行由插件系统在 load 时绑定 handler
-        console.log('Execute command:', _commandId)
+      executeCommand: (commandId) => {
+        const pluginId = commandToPlugin[commandId]
+        if (pluginId) {
+          pluginSandboxManager.executeCommand(pluginId, commandId)
+        } else {
+          console.warn(`[PluginStore] No plugin found for command: ${commandId}`)
+        }
       },
 
       getCommands: () => get().commands,
       getPanels: () => get().panels,
+
+      mapCommandToPlugin: (commandId, pluginId) => {
+        commandToPlugin[commandId] = pluginId
+      },
     }),
     {
       name: 'smartbox-plugins',
