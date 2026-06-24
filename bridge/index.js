@@ -561,8 +561,8 @@ if (fs.existsSync(frontendDist)) {
 
 // ========== 启动服务器 ==========
 
-app.listen(PORT, () => {
-  console.log(`[SmartBox Bridge] Server listening on port ${PORT}`)
-  console.log(`   API:  http://localhost:${PORT}/api/health`)
-  console.log(`   WS:   ws://localhost:${PORT}/ws`)
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`[SmartBox Bridge] Server listening on 0.0.0.0:${PORT}`)
+  console.log(`   API:  http://0.0.0.0:${PORT}/api/health`)
+  console.log(`   WS:   ws://0.0.0.0:${PORT}/ws`)
 })
