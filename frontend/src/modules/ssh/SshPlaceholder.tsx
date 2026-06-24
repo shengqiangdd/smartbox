@@ -62,23 +62,15 @@ export default function SshPlaceholder() {
 
   // ─── 建立 SSH 连接（防重复点击） ───
 
-  const handleConnect = useCallback(async (connectionId: string) => {
+  const handleConnect = useCallback(async (connectionId: string, targetSessionId?: string) => {
     const conn = connections.find((c) => c.id === connectionId)
     if (!conn || connectingRef.current) return null
 
     connectingRef.current = true
     setConnecting(true)
 
-    // 🔥 关键修复：断开该连接的所有已有 session，防止多个 SSH session 冲突
     const store = useSshStore.getState()
-    const existingSessions = store.sessions.filter(s => s.connectionId === connectionId)
-    for (const sess of existingSessions) {
-      wsClient.send({ type: 'disconnect', connectionId: sess.id })
-      store.removeSession(sess.id)
-      useAppStore.getState().removeSshSession(sess.id)
-    }
-
-    const sessionId = `sess_${connectionId}_${Date.now()}`
+    const sessionId = targetSessionId || `sess_${connectionId}_${Date.now()}`
 
     try {
       await wsClient.request({
@@ -100,9 +92,9 @@ export default function SshPlaceholder() {
         terminalCols: 80,
         terminalRows: 24,
       }
-      useSshStore.getState().addSession(session)
+      store.addSession(session)
       useAppStore.getState().addSshSession(sessionId)
-      useSshStore.getState().selectConnection(sessionId)
+      store.selectConnection(sessionId)
       setSidebarOpen(false)
       return sessionId
     } catch (err) {
@@ -155,20 +147,28 @@ export default function SshPlaceholder() {
   }, [handleConnect])
 
   const handleSplit = useCallback((id: string, direction: 'vertical' | 'horizontal') => {
+    const splitId = `split_${Date.now()}`
+    const newSessionId = `sess_split_${Date.now()}`
+    let connId: string | undefined
     setSplits((prev) => {
       const idx = prev.findIndex((s) => s.id === id)
       if (idx === -1) return prev
+      connId = prev[idx].connectionId
       const newSplit: SplitDef = {
-        id: `split_${Date.now()}`,
-        connectionId: prev[idx].connectionId,
-        sessionId: `sess_split_${Date.now()}`,
+        id: splitId,
+        connectionId: connId,
+        sessionId: newSessionId,
         direction,
       }
       const result = [...prev]
       result.splice(idx + 1, 0, newSplit)
       return result
     })
-  }, [])
+    // 自动建立 SSH 连接
+    if (connId) {
+      handleConnect(connId, newSessionId)
+    }
+  }, [handleConnect])
 
   const handleRemoveSplit = useCallback((id: string) => {
     setSplits((prev) => prev.filter((s) => s.id !== id))

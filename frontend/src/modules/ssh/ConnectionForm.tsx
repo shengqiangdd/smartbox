@@ -29,6 +29,7 @@ export default function ConnectionForm({ onClose, editId }: Props) {
   const [group, setGroup] = useState(existing?.group || '')
   const [testStatus, setTestStatus] = useState<TestStatus>('idle')
   const [testMessage, setTestMessage] = useState('')
+  const [error, setError] = useState('')
 
   const wsClient = getWsClient()
 
@@ -85,6 +86,18 @@ export default function ConnectionForm({ onClose, editId }: Props) {
     e.preventDefault()
     if (!name || !host || !username) return
     const data = getConnectionData()
+    // 检查重复连接：相同 host + port + username
+    if (!existing) {
+      const dup = connections.find(c =>
+        c.host === data.host &&
+        c.port === data.port &&
+        c.username === data.username
+      )
+      if (dup) {
+        setError('已存在完全相同的连接：' + (dup.name || dup.host))
+        return
+      }
+    }
     if (existing) {
       updateConnection(existing.id, data)
     } else {
@@ -153,6 +166,7 @@ export default function ConnectionForm({ onClose, editId }: Props) {
                 className="input"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
               />
             </div>
 
@@ -221,6 +235,14 @@ export default function ConnectionForm({ onClose, editId }: Props) {
               />
             </div>
           </div>
+
+          {/* 重复连接提示 */}
+          {error && (
+            <div className="flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-400">
+              <AlertCircle size={14} />
+              <span>{error}</span>
+            </div>
+          )}
 
           {/* 测试连接 - 结果 */}
           {testStatus !== 'idle' && (
