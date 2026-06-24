@@ -315,6 +315,7 @@ export default function SshPlaceholder() {
   )
 
   // 构建连接选项 — 包括已连接的 session 和连接配置
+  const allSessions = sessions.filter((s) => s.status === 'connected')
   const connectionOptions = allSessions.length > 0
     ? allSessions.map((s) => ({ id: s.id, name: s.connectionName }))
     : connections.map((c) => ({ id: c.id, name: c.name }))
@@ -352,7 +353,6 @@ export default function SshPlaceholder() {
   const activeSession = sessions.find(
     (s) => s.id === selectedConnectionId && s.status === 'connected',
   )
-  const allSessions = sessions.filter((s) => s.status === 'connected')
 
   const WsIndicator = () => (
     <button

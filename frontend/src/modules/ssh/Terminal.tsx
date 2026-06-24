@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import { Terminal as XTerm } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import { SearchAddon } from 'xterm-addon-search'
@@ -239,6 +239,8 @@ export interface SplitDef {
  first?: SplitDef
  second?: SplitDef
  size?: number // 百分比
+ /** 命令同步组 */
+ syncGroup?: string
 }
 
 interface SplitContainerProps {
