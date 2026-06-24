@@ -184,6 +184,7 @@ export default function ConnectionForm({ onClose, editId }: Props) {
                     className="input pr-10"
                     type={showPassword ? 'text' : 'password'}
                     placeholder="输入密码"
+                    autoComplete="current-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />

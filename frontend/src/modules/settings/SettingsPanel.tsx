@@ -169,6 +169,7 @@ export default function SettingsPanel() {
                 onChange={(e) => setAiConfig({ apiKey: e.target.value })}
                 className="input pr-20"
                 placeholder="sk-or-v1-..."
+                autoComplete="off"
               />
               <button
                 onClick={() => setShowApiKey(!showApiKey)}

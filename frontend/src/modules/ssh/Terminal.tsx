@@ -184,12 +184,16 @@ export default function TerminalView({ connectionId, sessionId, className = '', 
       unsubConnected()
       unsubDisconnected()
       unsubError()
-      // 关键：断开 xterm 与 DOM 的关联，阻止残留的 rAF 回调
-      try { term._core?.viewport?._innerRefresh?.(); } catch {}
+      // 关键：将容器从 DOM 摘除后再 dispose xterm，避免残留 rAF 访问已销毁实例
+      const parent = container.parentNode
+      const nextSibling = container.nextSibling
+      if (parent) parent.removeChild(container)
       term.dispose()
-      // 清空容器 DOM 避免任何残留引用
-      if (container) {
-        container.innerHTML = ''
+      // 把容器放回去（React 卸载时自然会移除 DOM）
+      if (parent && nextSibling) {
+        parent.insertBefore(container, nextSibling)
+      } else if (parent) {
+        parent.appendChild(container)
       }
       terminalRef.current = null
       fitAddonRef.current = null
