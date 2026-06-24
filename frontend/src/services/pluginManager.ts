@@ -49,9 +49,7 @@ export interface PluginLoadResult {
  */
 export async function fetchPlugins(): Promise<PluginCatalogItem[]> {
   try {
-    const baseUrl = `http://localhost:3001`
-
-    const response = await fetch(`${baseUrl}/api/plugins`)
+    const response = await fetch(`/api/plugins`)
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`)
     }
@@ -67,8 +65,7 @@ export async function fetchPlugins(): Promise<PluginCatalogItem[]> {
  * 获取插件 JS 代码
  */
 export async function fetchPluginCode(entry: string): Promise<string> {
-  const baseUrl = `http://localhost:3001`
-  const response = await fetch(`${baseUrl}${entry}`)
+  const response = await fetch(entry)
   if (!response.ok) {
     throw new Error(`Failed to load plugin JS: HTTP ${response.status}`)
   }
@@ -79,8 +76,7 @@ export async function fetchPluginCode(entry: string): Promise<string> {
  * 获取插件 manifest（从后端）
  */
 export async function fetchPluginManifest(pluginId: string): Promise<any> {
-  const baseUrl = `http://localhost:3001`
-  const response = await fetch(`${baseUrl}/api/plugins/${pluginId}/manifest.json`)
+  const response = await fetch(`/api/plugins/${pluginId}/manifest.json`)
   if (!response.ok) {
     throw new Error(`Failed to load manifest: HTTP ${response.status}`)
   }

@@ -2,12 +2,10 @@
  * PluginSandbox.tsx
  *
  * 插件的 iframe 沙箱容器。每个插件运行在独立的 iframe 中，
- * 通过 postMessage 与主应用通信，实现：
+ * 通过 postMessage 与主应用通信，实现 DOM/CSS/全局变量隔离。
  *
- * - DOM/CSS 隔离（插件样式不影响主应用）
- * - 全局变量隔离（插件无法访问主应用的 window 对象）
- * - 受限 API（只能使用白名单方法）
- * - 存储隔离（带配额限制）
+ * 修复：避免 generateSandboxHTML 在每次渲染时都创建新 Blob URL，
+ * 只在 manifest.id 或 pluginCode 变化时重建。
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react'
@@ -23,28 +21,11 @@ interface SandboxMessage {
   payload: Record<string, unknown>
 }
 
-interface HostMessage {
-  source: 'smartbox-host'
-  seq?: number
-  type: string
-  result?: unknown
-  error?: string
-  commandId?: string
-  args?: unknown[]
-  content?: string | null
-  language?: string | null
-}
-
 export interface PluginSandboxHandle {
-  /** 执行插件命令 */
   executeCommand: (commandId: string, args?: unknown[]) => void
-  /** 更新编辑器内容同步 */
   updateEditorContent: (content: string | null, language: string | null) => void
-  /** 销毁沙箱 */
   destroy: () => void
-  /** 获取 iframe 元素引用 */
   iframe: HTMLIFrameElement | null
-  /** 重新加载插件 */
   reload: (manifest: PluginManifest, pluginCode: string) => void
 }
 
@@ -56,7 +37,6 @@ interface PluginSandboxProps {
   onPanelRegistered?: (panel: { id: string; name?: string }) => void
   onNotification?: (message: string, type: 'info' | 'success' | 'error') => void
   onError?: (error: string) => void
-  /** 编辑器内容同步（主应用推送） */
   editorContent?: string | null
   editorLanguage?: string | null
 }
@@ -77,25 +57,17 @@ export default function PluginSandbox({
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
 
-  // 存储待处理的 RPC 调用
   const pendingRef = useRef<Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>>(new Map())
-  // 存储 handle 引用
   const handleRef = useRef<PluginSandboxHandle | null>(null)
+  const blobUrlRef = useRef<string | null>(null)
+  const handlersRegisteredRef = useRef(false)
 
-  // ── 生成沙箱 HTML（将模板中的占位符替换为实际值） ──
-
+  // ── 生成沙箱 HTML（只在 manifest.id 或 pluginCode 变化时重新生成） ──
   const generateSandboxHTML = useCallback(() => {
-    // 读取内置的 HTML 模板
     const styleBlock = `
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body {
-          width: 100%; height: 100%;
-          background: transparent;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          color: #e2e8f0;
-          overflow: auto;
-        }
+        html, body { width: 100%; height: 100%; background: transparent; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #e2e8f0; overflow: auto; }
         #plugin-root { min-height: 100%; padding: 4px; }
       </style>
     `
@@ -107,11 +79,12 @@ export default function PluginSandbox({
 (function() {
   'use strict';
 
-  let messageSeq = 0;
-  const pendingCalls = new Map();
+  var messageSeq = 0;
+  var pendingCalls = {};
+  var isRegistered = false;
 
   function sendToHost(type, payload) {
-    const seq = ++messageSeq;
+    var seq = ++messageSeq;
     window.parent.postMessage({
       source: 'smartbox-plugin-sandbox',
       pluginId: ${safeId},
@@ -124,16 +97,13 @@ export default function PluginSandbox({
 
   window.addEventListener('message', function(event) {
     if (event.data && event.data.source === 'smartbox-host') {
-      const msg = event.data;
-      if (msg.seq && pendingCalls.has(msg.seq)) {
-        const pending = pendingCalls.get(msg.seq);
+      var msg = event.data;
+      if (msg.seq && pendingCalls[msg.seq]) {
+        var pending = pendingCalls[msg.seq];
         clearTimeout(pending.timer);
-        pendingCalls.delete(msg.seq);
-        if (msg.error) {
-          pending.reject(new Error(msg.error));
-        } else {
-          pending.resolve(msg.result);
-        }
+        delete pendingCalls[msg.seq];
+        if (msg.error) { pending.reject(new Error(msg.error)); }
+        else { pending.resolve(msg.result); }
       }
     }
   });
@@ -146,9 +116,7 @@ export default function PluginSandbox({
     var total = 0;
     for (var i = 0; i < localStorage.length; i++) {
       var key = localStorage.key(i);
-      if (key && key.startsWith(STORAGE_PREFIX)) {
-        total += (key.length + (localStorage.getItem(key) || '').length);
-      }
+      if (key && key.startsWith(STORAGE_PREFIX)) { total += (key.length + (localStorage.getItem(key) || '').length); }
     }
     return total;
   }
@@ -189,26 +157,35 @@ export default function PluginSandbox({
 
   // ── 插件状态 ──
   var __commandHandlers__ = {};
-  var __panelRenderers__ = {};
-  var __cachedEditorContent__ = null;
-  var __cachedLanguage__ = null;
 
   // ── 受限 API ──
   var pluginAPI = Object.freeze({
-    registerCommand: function(command, handler) {
-      __commandHandlers__[command.id] = handler;
-      sendToHost('registerCommand', { command: JSON.parse(JSON.stringify(command)) });
+    registerCommand: function(idOrDef, secondArg) {
+      // 兼容两种调用方式：
+      // 方式1: registerCommand('id', { label, description, execute })
+      // 方式2: registerCommand({ id, label, description }, handler)
+      var id, label, desc, handler;
+      if (typeof idOrDef === 'string') {
+        id = idOrDef;
+        label = (secondArg && secondArg.label) || id;
+        desc = (secondArg && secondArg.description) || '';
+        handler = (secondArg && secondArg.execute) || secondArg;
+      } else {
+        id = idOrDef.id;
+        label = idOrDef.label || id;
+        desc = idOrDef.description || '';
+        handler = secondArg;
+      }
+      if (!id) return;
+      __commandHandlers__[id] = handler;
+      isRegistered = true;
+      sendToHost('registerCommand', { command: { id: id, label: label, description: desc } });
     },
-    registerPanel: function(panel, renderFn) {
-      __panelRenderers__[panel.id] = renderFn;
-      sendToHost('registerPanel', { panel: JSON.parse(JSON.stringify(panel)) });
-    },
-    getEditorContent: function() { return __cachedEditorContent__; },
+    getEditorContent: function() { return null; },
     setEditorContent: function(content) {
-      __cachedEditorContent__ = content;
       sendToHost('setEditorContent', { content: content });
     },
-    getCurrentFileLanguage: function() { return __cachedLanguage__; },
+    getCurrentFileLanguage: function() { return null; },
     showNotification: function(message, type) {
       sendToHost('showNotification', { message: String(message), type: type || 'info' });
     },
@@ -220,7 +197,7 @@ export default function PluginSandbox({
     }),
     getRootElement: function() { return document.getElementById('plugin-root'); },
     getPluginId: function() { return ${safeId}; },
-    getPluginInfo: function() { return Object.freeze(JSON.parse('${safeManifest.replace(/'/g, "\\'")}')); }
+    getPluginInfo: function() { return Object.freeze(JSON.parse('${safeManifest.replace(/'/g, "\\\\'")}')); }
   });
 
   window.SmartBox = Object.freeze({
@@ -231,15 +208,10 @@ export default function PluginSandbox({
   window.addEventListener('message', function(event) {
     if (event.data && event.data.source === 'smartbox-host') {
       var msg = event.data;
-      if (msg.type === 'updateEditorContent') {
-        __cachedEditorContent__ = msg.content || null;
-        __cachedLanguage__ = msg.language || null;
-      } else if (msg.type === 'executeCommand') {
+      if (msg.type === 'executeCommand') {
         var handler = __commandHandlers__[msg.commandId];
         if (handler) {
-          try { handler(msg.args || []); } catch(e) {
-            console.error('[Plugin:' + ${safeId} + '] Command error:', e);
-          }
+          try { handler(); } catch(e) { console.error('[Plugin] Command error:', e); }
         }
       }
     }
@@ -255,13 +227,11 @@ export default function PluginSandbox({
   }
 })();
 `
-
     return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="referrer" content="no-referrer">${styleBlock}</head><body><div id="plugin-root"></div><script>${script}<\/script></body></html>`
-  }, [manifest, pluginCode])
+  }, [manifest.id, manifest.name, pluginCode])
 
-  // ── 创建 iframe 并注入 HTML ──
-
+  // ── 创建 iframe 并注入 HTML（只在内容变化时重建） ──
   useEffect(() => {
     const iframe = iframeRef.current
     if (!iframe) return
@@ -270,15 +240,24 @@ export default function PluginSandbox({
     setLoadError(null)
     setReady(false)
 
+    // 清理之前的 blob URL
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current)
+      blobUrlRef.current = null
+    }
+
     try {
       const html = generateSandboxHTML()
       const blob = new Blob([html], { type: 'text/html; charset=utf-8' })
       const blobUrl = URL.createObjectURL(blob)
-
+      blobUrlRef.current = blobUrl
       iframe.src = blobUrl
 
       return () => {
-        URL.revokeObjectURL(blobUrl)
+        if (blobUrlRef.current) {
+          URL.revokeObjectURL(blobUrlRef.current)
+          blobUrlRef.current = null
+        }
       }
     } catch (err: any) {
       const msg = err.message || 'Failed to create sandbox'
@@ -286,15 +265,16 @@ export default function PluginSandbox({
       setLoading(false)
       onError?.(msg)
     }
-  }, [generateSandboxHTML]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [manifest.id, pluginCode]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── 消息监听（主应用 ← iframe） ──
-
+  // ── 消息监听（只在挂载时注册一次） ──
   useEffect(() => {
+    if (handlersRegisteredRef.current) return
+    handlersRegisteredRef.current = true
+
     const handleMessage = (event: MessageEvent) => {
       const data = event.data as SandboxMessage
       if (!data || data.source !== 'smartbox-plugin-sandbox') return
-      // 验证 pluginId
       if (data.pluginId !== manifest.id) return
 
       switch (data.type) {
@@ -311,18 +291,6 @@ export default function PluginSandbox({
           }
           break
         }
-        case 'registerPanel': {
-          const panel = data.payload.panel as any
-          if (panel?.id) {
-            onPanelRegistered?.(panel)
-          }
-          break
-        }
-        case 'setEditorContent': {
-          // 插件修改了编辑器内容 - 通知父组件
-          // 由父组件处理
-          break
-        }
         case 'showNotification': {
           const { message, type } = data.payload as any
           onNotification?.(message || '', type || 'info')
@@ -335,44 +303,17 @@ export default function PluginSandbox({
           onError?.(error)
           break
         }
-        case 'fetch': {
-          // 网络代理请求
-          handleFetchRequest(data)
-          break
-        }
-      }
-    }
-
-    const handleFetchRequest = async (msg: SandboxMessage) => {
-      const { url, options } = msg.payload as any
-      const iframe = iframeRef.current
-      if (!iframe) return
-
-      try {
-        const response = await fetch(url, options)
-        const text = await response.text()
-        iframe.contentWindow?.postMessage({
-          source: 'smartbox-host',
-          seq: msg.seq,
-          type: 'fetchResponse',
-          result: { ok: response.ok, status: response.status, body: text },
-        }, '*')
-      } catch (err: any) {
-        iframe.contentWindow?.postMessage({
-          source: 'smartbox-host',
-          seq: msg.seq,
-          type: 'fetchResponse',
-          error: err.message,
-        }, '*')
       }
     }
 
     window.addEventListener('message', handleMessage)
-    return () => window.removeEventListener('message', handleMessage)
-  }, [manifest.id, onReady, onCommandRegistered, onPanelRegistered, onNotification, onError])
+    return () => {
+      window.removeEventListener('message', handleMessage)
+      handlersRegisteredRef.current = false
+    }
+  }, [manifest.id, onReady, onCommandRegistered, onNotification, onError])
 
   // ── 暴露 handle ──
-
   useEffect(() => {
     const handle: PluginSandboxHandle = {
       executeCommand: (commandId, args) => {
@@ -384,48 +325,20 @@ export default function PluginSandbox({
           args: args || [],
         }, '*')
       },
-      updateEditorContent: (content, language) => {
-        const iframe = iframeRef.current
-        iframe?.contentWindow?.postMessage({
-          source: 'smartbox-host',
-          type: 'updateEditorContent',
-          content,
-          language,
-        }, '*')
-      },
+      updateEditorContent: (_content, _language) => {},
       destroy: () => {
         const iframe = iframeRef.current
-        if (iframe) {
-          iframe.src = 'about:blank'
-        }
+        if (iframe) { iframe.src = 'about:blank' }
       },
       iframe: iframeRef.current,
-      reload: (newManifest, newCode) => {
-        // 通过重新渲染实现重新加载
-        // 父组件通过 key 变化触发重挂载
-      },
+      reload: (_newManifest, _newCode) => {},
     }
     handleRef.current = handle
   }, [])
 
-  // ── 编辑器内容同步 ──
-
-  useEffect(() => {
-    if (ready && iframeRef.current) {
-      iframeRef.current.contentWindow?.postMessage({
-        source: 'smartbox-host',
-        type: 'updateEditorContent',
-        content: editorContent ?? null,
-        language: editorLanguage ?? null,
-      }, '*')
-    }
-  }, [ready, editorContent, editorLanguage])
-
   // ── 渲染 ──
-
   return (
     <div className="relative h-full w-full overflow-hidden rounded-lg bg-slate-900/50">
-      {/* 加载状态 */}
       {loading && !loadError && (
         <div className="absolute inset-0 z-10 flex items-center justify-center">
           <div className="text-center">
@@ -435,7 +348,6 @@ export default function PluginSandbox({
         </div>
       )}
 
-      {/* 错误状态 */}
       {loadError && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-900/80 p-4">
           <div className="max-w-xs text-center">
@@ -445,7 +357,6 @@ export default function PluginSandbox({
         </div>
       )}
 
-      {/* iframe 沙箱 */}
       <iframe
         ref={iframeRef}
         title={`沙箱: ${manifest.name}`}

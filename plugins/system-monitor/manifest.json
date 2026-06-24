@@ -1,0 +1,52 @@
+{
+  "id": "system-monitor",
+  "name": "系统监控",
+  "version": "1.0.0",
+  "description": "实时监控远程服务器的 CPU、内存、磁盘、网络等系统资源使用情况",
+  "author": "SmartBox",
+  "icon": "activity",
+  "commands": [
+    {
+      "id": "monitor-cpu",
+      "label": "CPU 使用率",
+      "description": "查看远程服务器的 CPU 使用情况",
+      "icon": "cpu",
+      "keywords": ["cpu", "处理器", "负载", "top"]
+    },
+    {
+      "id": "monitor-memory",
+      "label": "内存使用率",
+      "description": "查看远程服务器的内存使用情况",
+      "icon": "memory",
+      "keywords": ["memory", "内存", "free", "ram"]
+    },
+    {
+      "id": "monitor-disk",
+      "label": "磁盘使用率",
+      "description": "查看远程服务器的磁盘使用情况",
+      "icon": "hard-drive",
+      "keywords": ["disk", "磁盘", "df", "空间"]
+    },
+    {
+      "id": "monitor-network",
+      "label": "网络流量",
+      "description": "查看远程服务器的网络流量统计",
+      "icon": "wifi",
+      "keywords": ["network", "网络", "流量", "带宽"]
+    },
+    {
+      "id": "monitor-all",
+      "label": "完整系统状态",
+      "description": "查看远程服务器完整的系统资源状态汇总",
+      "icon": "activity",
+      "keywords": ["监控", "全部", "系统状态", "overview"]
+    }
+  ],
+  "panels": [
+    {
+      "id": "monitor-panel",
+      "title": "系统监控仪表盘",
+      "icon": "activity"
+    }
+  ]
+}

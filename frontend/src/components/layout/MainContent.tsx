@@ -1,6 +1,6 @@
 import { useAppStore } from '../../stores/app-store'
 import SshPlaceholder from '../../modules/ssh/SshPlaceholder'
-import FileManagerPlaceholder from '../../modules/file-manager/FileManagerPlaceholder'
+import FileManager from '../../modules/file-manager/FileManager'
 import PluginsPage from '../../modules/plugins/PluginsPage'
 import SettingsPanel from '../../modules/settings/SettingsPanel'
 
@@ -9,7 +9,7 @@ export default function MainContent() {
 
   const sections: Record<string, React.ReactNode> = {
     ssh: <SshPlaceholder />,
-    files: <FileManagerPlaceholder />,
+    files: <FileManager />,
     plugins: <PluginsPage />,
     settings: <SettingsPanel />,
   }

@@ -1,12 +1,15 @@
-import { useState } from 'react'
-import { X } from 'lucide-react'
+import { useState, useCallback } from 'react'
+import { X, CheckCircle2, AlertCircle, Loader2, PlugZap, Eye, EyeOff } from 'lucide-react'
 import { useSshStore } from '../../stores/ssh-store'
+import { getWsClient } from '../../services/websocket'
 import type { AuthType, SshConnection } from '../../types/ssh'
 
 interface Props {
   onClose: () => void
   editId?: string | null
 }
+
+type TestStatus = 'idle' | 'testing' | 'success' | 'error'
 
 export default function ConnectionForm({ onClose, editId }: Props) {
   const connections = useSshStore((s) => s.connections)
@@ -21,26 +24,67 @@ export default function ConnectionForm({ onClose, editId }: Props) {
   const [username, setUsername] = useState(existing?.username || 'root')
   const [authType, setAuthType] = useState<AuthType>(existing?.authType || 'password')
   const [password, setPassword] = useState(existing?.password || '')
+  const [showPassword, setShowPassword] = useState(false)
   const [privateKey, setPrivateKey] = useState(existing?.privateKey || '')
   const [group, setGroup] = useState(existing?.group || '')
+  const [testStatus, setTestStatus] = useState<TestStatus>('idle')
+  const [testMessage, setTestMessage] = useState('')
+
+  const wsClient = getWsClient()
+
+  // 构建连接配置对象
+  const getConnectionData = useCallback((): SshConnection => ({
+    id: existing?.id || `ssh_${Date.now()}`,
+    name,
+    host,
+    port: parseInt(port) || 22,
+    username,
+    authType,
+    ...(authType === 'password' ? { password } : { privateKey }),
+    group: group || undefined,
+    createdAt: existing?.createdAt || Date.now(),
+    lastConnectedAt: existing?.lastConnectedAt,
+  }), [existing, name, host, port, username, authType, password, privateKey, group])
+
+  // 测试连接
+  const handleTestConnection = useCallback(async () => {
+    if (!host || !username) {
+      setTestStatus('error')
+      setTestMessage('请先填写主机和用户名')
+      return
+    }
+
+    setTestStatus('testing')
+    setTestMessage('正在测试连接...')
+
+    try {
+      const msg = await wsClient.request({
+        type: 'test',
+        connectionId: `test_${Date.now()}`,
+        host,
+        port: parseInt(port) || 22,
+        username,
+        password: authType === 'password' ? password : undefined,
+        privateKey: authType === 'key' ? privateKey : undefined,
+      }, 12000)
+
+      if ((msg as any).success) {
+        setTestStatus('success')
+        setTestMessage((msg as any).message || '连接成功')
+      } else {
+        setTestStatus('error')
+        setTestMessage((msg as any).message || '连接失败')
+      }
+    } catch (err: any) {
+      setTestStatus('error')
+      setTestMessage(err.message || '连接测试超时')
+    }
+  }, [host, port, username, password, privateKey, authType, wsClient])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-
     if (!name || !host || !username) return
-
-    const data: SshConnection = {
-      id: existing?.id || `ssh_${Date.now()}`,
-      name,
-      host,
-      port: parseInt(port) || 22,
-      username,
-      authType,
-      ...(authType === 'password' ? { password } : { privateKey }),
-      group: group || undefined,
-      createdAt: existing?.createdAt || Date.now(),
-    }
-
+    const data = getConnectionData()
     if (existing) {
       updateConnection(existing.id, data)
     } else {
@@ -49,9 +93,14 @@ export default function ConnectionForm({ onClose, editId }: Props) {
     onClose()
   }
 
+  // 检测输入是否完整、可测试
+  const canTest = host && username && (
+    authType === 'password' ? true : !!privateKey
+  )
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-lg border border-slate-700 bg-slate-900 shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 backdrop-blur-sm pt-4 pb-12 md:items-center md:pt-0 md:pb-0">
+      <div className="mx-4 w-full max-w-lg rounded-lg border border-slate-700 bg-slate-900 shadow-xl my-auto">
         {/* 标题栏 */}
         <div className="flex items-center justify-between border-b border-slate-700/50 px-4 py-3">
           <h3 className="text-sm font-semibold text-slate-200">
@@ -91,6 +140,8 @@ export default function ConnectionForm({ onClose, editId }: Props) {
               <input
                 className="input"
                 type="number"
+                min={1}
+                max={65535}
                 value={port}
                 onChange={(e) => setPort(e.target.value)}
               />
@@ -128,13 +179,23 @@ export default function ConnectionForm({ onClose, editId }: Props) {
             {authType === 'password' ? (
               <div className="col-span-2">
                 <label className="mb-1 block text-xs text-slate-500">密码</label>
-                <input
-                  className="input"
-                  type="password"
-                  placeholder="输入密码"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
+                <div className="relative">
+                  <input
+                    className="input pr-10"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="输入密码"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                    onClick={() => setShowPassword(!showPassword)}
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="col-span-2">
@@ -160,13 +221,43 @@ export default function ConnectionForm({ onClose, editId }: Props) {
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 border-t border-slate-700/50 pt-3">
-            <button type="button" onClick={onClose} className="btn-ghost">
-              取消
+          {/* 测试连接 - 结果 */}
+          {testStatus !== 'idle' && (
+            <div
+              className={`flex items-center gap-2 rounded-md border px-3 py-2 text-xs ${
+                testStatus === 'testing'
+                  ? 'border-amber-500/30 bg-amber-500/5 text-amber-400'
+                  : testStatus === 'success'
+                    ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-400'
+                    : 'border-red-500/30 bg-red-500/5 text-red-400'
+              }`}
+            >
+              {testStatus === 'testing' && <Loader2 size={14} className="animate-spin" />}
+              {testStatus === 'success' && <CheckCircle2 size={14} />}
+              {testStatus === 'error' && <AlertCircle size={14} />}
+              <span>{testMessage}</span>
+            </div>
+          )}
+
+          {/* 按钮区域 */}
+          <div className="flex justify-between gap-2 border-t border-slate-700/50 pt-3">
+            <button
+              type="button"
+              onClick={handleTestConnection}
+              disabled={!canTest || testStatus === 'testing'}
+              className="btn flex items-center gap-1.5 border border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-200 disabled:opacity-40"
+            >
+              <PlugZap size={14} />
+              测试连接
             </button>
-            <button type="submit" className="btn-primary">
-              {existing ? '保存修改' : '添加连接'}
-            </button>
+            <div className="flex gap-2">
+              <button type="button" onClick={onClose} className="btn-ghost">
+                取消
+              </button>
+              <button type="submit" className="btn-primary">
+                {existing ? '保存修改' : '添加连接'}
+              </button>
+            </div>
           </div>
         </form>
       </div>

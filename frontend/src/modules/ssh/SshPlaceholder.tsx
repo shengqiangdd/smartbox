@@ -1,11 +1,13 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Server,
   PanelRightClose,
   PanelRightOpen,
   Columns2,
-  Layout,
-  Plus,
+  Menu,
+  X,
+  PlugZap,
+  Brain,
 } from 'lucide-react'
 import { useSshStore } from '../../stores/ssh-store'
 import { useAppStore } from '../../stores/app-store'
@@ -14,7 +16,9 @@ import ConnectionList from './ConnectionList'
 import TerminalView from './Terminal'
 import { SplitContainer, type SplitDef } from './Terminal'
 import SftpSidebar from './SftpSidebar'
+import AiSidebar from './AiSidebar'
 import type { SshSession } from '../../types/ssh'
+import { useAiStore } from '../../stores/ai-store'
 
 export default function SshPlaceholder() {
   const connections = useSshStore((s) => s.connections)
@@ -29,32 +33,48 @@ export default function SshPlaceholder() {
   const [wsStatus, setWsStatus] = useState<WsStatus>('disconnected')
   const [connecting, setConnecting] = useState(false)
   const [sftpOpen, setSftpOpen] = useState(true)
+  const [aiOpen, setAiOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const aiEnabled = useAiStore((s) => s.config.enabled)
 
-  // 分屏状态: 分屏定义列表
+  // 分屏状态
   const [splits, setSplits] = useState<SplitDef[]>([])
-  // 当前激活的分屏 ID
   const [activeSplitId, setActiveSplitId] = useState<string | null>(null)
 
+  // 用 ref 追踪连接状态，防止闭包过期
+  const connectingRef = useRef(false)
   const wsClient = getWsClient()
 
   // 监听 WebSocket 状态
   useEffect(() => {
+    // 只连接一次
+    wsClient.connect()
     const unsub = wsClient.onStatus((status) => {
       setWsStatus(status)
     })
-    wsClient.connect()
     return () => {
       unsub()
     }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─── 建立 SSH 连接（统一入口） ───
+  // ─── 建立 SSH 连接（防重复点击） ───
 
   const handleConnect = useCallback(async (connectionId: string) => {
     const conn = connections.find((c) => c.id === connectionId)
-    if (!conn || connecting) return
+    if (!conn || connectingRef.current) return null
 
+    connectingRef.current = true
     setConnecting(true)
+
+    // 🔥 关键修复：断开该连接的所有已有 session，防止多个 SSH session 冲突
+    const store = useSshStore.getState()
+    const existingSessions = store.sessions.filter(s => s.connectionId === connectionId)
+    for (const sess of existingSessions) {
+      wsClient.send({ type: 'disconnect', connectionId: sess.id })
+      store.removeSession(sess.id)
+      useAppStore.getState().removeSshSession(sess.id)
+    }
+
     const sessionId = `sess_${connectionId}_${Date.now()}`
 
     try {
@@ -77,19 +97,45 @@ export default function SshPlaceholder() {
         terminalCols: 80,
         terminalRows: 24,
       }
-      addSession(session)
-      addSshSession(sessionId)
-      selectConnection(sessionId)
+      useSshStore.getState().addSession(session)
+      useAppStore.getState().addSshSession(sessionId)
+      useSshStore.getState().selectConnection(sessionId)
+      setSidebarOpen(false)
       return sessionId
     } catch (err) {
       console.error('SSH 连接失败:', err)
       return null
     } finally {
+      connectingRef.current = false
       setConnecting(false)
     }
-  }, [connections, connecting, wsClient, addSession, addSshSession, selectConnection])
+  }, [connections, wsClient])
 
-  // ─── 在分屏中打开连接 ───
+  // ─── 断开连接 ───
+
+  const handleDisconnect = useCallback((sessionId: string) => {
+    wsClient.send({
+      type: 'disconnect',
+      connectionId: sessionId,
+    })
+    removeSession(sessionId)
+    removeSshSession(sessionId)
+    if (selectedConnectionId === sessionId) {
+      selectConnection(null)
+    }
+    setSplits((prev) => prev.filter((s) => s.sessionId !== sessionId && s.connectionId !== sessionId))
+  }, [wsClient, removeSession, removeSshSession, selectConnection, selectedConnectionId])
+
+  // ─── 从列表连接 ───
+
+  const handleDirectConnect = useCallback(async (connectionId: string) => {
+    const sessionId = await handleConnect(connectionId)
+    if (sessionId) {
+      setSplits([])
+    }
+  }, [handleConnect])
+
+  // ─── 分屏操作 ───
 
   const openInSplit = useCallback(async (connectionId: string) => {
     const sessionId = await handleConnect(connectionId)
@@ -101,78 +147,39 @@ export default function SshPlaceholder() {
       sessionId,
       direction: 'horizontal',
     }
-
     setSplits((prev) => [...prev, newSplit])
     setActiveSplitId(newSplit.id)
   }, [handleConnect])
-
-  // ─── 分屏操作 ───
 
   const handleSplit = useCallback((id: string, direction: 'vertical' | 'horizontal') => {
     setSplits((prev) => {
       const idx = prev.findIndex((s) => s.id === id)
       if (idx === -1) return prev
-
-      const target = prev[idx]
-      const existingConnId = sessions[0]?.connectionId || ''
-      const newSessionId = `sess_${existingConnId || 'new'}_${Date.now()}`
-
-      // 复用同一个 SSH 连接但不同 session（分屏连接到同一个服务器）
       const newSplit: SplitDef = {
         id: `split_${Date.now()}`,
-        connectionId: target.connectionId,
-        sessionId: newSessionId,
+        connectionId: prev[idx].connectionId,
+        sessionId: `sess_split_${Date.now()}`,
         direction,
       }
-
       const result = [...prev]
       result.splice(idx + 1, 0, newSplit)
       return result
     })
-  }, [sessions])
+  }, [])
 
   const handleRemoveSplit = useCallback((id: string) => {
-    setSplits((prev) => {
-      const result = prev.filter((s) => s.id !== id)
-      if (result.length === 0 && activeSplitId === id) {
-        setActiveSplitId(null)
-      }
-      return result
-    })
-  }, [activeSplitId])
+    setSplits((prev) => prev.filter((s) => s.id !== id))
+  }, [])
 
   const handleSplitConnectionChange = useCallback((splitId: string, newConnectionId: string) => {
     setSplits((prev) =>
       prev.map((s) =>
-        s.id === splitId ? { ...s, connectionId: newConnectionId, sessionId: `sess_${newConnectionId}_${Date.now()}` } : s,
+        s.id === splitId
+          ? { ...s, connectionId: newConnectionId, sessionId: `sess_${newConnectionId}_${Date.now()}` }
+          : s,
       ),
     )
   }, [])
-
-  // ─── 断开连接 ───
-
-  const handleDisconnect = useCallback((sessionId: string) => {
-    wsClient.send({
-      type: 'disconnect',
-      connectionId: sessionId,
-    })
-    removeSession(sessionId)
-    removeSshSession(sessionId)
-    selectConnection(null)
-
-    // 同时清理相关的分屏
-    setSplits((prev) => prev.filter((s) => s.sessionId !== sessionId && s.connectionId !== sessionId))
-  }, [wsClient, removeSession, removeSshSession, selectConnection])
-
-  // ─── 从连接列表直接连接（传统方式） ───
-
-  const handleDirectConnect = useCallback(async (connectionId: string) => {
-    const sessionId = await handleConnect(connectionId)
-    if (sessionId) {
-      // 使用单终端模式（不分屏）
-      setSplits([])
-    }
-  }, [handleConnect])
 
   // ─── 渲染 ───
 
@@ -181,39 +188,62 @@ export default function SshPlaceholder() {
   )
   const allSessions = sessions.filter((s) => s.status === 'connected')
 
-  // 分屏连接选项列表
   const connectionOptions = allSessions.length > 0
     ? allSessions.map((s) => ({ id: s.id, name: s.connectionName }))
     : connections.map((c) => ({ id: c.id, name: c.name }))
 
+  const WsIndicator = () => (
+    <button
+      onClick={() => wsClient.connect()}
+      className="flex items-center gap-1.5"
+      title={wsStatus === 'disconnected' ? '点击重连' : ''}
+    >
+      <span
+        className={`inline-block h-2 w-2 shrink-0 rounded-full ${
+          wsStatus === 'connected'
+            ? 'bg-emerald-500'
+            : wsStatus === 'connecting' || wsStatus === 'reconnecting'
+              ? 'bg-amber-500'
+              : 'bg-red-500'
+        }`}
+      />
+      <span className="text-[11px] text-slate-500">
+        {wsStatus === 'connected'
+          ? '已连接'
+          : wsStatus === 'connecting'
+            ? '连接中...'
+            : wsStatus === 'reconnecting'
+              ? '重连中...'
+              : '未连接'}
+      </span>
+    </button>
+  )
+
   return (
-    <div className="flex h-full">
+    <div className="relative flex h-full">
+      {/* 移动端侧边栏遮罩 */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/50 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* 左侧连接列表 */}
-      <div className="flex w-64 shrink-0 flex-col border-r border-slate-700/50 md:w-72">
-        <div className="flex items-center gap-2 border-b border-slate-700/50 px-3 py-1.5">
-          <span
-            className={`inline-block h-2 w-2 rounded-full ${
-              wsStatus === 'connected'
-                ? 'bg-emerald-500'
-                : wsStatus === 'connecting' || wsStatus === 'reconnecting'
-                  ? 'bg-amber-500'
-                  : 'bg-red-500'
-            }`}
-          />
-          <span className="text-[11px] text-slate-500">
-            {wsStatus === 'connected'
-              ? '已连接'
-              : wsStatus === 'connecting'
-                ? '连接中...'
-                : wsStatus === 'reconnecting'
-                  ? '重连中...'
-                  : '未连接'}
-          </span>
+      <div
+        className={`
+          absolute inset-y-0 left-0 z-40 w-64 shrink-0 border-r border-slate-700/50 bg-slate-950
+          transition-transform duration-200 md:static md:z-auto md:translate-x-0
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        `}
+      >
+        <div className="flex items-center justify-between border-b border-slate-700/50 px-3 py-1.5">
+          <WsIndicator />
           <button
-            onClick={() => wsClient.connect()}
-            className="ml-auto text-[10px] text-slate-600 hover:text-slate-400"
+            onClick={() => setSidebarOpen(false)}
+            className="btn-icon text-slate-500 hover:text-slate-300 md:hidden"
           >
-            {wsStatus === 'disconnected' ? '重连' : ''}
+            <X size={14} />
           </button>
         </div>
         <ConnectionList onConnect={handleDirectConnect} />
@@ -225,34 +255,45 @@ export default function SshPlaceholder() {
           <>
             {/* 标签栏 */}
             <div className="flex items-center border-b border-slate-700/50 bg-slate-900/50">
-              {allSessions.map((sess) => (
-                <button
-                  key={sess.id}
-                  onClick={() => selectConnection(sess.id)}
-                  className={`flex items-center gap-1.5 border-r border-slate-700/50 px-3 py-2 text-xs transition-colors ${
-                    sess.id === selectedConnectionId
-                      ? 'bg-slate-800 text-slate-200'
-                      : 'text-slate-500 hover:bg-slate-800/50 hover:text-slate-300'
-                  }`}
-                >
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                  {sess.connectionName}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleDisconnect(sess.id)
-                    }}
-                    className="ml-1 text-slate-600 hover:text-red-400"
-                  >
-                    ✕
-                  </button>
-                </button>
-              ))}
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="btn-icon text-slate-500 hover:text-slate-300 md:hidden"
+              >
+                <Menu size={16} />
+              </button>
 
-              {/* 操作按钮组 */}
-              <div className="ml-auto flex items-center">
-                {/* 分屏按钮 */}
-                {splits.length === 0 && (
+              <div className="flex flex-1 overflow-x-auto">
+                {allSessions.map((sess) => (
+                  <button
+                    key={sess.id}
+                    onClick={() => selectConnection(sess.id)}
+                    className={`flex shrink-0 items-center gap-1.5 border-r border-slate-700/50 px-3 py-2 text-xs transition-colors ${
+                      sess.id === selectedConnectionId
+                        ? 'bg-slate-800 text-slate-200'
+                        : 'text-slate-500 hover:bg-slate-800/50 hover:text-slate-300'
+                    }`}
+                  >
+                    <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+                    <span className="truncate max-w-[80px]">{sess.connectionName}</span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDisconnect(sess.id)
+                      }}
+                      className="ml-1 shrink-0 text-slate-600 hover:text-red-400"
+                    >
+                      ✕
+                    </button>
+                  </button>
+                ))}
+              </div>
+
+              <div className="hidden md:flex items-center ml-auto">
+                <WsIndicator />
+              </div>
+
+              <div className="flex items-center shrink-0">
+                {splits.length === 0 && allSessions.length > 0 && (
                   <>
                     <button
                       onClick={() => openInSplit(activeSession?.connectionId || connections[0]?.id || '')}
@@ -266,26 +307,36 @@ export default function SshPlaceholder() {
                   </>
                 )}
 
-                {/* SFTP 切换按钮 */}
                 <button
                   onClick={() => setSftpOpen(!sftpOpen)}
                   className="flex items-center gap-1 px-3 py-2 text-xs text-slate-500 hover:text-slate-300"
                   title={sftpOpen ? '关闭文件面板' : '打开文件面板'}
                 >
-                  {sftpOpen ? (
-                    <PanelRightClose size={14} />
-                  ) : (
-                    <PanelRightOpen size={14} />
-                  )}
+                  {sftpOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
                   <span className="hidden md:inline">文件</span>
                 </button>
+
+                {aiEnabled && (
+                  <button
+                    onClick={() => {
+                      setAiOpen(!aiOpen)
+                      if (aiOpen) setSftpOpen(true)
+                    }}
+                    className={`flex items-center gap-1 px-3 py-2 text-xs transition-colors ${
+                      aiOpen ? 'bg-smartbox-600/20 text-smartbox-400' : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                    title={aiOpen ? '关闭 AI' : '打开 AI Agent'}
+                  >
+                    <Brain size={14} />
+                    <span className="hidden md:inline">{aiOpen ? 'AI' : 'AI'}</span>
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* 终端区域 */}
-            <div className="flex flex-1 overflow-hidden">
+            {/* 终端 + 侧栏区域 */}
+            <div className="flex flex-1 overflow-hidden" style={{ minHeight: 0 }}>
               {splits.length > 0 ? (
-                /* 分屏模式 */
                 <SplitContainer
                   splits={splits}
                   onSplit={handleSplit}
@@ -294,33 +345,49 @@ export default function SshPlaceholder() {
                   connections={connectionOptions}
                 />
               ) : activeSession ? (
-                /* 单终端模式 */
-                <TerminalView
-                  connectionId={activeSession.id}
-                  sessionId={activeSession.id}
-                  className="flex-1"
-                />
+                <div className="flex flex-1 overflow-hidden" style={{ minHeight: 0 }}>
+                  <TerminalView
+                    connectionId={activeSession.id}
+                    sessionId={activeSession.id}
+                    className="flex-1"
+                  />
+                </div>
               ) : null}
 
               {/* SFTP 侧边栏 */}
-              {sftpOpen && activeSession && (
-                <div className="w-64 shrink-0 border-l border-slate-700/50 md:w-72">
+              {sftpOpen && !aiOpen && activeSession && (
+                <div className="hidden md:block w-64 shrink-0 border-l border-slate-700/50 md:w-72">
                   <SftpSidebar sessionId={activeSession.id} />
                 </div>
+              )}
+
+              {/* AI 侧边栏 */}
+              {aiOpen && activeSession && (
+                <AiSidebar
+                  sessionId={activeSession.id}
+                  onClose={() => setAiOpen(false)}
+                />
               )}
             </div>
           </>
         ) : (
-          <div className="flex h-full items-center justify-center">
-            <div className="text-center">
+          <div className="flex flex-1 items-center justify-center">
+            <div className="text-center px-4 max-w-full">
               <Server size={48} className="mx-auto mb-3 text-slate-600" />
               <p className="text-sm text-slate-500">
                 {wsStatus === 'connected'
                   ? '选择一个连接或新建连接'
                   : 'WebSocket 未连接，请稍候...'}
               </p>
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="btn-primary mt-4 md:hidden"
+              >
+                <PlugZap size={14} />
+                查看连接列表
+              </button>
               {connections.length > 0 && (
-                <div className="mt-4 space-y-1">
+                <div className="mt-4 space-y-1 hidden md:block">
                   {connections.map((conn) => (
                     <button
                       key={conn.id}
@@ -338,9 +405,7 @@ export default function SshPlaceholder() {
                   ))}
                 </div>
               )}
-              {connecting && (
-                <p className="mt-3 text-xs text-slate-600">连接中...</p>
-              )}
+              {connecting && <p className="mt-3 text-xs text-slate-600">连接中...</p>}
             </div>
           </div>
         )}

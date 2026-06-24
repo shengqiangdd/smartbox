@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Puzzle, Check, X, Loader2, RefreshCw, AlertCircle, Shield } from 'lucide-react'
-import { fetchPlugins, fetchPluginCode, createSandboxHandlers, unloadPlugin } from '../../services/pluginManager'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { Puzzle, Check, X, Loader2, RefreshCw, AlertCircle, Shield, Terminal } from 'lucide-react'
+import { fetchPlugins, fetchPluginCode, unloadPlugin } from '../../services/pluginManager'
 import { usePluginStore } from '../../stores/plugin-store'
 import PluginSandbox from '../../components/PluginSandbox'
 import type { PluginCatalogItem } from '../../services/pluginManager'
@@ -11,44 +11,49 @@ export default function PluginsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // 插件的沙箱状态
-  const [sandboxCodes, setSandboxCodes] = useState<Record<string, string>>({})
-  const [sandboxReady, setSandboxReady] = useState<Record<string, boolean>>({})
-  const [sandboxHandles, setSandboxHandles] = useState<Record<string, PluginSandboxHandle>>({})
-  const [sandboxKeys, setSandboxKeys] = useState<Record<string, number>>({})
+  // 用 ref 存储沙箱状态，避免 state 更新引发循环
+  const sandboxCodesRef = useRef<Record<string, string>>({})
+  const sandboxReadyRef = useRef<Record<string, boolean>>({})
+  const sandboxKeysRef = useRef<Record<string, number>>({})
+  const loadedRef = useRef(false)
+
+  // 用 state 触发 UI 更新，但仅在首次加载和刷新时改变
+  const [renderTick, setRenderTick] = useState(0)
 
   const storePlugins = usePluginStore((s) => s.plugins)
   const enablePlugin = usePluginStore((s) => s.enablePlugin)
   const disablePlugin = usePluginStore((s) => s.disablePlugin)
 
   const loadPlugins = useCallback(async () => {
+    if (loadedRef.current) return
+    loadedRef.current = true
+
     setLoading(true)
     setError(null)
     try {
       const plugins = await fetchPlugins()
       setCatalog(plugins)
 
-      // 下载所有插件的 JS 代码
+      // 下载所有插件 JS 代码
       const codes: Record<string, string> = {}
+      const keys: Record<string, number> = {}
+
       for (const plugin of plugins) {
         try {
           codes[plugin.id] = await fetchPluginCode(plugin.entry)
         } catch (err: any) {
           console.error(`[PluginsPage] Failed to fetch code for "${plugin.id}":`, err)
         }
+        keys[plugin.id] = Date.now() + Math.random()
       }
-      setSandboxCodes(codes)
 
-      // 初始化沙箱 Key（触发 PluginSandbox 挂载）
-      const keys: Record<string, number> = {}
-      plugins.forEach((p) => {
-        keys[p.id] = Date.now() + Math.random()
-      })
-      setSandboxKeys(keys)
+      sandboxCodesRef.current = codes
+      sandboxKeysRef.current = keys
+      sandboxReadyRef.current = {}
 
       // 在 Store 中注册
+      const store = usePluginStore.getState()
       for (const plugin of plugins) {
-        const store = usePluginStore.getState()
         if (!store.getPlugin(plugin.id)) {
           store.registerPlugin(
             {
@@ -76,6 +81,8 @@ export default function PluginsPage() {
           )
         }
       }
+
+      setRenderTick((t) => t + 1)
     } catch (err: any) {
       setError(err.message || '加载插件失败')
     } finally {
@@ -83,9 +90,10 @@ export default function PluginsPage() {
     }
   }, [])
 
+  // 只加载一次
   useEffect(() => {
     loadPlugins()
-  }, [loadPlugins])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const isPluginEnabled = (pluginId: string) => {
     return storePlugins.some((p) => p.manifest.id === pluginId && p.enabled)
@@ -100,27 +108,27 @@ export default function PluginsPage() {
   }
 
   const handleReload = () => {
-    // 清理现有沙箱
-    for (const id of Object.keys(sandboxHandles)) {
-      sandboxHandles[id].destroy()
-    }
-    // 卸载所有
+    // 清理
     for (const plugin of catalog) {
       unloadPlugin(plugin.id)
     }
-    setSandboxCodes({})
-    setSandboxReady({})
-    setSandboxHandles({})
-    setSandboxKeys({})
+    sandboxCodesRef.current = {}
+    sandboxReadyRef.current = {}
+    sandboxKeysRef.current = {}
+    loadedRef.current = false
+    setCatalog([])
+    setRenderTick(0)
     loadPlugins()
   }
 
-  const handleSandboxReady = useCallback((pluginId: string, handle: PluginSandboxHandle) => {
-    setSandboxReady((s) => ({ ...s, [pluginId]: true }))
-    setSandboxHandles((s) => ({ ...s, [pluginId]: handle }))
+  const handleSandboxReady = useCallback((pluginId: string, _handle: PluginSandboxHandle) => {
+    sandboxReadyRef.current = { ...sandboxReadyRef.current, [pluginId]: true }
+    setRenderTick((t) => t + 1)
   }, [])
 
-  const getCommandCount = (plugin: PluginCatalogItem) => plugin.commands?.length || 0
+  const sandboxCodes = sandboxCodesRef.current
+  const sandboxReady = sandboxReadyRef.current
+  const sandboxKeys = sandboxKeysRef.current
 
   return (
     <div className="flex h-full flex-col p-6">
@@ -164,15 +172,12 @@ export default function PluginsPage() {
       )}
 
       {/* 错误状态 */}
-      {error && !loading && (
+      {error && !loading && renderTick >= 0 && (
         <div className="flex flex-1 items-center justify-center">
           <div className="text-center">
             <AlertCircle size={40} className="mx-auto mb-3 text-red-400" />
             <p className="text-sm text-red-400">{error}</p>
-            <button
-              onClick={handleReload}
-              className="mt-4 rounded-lg bg-slate-800 px-4 py-2 text-xs text-slate-300 hover:bg-slate-700"
-            >
+            <button onClick={handleReload} className="mt-4 rounded-lg bg-slate-800 px-4 py-2 text-xs text-slate-300 hover:bg-slate-700">
               重试
             </button>
           </div>
@@ -209,29 +214,27 @@ export default function PluginsPage() {
                   }`}
                 >
                   <div className="flex items-start justify-between">
-                    {/* 插件信息 */}
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <h3 className="text-sm font-medium text-slate-200">{plugin.name}</h3>
                         <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-500">
                           v{plugin.version}
                         </span>
-                        {!ready && (
+                        {!ready && sandboxCodes[plugin.id] && (
                           <Loader2 size={12} className="animate-spin text-amber-400" />
+                        )}
+                        {!sandboxCodes[plugin.id] && (
+                          <span className="text-[10px] text-slate-600">⏳ 代码未加载</span>
                         )}
                       </div>
                       <p className="mt-1 text-xs text-slate-500">{plugin.description}</p>
                       <div className="mt-2 flex items-center gap-3 text-[11px] text-slate-600">
                         <span>作者: {plugin.author}</span>
-                        {getCommandCount(plugin) > 0 && (
-                          <span>{getCommandCount(plugin)} 个命令</span>
-                        )}
-                        {plugin.panels?.length > 0 && (
-                          <span>{plugin.panels.length} 个面板</span>
+                        {plugin.commands?.length > 0 && (
+                          <span>{plugin.commands.length} 个命令</span>
                         )}
                       </div>
 
-                      {/* 命令列表 */}
                       {plugin.commands && plugin.commands.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           {plugin.commands.map((cmd) => (
@@ -246,7 +249,6 @@ export default function PluginsPage() {
                       )}
                     </div>
 
-                    {/* 启用/禁用开关 */}
                     <button
                       onClick={() => handleToggle(plugin.id, enabled)}
                       disabled={!ready}
@@ -265,10 +267,13 @@ export default function PluginsPage() {
             })}
           </div>
 
-          {/* 右侧：沙箱预览区域 */}
+          {/* 右侧：沙箱区域 */}
           <div className="flex-1 overflow-hidden rounded-lg border border-slate-700/30 bg-slate-900/30">
-            <div className="border-b border-slate-700/30 px-4 py-2">
+            <div className="border-b border-slate-700/30 px-4 py-2 flex items-center justify-between">
               <h3 className="text-xs font-medium text-slate-400">沙箱运行状态</h3>
+              <span className="text-[10px] text-slate-600">
+                {Object.keys(sandboxReady).filter((k) => sandboxReady[k]).length}/{catalog.length} 就绪
+              </span>
             </div>
             <div className="grid grid-cols-2 gap-4 p-4">
               {catalog
@@ -288,7 +293,7 @@ export default function PluginsPage() {
                     <div className="h-32">
                       {sandboxKeys[plugin.id] && (
                         <PluginSandbox
-                          key={sandboxKeys[plugin.id]}
+                          key={sandboxKeys[plugin.id] as number}
                           manifest={{
                             id: plugin.id,
                             name: plugin.name,
@@ -300,7 +305,7 @@ export default function PluginsPage() {
                           }}
                           pluginCode={sandboxCodes[plugin.id] || ''}
                           onReady={(handle) => handleSandboxReady(plugin.id, handle)}
-                          onError={(err) => console.error(`[PluginsPage] ${plugin.name} error:`, err)}
+                          onError={(err) => console.error(`[Plugins] ${plugin.name} error:`, err)}
                         />
                       )}
                     </div>

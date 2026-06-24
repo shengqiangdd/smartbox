@@ -95,6 +95,46 @@ app.get('/api/plugins/:id/plugin.js', (req, res) => {
   }
 })
 
+// 执行 SSH 命令（通过 connectionId）
+app.post('/api/ssh/exec', (req, res) => {
+  // 限制：只允许通过连接 ID 访问自己的连接
+  const { connectionId, command } = req.body
+  if (!connectionId || !command) {
+    return res.status(400).json({ error: 'Missing connectionId or command' })
+  }
+
+  const conn = connections.get(connectionId)
+  if (!conn || !conn.ssh) {
+    return res.status(400).json({ error: 'SSH not connected' })
+  }
+
+  conn.ssh.exec(command, (err, stream) => {
+    if (err) {
+      return res.status(500).json({ error: err.message })
+    }
+
+    let stdout = ''
+    let stderr = ''
+
+    stream.on('data', (chunk) => {
+      stdout += chunk.toString('utf-8')
+    })
+
+    stream.stderr.on('data', (chunk) => {
+      stderr += chunk.toString('utf-8')
+    })
+
+    stream.on('close', (code) => {
+      res.json({ stdout, stderr, exitCode: code })
+    })
+
+    // 超时兜底
+    setTimeout(() => {
+      stream.close()
+    }, 30000)
+  })
+})
+
 // 获取单个插件的 Manifest
 app.get('/api/plugins/:id/manifest.json', (req, res) => {
   const manifestPath = path.join(pluginsDir, req.params.id, 'manifest.json')
@@ -156,15 +196,19 @@ app.ws('/ws', (ws, req) => {
 // ========== 消息路由 ==========
 
 function handleMessage(ws, clientId, msg) {
-  const { type, connectionId, ...payload } = msg
+  const { type, connectionId, requestId, ...payload } = msg
 
   switch (type) {
     case 'ping':
-      ws.send(JSON.stringify({ type: 'pong' }))
+      sendJson(ws, { type: 'pong', requestId })
+      break
+
+    case 'test':
+      handleTestConnection(ws, connectionId, requestId, payload)
       break
 
     case 'connect':
-      handleConnect(ws, connectionId, payload)
+      handleConnect(ws, connectionId, requestId, payload)
       break
 
     case 'disconnect':
@@ -172,7 +216,7 @@ function handleMessage(ws, clientId, msg) {
       break
 
     case 'exec':
-      handleExec(ws, connectionId, payload)
+      handleExec(ws, connectionId, requestId, payload)
       break
 
     case 'resize':
@@ -180,21 +224,21 @@ function handleMessage(ws, clientId, msg) {
       break
 
     case 'sftp':
-      handleSftp(ws, connectionId, payload)
+      handleSftp(ws, connectionId, requestId, payload)
       break
 
     default:
-      sendError(ws, connectionId, 'UNKNOWN_TYPE', `未知消息类型: ${type}`)
+      sendError(ws, connectionId, requestId, 'UNKNOWN_TYPE', `未知消息类型: ${type}`)
   }
 }
 
 // ========== SSH 连接处理 ==========
 
-async function handleConnect(ws, connectionId, config) {
+async function handleConnect(ws, connectionId, requestId, config) {
   const { host, port, username, password, privateKey } = config
 
   if (!host || !username) {
-    return sendError(ws, connectionId, 'INVALID_CONFIG', '缺少必需参数: host, username')
+    return sendError(ws, connectionId, requestId, 'INVALID_CONFIG', '缺少必需参数: host, username')
   }
 
   try {
@@ -204,15 +248,34 @@ async function handleConnect(ws, connectionId, config) {
       ssh,
       sftp: null,
       connectionId,
-      shellStream: null,    // 当前活动的 shell stream
-      shells: new Map(),    // 分屏支持: sessionId → shellStream
+      shellStream: null,
+      shells: new Map(),
     }
+    let connected = false
+    let timedOut = false
+
+    // 超时兜底：15秒无响应则断开
+    const connectTimeout = setTimeout(() => {
+      if (!connected) {
+        timedOut = true
+        console.warn(`[SSH] Connection timeout: ${username}@${host}:${port} (${connectionId})`)
+        ssh.end()
+        sendError(ws, connectionId, requestId, 'TIMEOUT', `连接超时（15秒），请检查：
+• 主机地址是否正确
+• 端口 ${port || 22} 是否开放
+• 内网防火墙是否允许 SSH 连接
+• 目标主机是否在线`)
+      }
+    }, 15000)
 
     ssh.on('ready', () => {
+      if (timedOut) return
+      connected = true
+      clearTimeout(connectTimeout)
       console.log(`[SSH] Connected: ${username}@${host}:${port} (${connectionId})`)
       connections.set(connectionId, connState)
 
-      ws.send(JSON.stringify({ type: 'connected', connectionId }))
+      sendJson(ws, { type: 'connected', connectionId, requestId })
 
       // 自动打开 shell 和 SFTP session
       openShell(connState, connectionId)
@@ -220,19 +283,22 @@ async function handleConnect(ws, connectionId, config) {
     })
 
     ssh.on('close', () => {
+      clearTimeout(connectTimeout)
       console.log(`[SSH] Connection closed: ${connectionId}`)
       connections.delete(connectionId)
-      if (ws.readyState === ws.OPEN) {
-        ws.send(JSON.stringify({ type: 'disconnected', connectionId }))
+      if (ws.readyState === ws.OPEN && !timedOut) {
+        sendJson(ws, { type: 'disconnected', connectionId, requestId })
       }
     })
 
     ssh.on('error', (err) => {
+      clearTimeout(connectTimeout)
+      if (timedOut) return
       console.error(`[SSH] Error (${connectionId}):`, err.message)
-      sendError(ws, connectionId, 'SSH_ERROR', err.message)
+      console.error(`[SSH] Config (${connectionId}): ${username}@${host}:${port || 22}, auth=${privateKey ? 'key' : 'password'}, passwordLen=${password ? password.length : 0}`)
+      sendError(ws, connectionId, requestId, 'SSH_ERROR', `连接失败: ${err.message}`)
     })
 
-    // 根据认证方式构建 SSH 连接参数
     const connectConfig = {
       host,
       port: port || 22,
@@ -243,10 +309,8 @@ async function handleConnect(ws, connectionId, config) {
     }
 
     if (privateKey) {
-      // 密钥认证
       connectConfig.privateKey = privateKey
     } else {
-      // 密码认证
       connectConfig.password = password || undefined
     }
 
@@ -254,8 +318,75 @@ async function handleConnect(ws, connectionId, config) {
 
   } catch (err) {
     console.error(`[SSH] Connection failed (${connectionId}):`, err.message)
-    sendError(ws, connectionId, 'CONNECT_FAILED', err.message)
+    sendError(ws, connectionId, requestId, 'CONNECT_FAILED', err.message)
   }
+}
+
+// ========== 测试 SSH 连接 ==========
+
+function handleTestConnection(ws, connectionId, requestId, config) {
+  const { host, port, username, password, privateKey } = config
+
+  if (!host || !username) {
+    return sendJson(ws, {
+      type: 'test-result',
+      connectionId,
+      requestId,
+      success: false,
+      message: '缺少必需参数: host, username',
+    })
+  }
+
+  const ssh = new Client()
+  const timeout = setTimeout(() => {
+    ssh.end()
+    sendJson(ws, {
+      type: 'test-result',
+      connectionId,
+      requestId,
+      success: false,
+      message: '连接超时（10秒）',
+    })
+  }, 10000)
+
+  ssh.on('ready', () => {
+    clearTimeout(timeout)
+    ssh.end()
+    sendJson(ws, {
+      type: 'test-result',
+      connectionId,
+      requestId,
+      success: true,
+      message: `成功连接到 ${username}@${host}:${port || 22}`,
+    })
+  })
+
+  ssh.on('error', (err) => {
+    clearTimeout(timeout)
+    sendJson(ws, {
+      type: 'test-result',
+      connectionId,
+      requestId,
+      success: false,
+      message: `连接失败: ${err.message}`,
+    })
+  })
+
+  const connectConfig = {
+    host,
+    port: port || 22,
+    username,
+    readyTimeout: 10000,
+    keepaliveInterval: 5000,
+    keepaliveCountMax: 1,
+  }
+  if (privateKey) {
+    connectConfig.privateKey = privateKey
+  } else {
+    connectConfig.password = password || undefined
+  }
+
+  ssh.connect(connectConfig)
 }
 
 // ========== 打开交互式 Shell ==========
@@ -273,21 +404,21 @@ function openShell(connState, shellId) {
 
     stream.on('data', (chunk) => {
       if (ws.readyState === ws.OPEN) {
-        ws.send(JSON.stringify({
+        sendJson(ws, {
           type: 'data',
           connectionId: shellId,
           data: chunk.toString('base64'),
-        }))
+        })
       }
     })
 
     stream.stderr.on('data', (chunk) => {
       if (ws.readyState === ws.OPEN) {
-        ws.send(JSON.stringify({
+        sendJson(ws, {
           type: 'data',
           connectionId: shellId,
           data: chunk.toString('base64'),
-        }))
+        })
       }
     })
 
@@ -298,7 +429,7 @@ function openShell(connState, shellId) {
         connState.shellStream = null
       }
       if (ws.readyState === ws.OPEN) {
-        ws.send(JSON.stringify({ type: 'shell-closed', connectionId: shellId, code }))
+        sendJson(ws, { type: 'shell-closed', connectionId: shellId, code })
       }
     })
   })
@@ -316,17 +447,17 @@ function openSftp(connState, connectionId) {
     }
     connState.sftp = sftp
     if (ws.readyState === ws.OPEN) {
-      ws.send(JSON.stringify({ type: 'sftp-ready', connectionId }))
+      sendJson(ws, { type: 'sftp-ready', connectionId })
     }
   })
 }
 
 // ========== 终端数据写入 ==========
 
-function handleExec(ws, connectionId, payload) {
+function handleExec(ws, connectionId, requestId, payload) {
   const conn = connections.get(connectionId)
   if (!conn || !conn.ssh) {
-    return sendError(ws, connectionId, 'NOT_CONNECTED', 'SSH 未连接')
+    return sendError(ws, connectionId, requestId, 'NOT_CONNECTED', 'SSH 未连接')
   }
 
   const { data } = payload
@@ -344,7 +475,7 @@ function handleExec(ws, connectionId, payload) {
   if (shellStream) {
     shellStream.write(decoded)
   } else {
-    sendError(ws, connectionId, 'NO_SHELL', 'Shell 尚未就绪')
+    sendError(ws, connectionId, requestId, 'NO_SHELL', 'Shell 尚未就绪')
   }
 }
 
@@ -365,10 +496,10 @@ function handleResize(ws, connectionId, payload) {
 
 // ========== SFTP 操作 ==========
 
-function handleSftp(ws, connectionId, payload) {
+function handleSftp(ws, connectionId, requestId, payload) {
   const conn = connections.get(connectionId)
   if (!conn || !conn.sftp) {
-    return sendError(ws, connectionId, 'SFTP_NOT_READY', 'SFTP 未就绪')
+    return sendError(ws, connectionId, requestId, 'SFTP_NOT_READY', 'SFTP 未就绪')
   }
 
   const { operation } = payload
@@ -376,15 +507,18 @@ function handleSftp(ws, connectionId, payload) {
   switch (operation) {
     case 'list': {
       const { path: dirPath } = payload
+      // 规范化父路径：去掉尾部斜杠，确保根目录为 '/'
+      const parent = dirPath === '/' ? '' : (dirPath || '').replace(/\/+$/, '')
       conn.sftp.readdir(dirPath || '.', (err, list) => {
-        if (err) return sendError(ws, connectionId, 'SFTP_ERROR', err.message)
-        ws.send(JSON.stringify({
+        if (err) return sendError(ws, connectionId, requestId, 'SFTP_ERROR', err.message)
+        sendJson(ws, {
           type: 'sftp-result',
           connectionId,
+          requestId,
           operation: 'list',
-          files: list.map(item => ({
+          files: (list || []).map(item => ({
             name: item.filename,
-            path: (dirPath || '.') + '/' + item.filename,
+            path: parent + '/' + item.filename,
             type: (item.attrs.mode & 0o40000) ? 'directory' : 'file',
             size: item.attrs.size,
             modifyTime: item.attrs.mtime * 1000,
@@ -392,7 +526,7 @@ function handleSftp(ws, connectionId, payload) {
             owner: '',
             group: '',
           })),
-        }))
+        })
       })
       break
     }
@@ -400,13 +534,14 @@ function handleSftp(ws, connectionId, payload) {
     case 'stat': {
       const { path: targetPath } = payload
       conn.sftp.stat(targetPath, (err, attrs) => {
-        if (err) return sendError(ws, connectionId, 'SFTP_ERROR', err.message)
-        ws.send(JSON.stringify({
+        if (err) return sendError(ws, connectionId, requestId, 'SFTP_ERROR', err.message)
+        sendJson(ws, {
           type: 'sftp-result',
           connectionId,
+          requestId,
           operation: 'stat',
           data: { size: attrs.size, mode: attrs.mode, mtime: attrs.mtime },
-        }))
+        })
       })
       break
     }
@@ -414,13 +549,14 @@ function handleSftp(ws, connectionId, payload) {
     case 'readfile': {
       const { path: filePath } = payload
       conn.sftp.readFile(filePath, (err, data) => {
-        if (err) return sendError(ws, connectionId, 'SFTP_ERROR', err.message)
-        ws.send(JSON.stringify({
+        if (err) return sendError(ws, connectionId, requestId, 'SFTP_ERROR', err.message)
+        sendJson(ws, {
           type: 'sftp-result',
           connectionId,
+          requestId,
           operation: 'readfile',
           data: data.toString('base64'),
-        }))
+        })
       })
       break
     }
@@ -429,13 +565,14 @@ function handleSftp(ws, connectionId, payload) {
       const { path: filePath, content } = payload
       const buf = Buffer.from(content, 'base64')
       conn.sftp.writeFile(filePath, buf, (err) => {
-        if (err) return sendError(ws, connectionId, 'SFTP_ERROR', err.message)
-        ws.send(JSON.stringify({
+        if (err) return sendError(ws, connectionId, requestId, 'SFTP_ERROR', err.message)
+        sendJson(ws, {
           type: 'sftp-result',
           connectionId,
+          requestId,
           operation: 'writefile',
           success: true,
-        }))
+        })
       })
       break
     }
@@ -443,13 +580,14 @@ function handleSftp(ws, connectionId, payload) {
     case 'mkdir': {
       const { path: dirPath } = payload
       conn.sftp.mkdir(dirPath, (err) => {
-        if (err) return sendError(ws, connectionId, 'SFTP_ERROR', err.message)
-        ws.send(JSON.stringify({
+        if (err) return sendError(ws, connectionId, requestId, 'SFTP_ERROR', err.message)
+        sendJson(ws, {
           type: 'sftp-result',
           connectionId,
+          requestId,
           operation: 'mkdir',
           success: true,
-        }))
+        })
       })
       break
     }
@@ -457,13 +595,14 @@ function handleSftp(ws, connectionId, payload) {
     case 'rmdir': {
       const { path: dirPath } = payload
       conn.sftp.rmdir(dirPath, (err) => {
-        if (err) return sendError(ws, connectionId, 'SFTP_ERROR', err.message)
-        ws.send(JSON.stringify({
+        if (err) return sendError(ws, connectionId, requestId, 'SFTP_ERROR', err.message)
+        sendJson(ws, {
           type: 'sftp-result',
           connectionId,
+          requestId,
           operation: 'rmdir',
           success: true,
-        }))
+        })
       })
       break
     }
@@ -471,13 +610,14 @@ function handleSftp(ws, connectionId, payload) {
     case 'unlink': {
       const { path: filePath } = payload
       conn.sftp.unlink(filePath, (err) => {
-        if (err) return sendError(ws, connectionId, 'SFTP_ERROR', err.message)
-        ws.send(JSON.stringify({
+        if (err) return sendError(ws, connectionId, requestId, 'SFTP_ERROR', err.message)
+        sendJson(ws, {
           type: 'sftp-result',
           connectionId,
+          requestId,
           operation: 'unlink',
           success: true,
-        }))
+        })
       })
       break
     }
@@ -485,19 +625,20 @@ function handleSftp(ws, connectionId, payload) {
     case 'rename': {
       const { fromPath, toPath } = payload
       conn.sftp.rename(fromPath, toPath, (err) => {
-        if (err) return sendError(ws, connectionId, 'SFTP_ERROR', err.message)
-        ws.send(JSON.stringify({
+        if (err) return sendError(ws, connectionId, requestId, 'SFTP_ERROR', err.message)
+        sendJson(ws, {
           type: 'sftp-result',
           connectionId,
+          requestId,
           operation: 'rename',
           success: true,
-        }))
+        })
       })
       break
     }
 
     default:
-      sendError(ws, connectionId, 'UNKNOWN_OPERATION', `未知 SFTP 操作: ${operation}`)
+      sendError(ws, connectionId, requestId, 'UNKNOWN_OPERATION', `未知 SFTP 操作: ${operation}`)
   }
 }
 
@@ -529,14 +670,25 @@ function cleanupConnection(connectionId) {
 
 // ========== 错误响应辅助 ==========
 
-function sendError(ws, connectionId, code, message) {
+function sendError(ws, connectionId, requestId, code, message) {
   if (ws.readyState === ws.OPEN) {
-    ws.send(JSON.stringify({
+    const payload = {
       type: 'error',
       connectionId,
       code,
       message,
-    }))
+    }
+    if (requestId) payload.requestId = requestId
+    ws.send(JSON.stringify(payload))
+  }
+}
+
+/**
+ * 发送带 requestId 的 JSON 响应（用于 request-ack 模式）
+ */
+function sendJson(ws, data) {
+  if (ws.readyState === ws.OPEN) {
+    ws.send(JSON.stringify(data))
   }
 }
 

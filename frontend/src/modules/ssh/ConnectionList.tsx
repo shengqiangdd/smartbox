@@ -7,6 +7,7 @@ import {
   Trash2,
   FolderOpen,
   Terminal,
+  Search,
 } from 'lucide-react'
 import { useSshStore } from '../../stores/ssh-store'
 import ConnectionForm from './ConnectionForm'
@@ -67,30 +68,22 @@ export default function ConnectionList({ onConnect }: Props) {
       <div className="mb-3 flex items-center gap-2">
         <div className="relative flex-1">
           <input
-            className="input pl-8 text-xs"
+            className="input w-full pl-8 text-xs"
             placeholder="搜索连接..."
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           />
-          <svg
+          <Search
+            size={14}
             className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.3-4.3" />
-          </svg>
+          />
         </div>
         <button
           onClick={() => {
             setEditId(null)
             setShowForm(true)
           }}
-          className="btn-primary"
+          className="btn-primary shrink-0"
         >
           <Plus size={14} />
           新建
@@ -114,7 +107,7 @@ export default function ConnectionList({ onConnect }: Props) {
               <div key={key}>
                 {Object.keys(grouped).length > 1 && (
                   <div className="mb-1.5 flex items-center gap-1.5 px-1">
-                    <FolderOpen size={12} className="text-slate-500" />
+                    <FolderOpen size={12} className="shrink-0 text-slate-500" />
                     <span className="text-[11px] font-medium uppercase tracking-wider text-slate-500">
                       {group.label}
                     </span>
@@ -151,18 +144,18 @@ export default function ConnectionList({ onConnect }: Props) {
                             {conn.name}
                           </span>
                           <span
-                            className={`inline-block h-1.5 w-1.5 rounded-full ${
+                            className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${
                               isActive(conn.id) ? 'bg-emerald-500' : 'bg-slate-600'
                             }`}
                           />
                         </div>
-                        <div className="text-[11px] text-slate-500">
+                        <div className="text-[11px] text-slate-500 truncate">
                           {conn.username}@{conn.host}:{conn.port}
                         </div>
                       </div>
 
                       {/* 操作按钮 */}
-                      <div className="hidden gap-0.5 group-hover:flex">
+                      <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={() => handleConnect(conn.id)}
                           className="btn-icon text-emerald-500 hover:bg-emerald-500/10"

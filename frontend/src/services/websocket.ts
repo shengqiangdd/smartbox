@@ -45,7 +45,11 @@ export class WsClient {
   // ─── 生命周期 ───
 
   connect() {
-    if (this.ws?.readyState === WebSocket.OPEN) return
+    // 如果已连接或正在连接，不重复创建
+    if (this.ws) {
+      const state = this.ws.readyState
+      if (state === WebSocket.OPEN || state === WebSocket.CONNECTING) return
+    }
     this.setStatus('connecting')
 
     try {

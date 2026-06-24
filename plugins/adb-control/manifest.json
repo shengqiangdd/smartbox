@@ -1,0 +1,38 @@
+{
+  "id": "adb-control",
+  "name": "ADB 远程控制",
+  "version": "1.0.0",
+  "description": "通过 ADB 远程连接和控制 Android 设备，支持设备列表、截屏、投屏预览、应用管理",
+  "author": "SmartBox",
+  "icon": "smartphone",
+  "commands": [
+    {
+      "id": "adb-list-devices",
+      "label": "列出 ADB 设备",
+      "description": "列出所有已连接的 Android ADB 设备",
+      "icon": "smartphone",
+      "keywords": ["adb", "android", "设备", "列表", "连接"]
+    },
+    {
+      "id": "adb-take-screenshot",
+      "label": "ADB 截屏",
+      "description": "对已连接的 ADB 设备进行截屏并显示",
+      "icon": "camera",
+      "keywords": ["adb", "screenshot", "截屏", "屏幕"]
+    },
+    {
+      "id": "adb-input-text",
+      "label": "ADB 输入文本",
+      "description": "通过 ADB 向设备输入文本内容",
+      "icon": "keyboard",
+      "keywords": ["adb", "input", "输入", "文本"]
+    }
+  ],
+  "panels": [
+    {
+      "id": "adb-panel",
+      "title": "ADB 控制台",
+      "icon": "smartphone"
+    }
+  ]
+}

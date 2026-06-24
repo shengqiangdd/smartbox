@@ -5,7 +5,7 @@ WORKDIR /app
 
 # 安装前端依赖
 COPY frontend/package.json ./frontend/
-RUN cd frontend && npm install
+RUN cd frontend && npm install --registry=https://registry.npmmirror.com
 
 # 构建前端
 COPY frontend/ ./frontend/
@@ -18,7 +18,7 @@ WORKDIR /app
 
 # 安装后端依赖
 COPY bridge/package.json ./bridge/
-RUN cd bridge && npm install --production
+RUN cd bridge && npm install --production --registry=https://registry.npmmirror.com
 
 # 复制后端源码
 COPY bridge/ ./bridge/

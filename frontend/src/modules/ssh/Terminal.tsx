@@ -68,6 +68,10 @@ export default function TerminalView({ connectionId, sessionId, className = '', 
       allowTransparency: true,
       scrollback: 5000,
       tabStopWidth: 4,
+      // 移动端优化
+      screenReaderMode: false,
+      disableStdin: false,
+      allowProposedApi: true,
     })
 
     const fitAddon = new FitAddon()

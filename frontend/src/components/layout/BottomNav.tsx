@@ -13,7 +13,7 @@ export default function BottomNav() {
   const setActiveNav = useAppStore((s) => s.setActiveNav)
 
   return (
-    <nav className="flex items-center justify-around border-t border-slate-700/50 bg-slate-900 px-2 py-1 md:hidden">
+    <nav className="flex items-center justify-around border-t border-slate-700/50 bg-slate-900 px-2 pb-safe pt-1 md:hidden">
       {navItems.map((item) => {
         const Icon = item.icon
         return (
