@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { X, Loader2, Cpu, HardDrive, Network, Box } from 'lucide-react'
+import { X, Loader2, Cpu, HardDrive, Network, Box, Terminal } from 'lucide-react'
 import type { DockerInspectInfo } from './index'
+import DockerTerminal from './DockerTerminal'
 
 interface Props {
   connectionId: string
@@ -12,6 +13,7 @@ export default function DockerDetail({ connectionId, containerId, onClose }: Pro
   const [data, setData] = useState<DockerInspectInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [showTerminal, setShowTerminal] = useState(false)
 
   useEffect(() => {
     ;(async () => {
@@ -47,9 +49,19 @@ export default function DockerDetail({ connectionId, containerId, onClose }: Pro
           <h2 className="text-sm font-semibold text-slate-200">
             容器详情 — {containerId}
           </h2>
-          <button onClick={onClose} className="ml-auto rounded-md p-1 text-slate-500 transition-colors hover:bg-slate-700 hover:text-slate-300">
-            <X size={16} />
-          </button>
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              onClick={() => setShowTerminal(true)}
+              className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs text-slate-400 transition-colors hover:bg-slate-700 hover:text-slate-200"
+              title="打开容器终端"
+            >
+              <Terminal size={14} />
+              终端
+            </button>
+            <button onClick={onClose} className="rounded-md p-1 text-slate-500 transition-colors hover:bg-slate-700 hover:text-slate-300">
+              <X size={16} />
+            </button>
+          </div>
         </div>
 
         {/* 内容 */}
@@ -132,6 +144,15 @@ export default function DockerDetail({ connectionId, containerId, onClose }: Pro
           ) : null}
         </div>
       </div>
+
+      {/* 容器终端弹层 */}
+      {showTerminal && (
+        <DockerTerminal
+          connectionId={connectionId}
+          containerId={containerId}
+          onClose={() => setShowTerminal(false)}
+        />
+      )}
     </div>
   )
 }

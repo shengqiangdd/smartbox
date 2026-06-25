@@ -308,6 +308,34 @@ app.post('/api/docker/rmi', (req, res) => {
   dockerExec(connectionId, `docker rmi ${f} ${escapeShellArg(id)} 2>&1`, res)
 })
 
+// 在容器中执行命令（交互式终端）
+app.post('/api/docker/exec', (req, res) => {
+  const { connectionId, id, command, shell } = req.body
+  if (!connectionId || !id) return res.status(400).json({ error: 'Missing connectionId or id' })
+
+  const cmd = shell
+    ? `docker exec -it ${escapeShellArg(id)} ${escapeShellArg(shell)} -c ${escapeShellArg(command)} 2>&1`
+    : `docker exec ${escapeShellArg(id)} ${escapeShellArg(command || 'id')} 2>&1`
+
+  const conn = connections.get(connectionId)
+  if (!conn || !conn.ssh) {
+    return res.status(400).json({ error: 'SSH 未连接' })
+  }
+
+  conn.ssh.exec(cmd, (err, stream) => {
+    if (err) {
+      return res.json({ success: false, error: `docker exec 失败: ${err.message}` })
+    }
+    let stdout = ''
+    let stderr = ''
+    stream.on('data', (data) => { stdout += data.toString() })
+    stream.stderr.on('data', (data) => { stderr += data.toString() })
+    stream.on('close', (code) => {
+      res.json({ success: code === 0, data: stdout, error: stderr || undefined, exitCode: code })
+    })
+  })
+})
+
 // 获取 docker-compose 项目列表
 app.post('/api/docker/compose', (req, res) => {
   const { connectionId, filePath } = req.body
@@ -619,6 +647,18 @@ function handleMessage(ws, clientId, msg) {
 
     case 'logtail_stop':
       handleLogtailStop(ws, connectionId, requestId, payload)
+      break
+
+    case 'docker_shell':
+      handleDockerShell(ws, connectionId, requestId, payload)
+      break
+
+    case 'docker_shell_data':
+      handleDockerShellData(ws, connectionId, requestId, payload)
+      break
+
+    case 'docker_shell_resize':
+      handleDockerShellResize(ws, connectionId, requestId, payload)
       break
 
     default:
@@ -1557,6 +1597,120 @@ function handleLogtailStop(ws, connectionId, requestId, payload) {
     requestId,
     logPath,
   })
+}
+
+// ========== Docker 容器终端 (docker exec -it) ==========
+
+/** 活跃的 docker shell session: dockerShell:containerId → { stream, shellId } */
+const activeDockerShells = new Map()
+
+function handleDockerShell(ws, connectionId, requestId, payload) {
+  const conn = connections.get(connectionId)
+  if (!conn || !conn.ssh) {
+    return sendError(ws, connectionId, requestId, 'NOT_CONNECTED', 'SSH 未连接')
+  }
+
+  const { containerId, shell: shellName } = payload
+  if (!containerId) {
+    return sendError(ws, connectionId, requestId, 'INVALID_CONTAINER', '缺少容器 ID')
+  }
+
+  const shell = shellName || '/bin/bash'
+
+  // 先关闭已有 session
+  const existingKey = `docker:${containerId}`
+  if (activeDockerShells.has(existingKey)) {
+    try { activeDockerShells.get(existingKey).close() } catch (_) {}
+    activeDockerShells.delete(existingKey)
+  }
+
+  conn.ssh.exec(`docker exec -it ${escapeShellArg(containerId)} ${escapeShellArg(shell)}`, {
+    pty: { rows: 40, cols: 120, term: 'xterm-256color' },
+  }, (err, stream) => {
+    if (err) {
+      return sendError(ws, connectionId, requestId, 'DOCKER_EXEC_FAIL', `无法进入容器: ${err.message}`)
+    }
+
+    activeDockerShells.set(existingKey, stream)
+
+    sendJson(ws, {
+      type: 'docker_shell_ready',
+      connectionId,
+      requestId,
+      containerId,
+      shell,
+    })
+
+    // 输出流 → WebSocket
+    stream.on('data', (data) => {
+      if (ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'docker_shell_output',
+          connectionId,
+          containerId,
+          data: Buffer.from(data).toString('base64'),
+        }))
+      }
+    })
+
+    stream.stderr.on('data', (data) => {
+      if (ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'docker_shell_output',
+          connectionId,
+          containerId,
+          data: Buffer.from(data).toString('base64'),
+          isStderr: true,
+        }))
+      }
+    })
+
+    stream.on('close', (code) => {
+      activeDockerShells.delete(existingKey)
+      if (ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'docker_shell_closed',
+          connectionId,
+          containerId,
+          exitCode: code,
+        }))
+      }
+    })
+
+    stream.on('error', (err) => {
+      activeDockerShells.delete(existingKey)
+      sendError(ws, connectionId, null, 'DOCKER_SHELL_ERR', `容器终端错误: ${err.message}`)
+    })
+  })
+}
+
+function handleDockerShellData(ws, connectionId, requestId, payload) {
+  const { containerId, data } = payload
+  if (!containerId || !data) return
+
+  const existingKey = `docker:${containerId}`
+  const stream = activeDockerShells.get(existingKey)
+  if (!stream) {
+    return sendError(ws, connectionId, requestId, 'NO_ACTIVE_SHELL', '容器终端未激活')
+  }
+
+  try {
+    const decoded = Buffer.from(data, 'base64').toString()
+    stream.write(decoded)
+  } catch (err) {
+    sendError(ws, connectionId, requestId, 'WRITE_ERROR', `写入失败: ${err.message}`)
+  }
+}
+
+function handleDockerShellResize(ws, connectionId, requestId, payload) {
+  const { containerId, cols, rows } = payload
+  if (!containerId || !cols || !rows) return
+
+  const existingKey = `docker:${containerId}`
+  const stream = activeDockerShells.get(existingKey)
+  if (stream && stream.setWindow) {
+    stream.setWindow(rows, cols, 0, 0)
+  }
 }
 
 // ========== 错误响应辅助 ==========
