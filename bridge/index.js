@@ -320,6 +320,88 @@ app.post('/api/docker/compose', (req, res) => {
   }
 })
 
+// ========== 日志聚合 API ==========
+
+/** 辅助：通过 SSH 执行日志相关命令 */
+function logExec(connectionId, cmd, res) {
+  const conn = connections.get(connectionId)
+  if (!conn || !conn.ssh) {
+    return res.status(400).json({ error: 'SSH not connected' })
+  }
+
+  conn.ssh.exec(cmd, { pty: false }, (err, stream) => {
+    if (err) {
+      return res.status(500).json({ error: err.message })
+    }
+
+    let stdout = ''
+    let stderr = ''
+
+    // 设置超时：日志命令可能量大，给 15 秒
+    const timeout = setTimeout(() => {
+      stream.close()
+    }, 15000)
+
+    stream.on('data', (chunk) => {
+      stdout += chunk.toString('utf-8')
+    })
+
+    stream.stderr.on('data', (chunk) => {
+      stderr += chunk.toString('utf-8')
+    })
+
+    stream.on('close', (code) => {
+      clearTimeout(timeout)
+      if (code !== 0 && !stdout.trim()) {
+        return res.json({ success: false, error: stderr.trim() || `Exit code: ${code}`, exitCode: code })
+      }
+      res.json({ success: true, data: stdout, exitCode: code })
+    })
+  })
+}
+
+// 列出日志源 — 尝试常见系统日志路径
+app.post('/api/logs/list-sources', (req, res) => {
+  const { connectionId } = req.body
+  if (!connectionId) return res.status(400).json({ error: 'Missing connectionId' })
+
+  logExec(connectionId,
+    `echo "---common---" && ` +
+    `for f in /var/log/syslog /var/log/messages /var/log/auth.log /var/log/secure /var/log/kern.log ` +
+    `/var/log/dmesg /var/log/faillog /var/log/boot.log /var/log/maillog /var/log/cron ` +
+    `/var/log/nginx/access.log /var/log/nginx/error.log /var/log/apache2/access.log ` +
+    `/var/log/apache2/error.log /var/log/httpd/access_log /var/log/httpd/error_log ` +
+    `/var/log/mysql/error.log /var/log/mariadb/mariadb.log ` +
+    `/var/log/redis/redis-server.log ` +
+    `/var/log/dpkg.log /var/log/yum.log /var/log/apt/history.log; do ` +
+    `if [ -f "$f" ]; then ls -lh "$f" 2>/dev/null | awk '{print $5, $NF}'; fi; done`,
+    res
+  )
+})
+
+// tail 日志
+app.post('/api/logs/tail', (req, res) => {
+  const { connectionId, path, lines } = req.body
+  if (!connectionId || !path) return res.status(400).json({ error: 'Missing connectionId or path' })
+  const n = Math.min(Math.max(parseInt(lines) || 200, 10), 5000)
+  logExec(connectionId, `tail -n ${n} ${escapeShellArg(path)} 2>&1`, res)
+})
+
+// grep 日志
+app.post('/api/logs/grep', (req, res) => {
+  const { connectionId, path, pattern, context, ignoreCase } = req.body
+  if (!connectionId || !path || !pattern) return res.status(400).json({ error: 'Missing connectionId, path, or pattern' })
+  const ic = ignoreCase !== false ? '-i' : ''
+  const ctx = Math.min(Math.max(parseInt(context) || 0, 0), 10)
+  let cmd
+  if (ctx > 0) {
+    cmd = `grep ${ic} -C ${ctx} ${escapeShellArg(pattern)} ${escapeShellArg(path)} 2>&1 | tail -c 1048576`
+  } else {
+    cmd = `grep ${ic} ${escapeShellArg(pattern)} ${escapeShellArg(path)} 2>&1 | tail -c 1048576`
+  }
+  logExec(connectionId, cmd, res)
+})
+
 // ─── 插件市场 API ───
 
 // 默认插件市场源

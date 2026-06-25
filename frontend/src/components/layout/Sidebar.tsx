@@ -1,10 +1,11 @@
-import { Terminal, FileCode2, Puzzle, Settings, Server, Container } from 'lucide-react'
+import { Terminal, FileCode2, Puzzle, Settings, Server, Container, ScrollText } from 'lucide-react'
 import { useAppStore } from '../../stores/app-store'
 
 const navItems = [
   { id: 'ssh', label: 'SSH 连接', icon: Terminal },
   { id: 'docker', label: 'Docker 管理', icon: Container },
   { id: 'files', label: '文件管理', icon: FileCode2 },
+  { id: 'logs', label: '日志聚合', icon: ScrollText },
   { id: 'plugins', label: '插件', icon: Puzzle },
   { id: 'settings', label: '设置', icon: Settings },
 ] as const

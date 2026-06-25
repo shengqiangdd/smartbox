@@ -4,15 +4,17 @@ import { useAppStore } from '../../stores/app-store'
 const SshPlaceholder = lazy(() => import('../../modules/ssh/SshPlaceholder'))
 const DockerPage = lazy(() => import('../../modules/docker/DockerPage'))
 const FileManager = lazy(() => import('../../modules/file-manager/FileManager'))
+const LogsPage = lazy(() => import('../../modules/logs/LogsPage'))
 const PluginsPage = lazy(() => import('../../modules/plugins/PluginsPage'))
 const SettingsPanel = lazy(() => import('../../modules/settings/SettingsPanel'))
 
-const NAVS = ['ssh', 'docker', 'files', 'plugins', 'settings'] as const
+const NAVS = ['ssh', 'docker', 'files', 'logs', 'plugins', 'settings'] as const
 
 const PAGES: Record<string, React.ReactNode> = {
   ssh: <SshPlaceholder />,
   docker: <DockerPage />,
   files: <FileManager />,
+  logs: <LogsPage />,
   plugins: <PluginsPage />,
   settings: <SettingsPanel />,
 }
