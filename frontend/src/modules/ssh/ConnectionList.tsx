@@ -13,9 +13,11 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
+  Play,
 } from 'lucide-react'
 import { useSshStore } from '../../stores/ssh-store'
 import ConnectionForm from './ConnectionForm'
+import BatchExecPanel from './BatchExecPanel'
 import type { SshConnection } from '../../types/ssh'
 
 interface Props {
@@ -29,6 +31,7 @@ export default function ConnectionList({ onConnect }: Props) {
   const sessions = useSshStore((s) => s.sessions)
 
   const [showForm, setShowForm] = useState(false)
+  const [showBatch, setShowBatch] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [filter, setFilter] = useState('')
 
@@ -121,6 +124,14 @@ export default function ConnectionList({ onConnect }: Props) {
             className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500"
           />
         </div>
+        <button
+          onClick={() => setShowBatch(true)}
+          className="btn-ghost shrink-0"
+          title="批量执行命令"
+        >
+          <Play size={14} />
+          批量
+        </button>
         <button
           onClick={() => {
             setEditId(null)
@@ -310,6 +321,9 @@ export default function ConnectionList({ onConnect }: Props) {
           }}
         />
       )}
+
+      {/* 批量执行弹窗 */}
+      {showBatch && <BatchExecPanel onClose={() => setShowBatch(false)} />}
     </div>
   )
 }
