@@ -71,7 +71,7 @@ export default function Sidebar() {
       <div className="mt-auto border-t border-slate-700/50 pt-3">
         <div className="flex items-center gap-2 px-2 text-xs text-slate-500">
           <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
-          v0.1.0
+          v0.3.0
         </div>
       </div>
     </nav>

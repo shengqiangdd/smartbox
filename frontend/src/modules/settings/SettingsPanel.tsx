@@ -546,7 +546,7 @@ export default function SettingsPanel() {
           <div className="rounded-lg border border-slate-700/50 bg-slate-900/50 px-4 py-3 text-xs text-slate-500">
             <p className="font-medium text-slate-400">智盒 SmartBox v0.3.0</p>
             <p className="mt-1">可插拔 AI 增强的网页版工具箱</p>
-            <p className="mt-1">技术栈: React 18 + Vite 6 + CodeMirror 6 + xterm.js + Express 5 + SSH2</p>
+            <p className="mt-1">技术栈: React 19 + Vite 8 + CodeMirror 6 + xterm.js + Express 5 + SSH2</p>
             <p className="mt-1">内置 AI Agent 技能生成器 + 提示词模板库插件</p>
             <p className="mt-2 text-[10px] text-slate-600">
               AI 功能由 OpenRouter / OpenAI / Claude / Gemini 等 API 提供支持 · 所有数据加密传输
