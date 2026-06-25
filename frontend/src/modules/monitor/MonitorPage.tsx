@@ -1,7 +1,10 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Activity, Cpu, MemoryStick, HardDrive, Network, RefreshCw, Server, Loader2 } from 'lucide-react'
+import { Activity, Cpu, MemoryStick, HardDrive, Network, RefreshCw, Server, Loader2, ShieldAlert, ChevronDown, ChevronRight, Bell } from 'lucide-react'
 import { useAppStore } from '../../stores/app-store'
 import { useSshStore } from '../../stores/ssh-store'
+import { useAlertStore } from '../../stores/alert-store'
+import AlertSettings from './AlertSettings'
+import AlertHistory from './AlertHistory'
 
 // ─── 类型定义 ───
 
@@ -399,6 +402,12 @@ export default function MonitorPage() {
         }
       })
       setStats((prev) => ({ ...prev, ...mockStatsMap }))
+      // 告警评估
+      const evaluate = useAlertStore.getState().evaluate
+      for (const id of selected) {
+        const s = mockStatsMap[id]
+        if (s) evaluate(id, s.name, { cpu: s.cpu, memory: s.memory.pct, disk: s.disk.pct })
+      }
       setLoading(false)
       return
     }
@@ -425,6 +434,12 @@ export default function MonitorPage() {
     }
 
     setStats((prev) => ({ ...prev, ...newStats }))
+    // 告警评估
+    const evaluate = useAlertStore.getState().evaluate
+    for (const id of selected) {
+      const s = newStats[id]
+      if (s) evaluate(id, s.name, { cpu: s.cpu, memory: s.memory.pct, disk: s.disk.pct })
+    }
     setLoading(false)
   }, [selected, collectHostStats])
 
@@ -637,6 +652,12 @@ export default function MonitorPage() {
             })}
           </div>
         )}
+
+        {/* ─── 告警面板 ─── */}
+        <div className="mt-4 space-y-3">
+          <AlertSettings />
+          <AlertHistory />
+        </div>
       </div>
     </div>
   )
