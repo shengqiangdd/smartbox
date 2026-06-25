@@ -26,6 +26,25 @@ export interface CommandVariable {
 }
 
 /** 持久化存储结构 */
+/** 内置分组 ID 列表，不可删除不可重命名 */
+export const BUILTIN_GROUP_IDS = ['system', 'docker', 'network', 'disk', 'log', 'service', 'security']
+
+/** 检查分组是否为内置 */
+export function isBuiltinGroup(id: string): boolean {
+  return BUILTIN_GROUP_IDS.includes(id)
+}
+
+/** 内置分组完整定义（仅用于引用，不出现在编辑列表中） */
+export const BUILTIN_GROUPS: CommandGroup[] = [
+  { id: 'system', name: '🖥️ 系统管理', icon: '🖥️' },
+  { id: 'docker', name: '🐳 Docker', icon: '🐳' },
+  { id: 'network', name: '🌐 网络', icon: '🌐' },
+  { id: 'disk', name: '💾 磁盘', icon: '💾' },
+  { id: 'log', name: '📋 日志', icon: '📋' },
+  { id: 'service', name: '⚙️ 服务管理', icon: '⚙️' },
+  { id: 'security', name: '🔒 安全', icon: '🔒' },
+]
+
 export const COMMAND_GROUPS: CommandGroup[] = [
   { id: 'system', name: '系统管理', icon: '🖥️' },
   { id: 'docker', name: 'Docker', icon: '🐳' },

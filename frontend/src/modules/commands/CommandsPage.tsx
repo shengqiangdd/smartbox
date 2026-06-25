@@ -1,11 +1,12 @@
 import { useState, useCallback } from 'react'
-import { Zap, Terminal, Download, Upload, PanelLeftOpen, PanelLeftClose } from 'lucide-react'
+import { Zap, Terminal, Download, Upload, PanelLeftOpen, PanelLeftClose, Tags } from 'lucide-react'
 import { useAppStore } from '../../stores/app-store'
 import { useCommands } from './useCommands'
 import CommandsList from './CommandsList'
 import CommandOutput from './CommandOutput'
 import CommandFormModal from './CommandFormModal'
 import VariableModal from './VariableModal'
+import GroupManageModal from './GroupManageModal'
 import { COMMAND_GROUPS } from './index'
 import type { QuickCommand } from './index'
 
@@ -15,6 +16,7 @@ export default function CommandsPage() {
 
   const {
     customCommands,
+    customGroups,
     commandsByGroup,
     results,
     executingId,
@@ -25,11 +27,14 @@ export default function CommandsPage() {
     clearResults,
     removeResult,
     setCustomCommands,
+    saveGroup,
+    removeGroup,
   } = useCommands()
 
   const [outputPanelOpen, setOutputPanelOpen] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editCmd, setEditCmd] = useState<QuickCommand | null>(null)
+  const [showGroupManage, setShowGroupManage] = useState(false)
   const [variableModal, setVariableModal] = useState<{
     cmd: QuickCommand
     onResolved: (cmd: string) => void
@@ -188,6 +193,14 @@ export default function CommandsPage() {
           >
             <Upload size={14} />
             导出
+          </button>
+          <button
+            onClick={() => setShowGroupManage(true)}
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200"
+            title="管理分组"
+          >
+            <Tags size={14} />
+            分组
           </button>
           <button
             onClick={() => setOutputPanelOpen(!outputPanelOpen)}
