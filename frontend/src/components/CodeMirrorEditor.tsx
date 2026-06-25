@@ -28,6 +28,8 @@ import { php } from '@codemirror/lang-php'
 import { less } from '@codemirror/lang-less'
 import { vue } from '@codemirror/lang-vue'
 import { liquid } from '@codemirror/lang-liquid'
+import { Eye, EyeOff } from 'lucide-react'
+import MarkdownPreview from './MarkdownPreview'
 import { wast } from '@codemirror/lang-wast'
 import { autocompletion, completionKeymap } from '@codemirror/autocomplete'
 import { searchKeymap } from '@codemirror/search'
@@ -56,6 +58,8 @@ export default function CodeMirrorEditor() {
   const [aiResult, setAiResult] = useState<AiCodeActionResult | null>(null)
   const [aiError, setAiError] = useState<string | null>(null)
   const [aiModalOpen, setAiModalOpen] = useState(false)
+  const [markdownPreview, setMarkdownPreview] = useState(false)
+  const isMarkdown = activeTab?.language === 'markdown' || activeTab?.name.endsWith('.md') || activeTab?.name.endsWith('.mdx')
 
   const saveFile = useCallback(async () => {
     if (!activeTab || !activeTab.content) return
@@ -331,15 +335,34 @@ export default function CodeMirrorEditor() {
               )}
             </div>
           )}
+          {/* Markdown 预览切换 */}
+          {isMarkdown && (
+            <button
+              onClick={() => setMarkdownPreview(v => !v)}
+              className={`btn-icon ${markdownPreview ? 'text-cyan-400' : 'text-slate-500 hover:text-slate-300'}`}
+              title={markdownPreview ? '返回编辑' : '预览 Markdown'}
+            >
+              {markdownPreview ? <EyeOff size={14} /> : <Eye size={14} />}
+            </button>
+          )}
         </div>
       </div>
 
-      {/* 编辑器容器 */}
-      <div
-        ref={containerRef}
-        className="flex-1 overflow-auto"
-        style={{ minHeight: 0 }}
-      />
+      {/* 编辑器 / 预览容器 */}
+      {markdownPreview && isMarkdown ? (
+        <div className="flex-1 overflow-auto" style={{ minHeight: 0 }}>
+          <MarkdownPreview
+            content={activeTab?.content || ''}
+            className="h-full"
+          />
+        </div>
+      ) : (
+        <div
+          ref={containerRef}
+          className="flex-1 overflow-auto"
+          style={{ minHeight: 0 }}
+        />
+      )}
 
       {/* AI 结果模态框 */}
       {aiModalOpen && (

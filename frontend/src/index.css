@@ -307,3 +307,181 @@ html:not(.dark) {
   background-color: rgba(239, 68, 68, 0.1);
   color: #f87171;
 }
+
+/* ============================================
+   Markdown 预览样式
+   ============================================ */
+.markdown-preview {
+  padding: 1.5rem 2rem;
+  color: var(--text-secondary);
+  font-size: 0.9375rem;
+  line-height: 1.75;
+  overflow-wrap: break-word;
+}
+
+.markdown-preview h1,
+.markdown-preview h2,
+.markdown-preview h3,
+.markdown-preview h4,
+.markdown-preview h5,
+.markdown-preview h6 {
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.markdown-preview h1 { font-size: 1.75rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.3em; }
+.markdown-preview h2 { font-size: 1.375rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.25em; }
+.markdown-preview h3 { font-size: 1.125rem; }
+.markdown-preview h4 { font-size: 1rem; }
+.markdown-preview h5 { font-size: 0.875rem; }
+.markdown-preview h6 { font-size: 0.8125rem; color: var(--text-dim); }
+
+.markdown-preview p {
+  margin: 0.75em 0;
+}
+
+.markdown-preview a {
+  color: #38bdf8;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.markdown-preview a:hover {
+  color: #7dd3fc;
+}
+
+.markdown-preview img {
+  max-width: 100%;
+  border-radius: 0.5rem;
+  margin: 1em 0;
+}
+
+.markdown-preview strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.markdown-preview em {
+  font-style: italic;
+}
+
+.markdown-preview del {
+  color: var(--text-dim);
+}
+
+.markdown-preview ins {
+  text-decoration: none;
+}
+
+.markdown-preview code.cm-inline-code {
+  background-color: rgba(30, 41, 59, 0.8);
+  border: 1px solid var(--border-color);
+  border-radius: 0.25rem;
+  padding: 0.125rem 0.375rem;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+  font-size: 0.8125em;
+  color: #e2e8f0;
+}
+
+html:not(.dark) .markdown-preview code.cm-inline-code {
+  background-color: rgba(226, 232, 240, 0.6);
+  color: #1e293b;
+}
+
+.markdown-preview pre.cm-code-block {
+  background-color: #0f172a;
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin: 1em 0;
+  overflow-x: auto;
+}
+
+html:not(.dark) .markdown-preview pre.cm-code-block {
+  background-color: #f8fafc;
+}
+
+.markdown-preview pre.cm-code-block code {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: #e2e8f0;
+}
+
+html:not(.dark) .markdown-preview pre.cm-code-block code {
+  color: #334155;
+}
+
+.markdown-preview blockquote.cm-blockquote {
+  border-left: 4px solid #38bdf8;
+  padding: 0.5em 1em;
+  margin: 1em 0;
+  background-color: color-mix(in srgb, var(--bg-card) 30%, transparent);
+  border-radius: 0 0.375rem 0.375rem 0;
+}
+
+.markdown-preview blockquote.cm-blockquote p {
+  margin: 0.25em 0;
+}
+
+.markdown-preview table.cm-table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.875rem;
+}
+
+.markdown-preview table.cm-table th,
+.markdown-preview table.cm-table td {
+  border: 1px solid var(--border-color);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.markdown-preview table.cm-table th {
+  background-color: color-mix(in srgb, var(--bg-card) 50%, transparent);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.markdown-preview table.cm-table tr:nth-child(even) td {
+  background-color: color-mix(in srgb, var(--bg-card) 20%, transparent);
+}
+
+.markdown-preview ul,
+.markdown-preview ol {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+
+.markdown-preview li.cm-li {
+  margin: 0.25em 0;
+}
+
+.markdown-preview hr.cm-hr {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 1.5em 0;
+}
+
+.markdown-preview label.cm-task {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.25em 0;
+  cursor: default;
+}
+
+.markdown-preview label.cm-task input[type="checkbox"] {
+  appearance: auto;
+  -webkit-appearance: auto;
+  accent-color: #38bdf8;
+  margin: 0;
+}
+
+.markdown-preview label.cm-task.cm-task-checked {
+  color: var(--text-dim);
+  text-decoration: line-through;
+}
