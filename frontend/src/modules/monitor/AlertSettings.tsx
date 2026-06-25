@@ -18,6 +18,8 @@ import {
   ShieldAlert,
   Save,
   X,
+  Volume2,
+  VolumeX,
 } from 'lucide-react'
 import { useAlertStore } from '../../stores/alert-store'
 import type { AlertRule, AlertMetric, AlertSeverity } from '../../stores/alert-store'
@@ -213,7 +215,7 @@ function AddRuleForm({ onClose }: { onClose: () => void }) {
 }
 
 export default function AlertSettings() {
-  const { rules, enabled, toggleEnabled, updateRule, deleteRule, resetToDefaults } = useAlertStore()
+  const { rules, enabled, soundEnabled, toggleEnabled, toggleSound, updateRule, deleteRule, resetToDefaults } = useAlertStore()
   const [expanded, setExpanded] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
 
@@ -232,27 +234,46 @@ export default function AlertSettings() {
         </span>
 
         {/* 全局开关 */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            toggleEnabled()
-          }}
-          className={`ml-auto flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
-            enabled
-              ? 'bg-green-900/30 text-green-400 border border-green-500/30'
-              : 'bg-slate-800 text-slate-500 border border-slate-700/30'
-          }`}
-        >
-          {enabled ? (
-            <>
-              <Bell size={10} /> 已启用
-            </>
-          ) : (
-            <>
-              <BellOff size={10} /> 已禁用
-            </>
-          )}
-        </button>
+        <div className="ml-auto flex items-center gap-1.5">
+          {/* 声音开关 */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              toggleSound()
+            }}
+            className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+              soundEnabled
+                ? 'bg-blue-900/30 text-blue-400 border border-blue-500/30'
+                : 'bg-slate-800 text-slate-500 border border-slate-700/30'
+            }`}
+            title={soundEnabled ? '点击关闭声音' : '点击开启声音'}
+          >
+            {soundEnabled ? <Volume2 size={10} /> : <VolumeX size={10} />}
+            {soundEnabled ? '声音' : '静音'}
+          </button>
+          {/* 告警开关 */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              toggleEnabled()
+            }}
+            className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+              enabled
+                ? 'bg-green-900/30 text-green-400 border border-green-500/30'
+                : 'bg-slate-800 text-slate-500 border border-slate-700/30'
+            }`}
+          >
+            {enabled ? (
+              <>
+                <Bell size={10} /> 已启用
+              </>
+            ) : (
+              <>
+                <BellOff size={10} /> 已禁用
+              </>
+            )}
+          </button>
+        </div>
       </button>
 
       {/* 展开内容 */}

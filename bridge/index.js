@@ -17,12 +17,35 @@ import express from 'express'
 import expressWs from 'express-ws'
 import cors from 'cors'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Client } from 'ssh2'
+import {
+  apiLimiter,
+  authLimiter,
+  wsConnectLimiter,
+  generateWsToken,
+  validateWsToken,
+  detectInjection,
+  sanitizeString,
+  isValidHost,
+  isValidPort,
+  isValidUsername,
+  validateConnectionParams,
+  isValidPath,
+  isValidFilename,
+  sanitizeError,
+  securityHeaders,
+  requestLogger,
+  createCorsOptions,
+  auditLog,
+  auditLogs,
+} from './security.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = parseInt(process.env.BRIDGE_PORT || '3001', 10)
+const isProduction = process.env.NODE_ENV === 'production'
 
 const pluginsDir = path.resolve(__dirname, '..', 'plugins')
 const frontendDist = path.resolve(__dirname, '..', 'frontend', 'dist')
@@ -36,35 +59,89 @@ const app = express()
 expressWs(app)
 
 // 中间件
-app.use(cors())
+const allowedOrigins = process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : []
+app.use(cors(createCorsOptions(allowedOrigins)))
 
 // ─── 安全头 ───
-app.use((req, res, next) => {
-  // Content Security Policy — 限制脚本来源
-  res.setHeader(
-    'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; font-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'self'",
-  )
-  // 防止 MIME 类型嗅探
-  res.setHeader('X-Content-Type-Options', 'nosniff')
-  // 防止点击劫持
-  res.setHeader('X-Frame-Options', 'DENY')
-  // 禁用服务器信息泄露
-  res.setHeader('X-Powered-By', '')
-  // 引用来源策略
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
-  // 权限限制
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
-  next()
+app.use(securityHeaders)
+
+// ─── 请求日志 ───
+app.use(requestLogger)
+
+// ─── API 限流 ───
+app.use('/api/', apiLimiter)
+
+app.use(express.json({ limit: '10mb' }))
+
+// ========== 安全 API 路由 ==========
+
+// 获取 WebSocket 连接 token（一次性）
+app.post('/api/ws-token', authLimiter, (req, res) => {
+  const ip = req.ip || req.socket?.remoteAddress
+  const token = generateWsToken(ip)
+  auditLog('ws_token_issued', { ip }, req)
+  res.json({ token, expiresIn: 300 }) // 5 分钟有效
 })
 
-app.use(express.json({ limit: '100mb' }))
+// 获取审计日志（管理员）
+app.get('/api/audit-logs', (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 100, 1000)
+  const event = req.query.event
+  let logs = [...auditLogs].reverse()
+  if (event) logs = logs.filter((l) => l.event === event)
+  res.json({ total: logs.length, logs: logs.slice(0, limit) })
+})
 
-// ========== HTTP API 路由 ==========
-
-// 健康检查
+// 健康检查（增强版：内存/连接数/Node版本/主机统计）
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', uptime: process.uptime() })
+  const mem = process.memoryUsage()
+  const connCount = connections.size
+  res.json({
+    status: 'ok',
+    uptime: process.uptime(),
+    version: process.version,
+    memory: {
+      rss: mem.rss,
+      heapUsed: mem.heapUsed,
+      heapTotal: mem.heapTotal,
+      systemFree: os.freemem(),
+      systemTotal: os.totalmem()
+    },
+    connections: {
+      active: connCount,
+      loadavg: os.loadavg()
+    }
+  })
+})
+
+// 告警持久化 API（内存存储，重启清空）
+const alertsStore = []
+const MAX_ALERTS = 500
+
+app.get('/api/alerts', (req, res) => {
+  const { level, host, limit = 50 } = req.query
+  let result = [...alertsStore]
+  if (level) result = result.filter(a => a.level === level)
+  if (host) result = result.filter(a => a.host === host)
+  res.json({ total: result.length, alerts: result.slice(0, Number(limit)) })
+})
+
+app.post('/api/alerts', (req, res) => {
+  const alert = req.body
+  if (!alert || !alert.message) return res.status(400).json({ error: 'message required' })
+  const entry = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    timestamp: new Date().toISOString(),
+    level: alert.level || 'warning',
+    host: alert.host || 'unknown',
+    metric: alert.metric || 'custom',
+    message: alert.message,
+    value: alert.value ?? null,
+    threshold: alert.threshold ?? null
+  }
+  alertsStore.unshift(entry)
+  if (alertsStore.length > MAX_ALERTS) alertsStore.length = MAX_ALERTS
+  res.json(entry)
 })
 
 // 获取插件列表
@@ -654,8 +731,24 @@ app.get('/api/plugins/:id/manifest.json', (req, res) => {
 // ========== WebSocket 路由 ==========
 
 app.ws('/ws', (ws, req) => {
+  // ─── Token 认证 ───
+  const url = new URL(req.url, `http://${req.headers.host}`)
+  const token = url.searchParams.get('token')
+  const clientIp = req.ip || req.socket?.remoteAddress
+
+  if (!validateWsToken(token, clientIp)) {
+    auditLog('ws_auth_failed', { ip: clientIp, reason: 'invalid_token' }, req)
+    ws.close(4001, '认证失败：无效或过期的 token')
+    return
+  }
+
   const clientId = `client-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  console.log(`[Bridge] Client connected: ${clientId} (${req.socket.remoteAddress})`)
+  auditLog('ws_connected', { clientId, ip: clientIp }, req)
+  console.log(`[Bridge] Client connected: ${clientId} (${clientIp})`)
+
+  // 消息大小限制：1MB
+  const MAX_MSG_SIZE = 1024 * 1024
+  let messageSizeWarning = false
 
   // 心跳检测
   let heartbeatTimer = null
@@ -675,14 +768,29 @@ app.ws('/ws', (ws, req) => {
   // 消息处理
   ws.on('message', (raw) => {
     try {
+      // 消息大小检查
+      if (raw.length > MAX_MSG_SIZE) {
+        auditLog('ws_msg_too_large', { clientId, size: raw.length }, req)
+        sendError(ws, null, 'MESSAGE_TOO_LARGE', '消息大小超过限制')
+        return
+      }
+
       const msg = JSON.parse(raw.toString())
+
+      // 基础消息验证
+      if (!msg.type || typeof msg.type !== 'string') {
+        sendError(ws, null, 'INVALID_MESSAGE', '消息缺少 type 字段')
+        return
+      }
+
       handleMessage(ws, clientId, msg)
     } catch (err) {
-      sendError(ws, null, 'INVALID_MESSAGE', '无法解析消息: ' + err.message)
+      sendError(ws, null, 'INVALID_MESSAGE', '无法解析消息')
     }
   })
 
   ws.on('close', () => {
+    auditLog('ws_disconnected', { clientId }, req)
     console.log(`[Bridge] Client disconnected: ${clientId}`)
     stopHeartbeat()
     // 清理该客户端的所有 SSH 连接
@@ -694,6 +802,7 @@ app.ws('/ws', (ws, req) => {
   })
 
   ws.on('error', (err) => {
+    auditLog('ws_error', { clientId, error: err.message }, req)
     console.error(`[Bridge] WebSocket error (${clientId}):`, err.message)
   })
 })
@@ -762,8 +871,18 @@ function handleMessage(ws, clientId, msg) {
 async function handleConnect(ws, connectionId, requestId, config) {
   const { host, port, username, password, privateKey } = config
 
-  if (!host || !username) {
-    return sendError(ws, connectionId, requestId, 'INVALID_CONFIG', '缺少必需参数: host, username')
+  // ─── 输入验证 ───
+  const validation = validateConnectionParams({ host, port, username, password, privateKey })
+  if (!validation.valid) {
+    auditLog('ssh_connect_invalid', { host, errors: validation.errors })
+    return sendError(ws, connectionId, requestId, 'INVALID_CONFIG', validation.errors.join('; '))
+  }
+
+  // 注入检测
+  const allInputs = [host, username, password, privateKey].filter(Boolean).join(' ')
+  if (detectInjection(allInputs)) {
+    auditLog('injection_detected', { host, username }, null)
+    return sendError(ws, connectionId, requestId, 'INVALID_CONFIG', '检测到非法字符')
   }
 
   try {
@@ -852,13 +971,27 @@ async function handleConnect(ws, connectionId, requestId, config) {
 function handleTestConnection(ws, connectionId, requestId, config) {
   const { host, port, username, password, privateKey } = config
 
-  if (!host || !username) {
+  // ─── 输入验证 ───
+  const validation = validateConnectionParams({ host, port, username, password, privateKey })
+  if (!validation.valid) {
     return sendJson(ws, {
       type: 'test-result',
       connectionId,
       requestId,
       success: false,
-      message: '缺少必需参数: host, username',
+      message: validation.errors.join('; '),
+    })
+  }
+
+  // 注入检测
+  const allInputs = [host, username, password, privateKey].filter(Boolean).join(' ')
+  if (detectInjection(allInputs)) {
+    return sendJson(ws, {
+      type: 'test-result',
+      connectionId,
+      requestId,
+      success: false,
+      message: '检测到非法字符',
     })
   }
 
@@ -1081,6 +1214,21 @@ function handleSftp(ws, connectionId, requestId, payload) {
   }
 
   const { operation } = payload
+
+  // ─── 路径验证 ───
+  const pathFields = ['path', 'from', 'to', 'remotePath', 'dirPath']
+  for (const field of pathFields) {
+    if (payload[field] && !isValidPath(payload[field])) {
+      auditLog('sftp_path_invalid', { connectionId, field, value: payload[field] })
+      return sendError(ws, connectionId, requestId, 'INVALID_PATH', `非法路径: ${field}`)
+    }
+  }
+
+  // ─── 文件名验证 ───
+  if (payload.name && !isValidFilename(payload.name)) {
+    auditLog('sftp_filename_invalid', { connectionId, name: payload.name })
+    return sendError(ws, connectionId, requestId, 'INVALID_FILENAME', '无效的文件名')
+  }
 
   switch (operation) {
     case 'list': {
@@ -1702,11 +1850,21 @@ function handleDockerShell(ws, connectionId, requestId, payload) {
   }
 
   const { containerId, shell: shellName } = payload
-  if (!containerId) {
+  if (!containerId || typeof containerId !== 'string') {
     return sendError(ws, connectionId, requestId, 'INVALID_CONTAINER', '缺少容器 ID')
   }
 
+  // 容器 ID 注入防护：只允许字母数字和连字符
+  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(containerId)) {
+    auditLog('docker_injection_blocked', { containerId })
+    return sendError(ws, connectionId, requestId, 'INVALID_CONTAINER', '非法容器 ID')
+  }
+
+  // Shell 名称验证
   const shell = shellName || '/bin/bash'
+  if (!/^\/[a-zA-Z0-9/._-]+$/.test(shell)) {
+    return sendError(ws, connectionId, requestId, 'INVALID_SHELL', '非法 Shell 路径')
+  }
 
   // 先关闭已有 session
   const existingKey = `docker:${containerId}`

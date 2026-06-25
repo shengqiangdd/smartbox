@@ -8,6 +8,42 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+// ─── 声音提醒 ───
+
+const BRIDGE_URL = import.meta.env.VITE_BRIDGE_URL || ''
+
+function playAlertSound(severity: AlertSeverity, enabled: boolean) {
+  if (!enabled) return
+  try {
+    const ctx = new AudioContext()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.frequency.value = severity === 'critical' ? 880 : 520
+    osc.type = severity === 'critical' ? 'square' : 'sine'
+    gain.gain.value = 0.15
+    osc.start()
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + (severity === 'critical' ? 0.6 : 0.3))
+    osc.stop(ctx.currentTime + (severity === 'critical' ? 0.6 : 0.3))
+  } catch { /* AudioContext 不可用时静默失败 */ }
+}
+
+function syncAlertToBackend(event: AlertEvent) {
+  fetch(`${BRIDGE_URL}/api/alerts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      level: event.severity,
+      host: event.hostName,
+      metric: event.metric,
+      message: `${METRIC_LABELS[event.metric]} 使用率 ${event.value}% 超过阈值 ${event.threshold}%`,
+      value: event.value,
+      threshold: event.threshold
+    })
+  }).catch(() => { /* 静默失败，不影响前端 */ })
+}
+
 // ─── 类型定义 ───
 
 export type AlertMetric = 'cpu' | 'memory' | 'disk'
@@ -48,9 +84,12 @@ interface AlertState {
   counters: Record<string, number>
   /** 全局告警开关 */
   enabled: boolean
+  /** 声音提醒开关 */
+  soundEnabled: boolean
 
   // 操作
   toggleEnabled: () => void
+  toggleSound: () => void
   addRule: (rule: Omit<AlertRule, 'id'>) => void
   updateRule: (id: string, data: Partial<AlertRule>) => void
   deleteRule: (id: string) => void
@@ -98,8 +137,10 @@ export const useAlertStore = create<AlertState>()(
       history: [],
       counters: {},
       enabled: true,
+      soundEnabled: true,
 
       toggleEnabled: () => set((s) => ({ enabled: !s.enabled })),
+      toggleSound: () => set((s) => ({ soundEnabled: !s.soundEnabled })),
 
       addRule: (rule) => {
         const id = `${rule.metric}-${rule.severity}-${Date.now()}`
@@ -160,6 +201,11 @@ export const useAlertStore = create<AlertState>()(
                 }
                 fired.push(event)
 
+                // 播放提醒声音
+                playAlertSound(rule.severity, get().soundEnabled)
+                // 同步到后端持久化
+                syncAlertToBackend(event)
+
                 // 发送 Toast 通知
                 const icon = rule.severity === 'critical' ? '🚨' : '⚠️'
                 const label = METRIC_LABELS[rule.metric]
@@ -194,8 +240,9 @@ export const useAlertStore = create<AlertState>()(
       name: 'smartbox-alerts',
       partialize: (state) => ({
         rules: state.rules,
-        history: state.history.slice(0, 50), // 只持久化最近 50 条
+        history: state.history.slice(0, 50),
         enabled: state.enabled,
+        soundEnabled: state.soundEnabled,
       }),
     },
   ),

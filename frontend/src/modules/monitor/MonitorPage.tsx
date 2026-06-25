@@ -326,6 +326,8 @@ export default function MonitorPage() {
   const [interval, setIntervalDuration] = useState(5)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const prevNetRef = useRef<Record<string, { rx: number; tx: number; time: number }>>({})
+  const [health, setHealth] = useState<{ uptime: number; version: string; memory: { rss: number; heapUsed: number; systemFree: number; systemTotal: number }; connections: { active: number; loadavg: number[] } } | null>(null)
+  const alertHistory = useAlertStore((s) => s.history)
 
   // 扫描已连接的主机
   const scanHosts = useCallback(() => {
@@ -528,6 +530,20 @@ export default function MonitorPage() {
     scanHosts()
   }, [scanHosts])
 
+  // 拉取 Bridge 健康数据
+  const fetchHealth = useCallback(async () => {
+    try {
+      const res = await fetch('/api/health')
+      if (res.ok) setHealth(await res.json())
+    } catch { /* 静默失败 */ }
+  }, [])
+
+  useEffect(() => {
+    fetchHealth()
+    const timer = window.setInterval(fetchHealth, 30_000)
+    return () => clearInterval(timer)
+  }, [fetchHealth])
+
   useEffect(() => {
     return () => stopAutoRefresh()
   }, [stopAutoRefresh])
@@ -595,6 +611,56 @@ export default function MonitorPage() {
           </button>
         </div>
       </div>
+
+      {/* ─── 健康概览卡片 ─── */}
+      {health && (
+        <div className="flex shrink-0 items-center gap-4 border-b border-slate-700/30 px-4 py-2 overflow-x-auto">
+          {/* Bridge 运行时间 */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Activity size={12} className="text-green-400" />
+            <span className="text-[10px] text-slate-500">运行</span>
+            <span className="text-[11px] text-slate-300 font-mono">
+              {Math.floor(health.uptime / 3600)}h{Math.floor((health.uptime % 3600) / 60)}m
+            </span>
+          </div>
+          {/* Node 版本 */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Server size={12} className="text-cyan-400" />
+            <span className="text-[10px] text-slate-500">Node</span>
+            <span className="text-[11px] text-slate-300 font-mono">{health.version}</span>
+          </div>
+          {/* 活跃连接 */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Network size={12} className="text-amber-400" />
+            <span className="text-[10px] text-slate-500">连接</span>
+            <span className="text-[11px] text-slate-300 font-mono">{health.connections.active}</span>
+          </div>
+          {/* 系统内存 */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <MemoryStick size={12} className="text-violet-400" />
+            <span className="text-[10px] text-slate-500">内存</span>
+            <span className="text-[11px] text-slate-300 font-mono">
+              {Math.round((1 - health.memory.systemFree / health.memory.systemTotal) * 100)}%
+            </span>
+          </div>
+          {/* 负载均值 */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Cpu size={12} className="text-cyan-400" />
+            <span className="text-[10px] text-slate-500">负载</span>
+            <span className="text-[11px] text-slate-300 font-mono">
+              {health.connections.loadavg.map((v) => v.toFixed(2)).join(' / ')}
+            </span>
+          </div>
+          {/* 最近告警 */}
+          <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+            <Bell size={12} className={alertHistory.length > 0 ? 'text-red-400' : 'text-slate-600'} />
+            <span className="text-[10px] text-slate-500">告警</span>
+            <span className={`text-[11px] font-mono ${alertHistory.length > 0 ? 'text-red-300' : 'text-slate-500'}`}>
+              {alertHistory.length}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* 主机选择 */}
       <div className="flex shrink-0 items-center gap-2 border-b border-slate-700/30 px-4 py-2 overflow-x-auto">
