@@ -63,14 +63,14 @@
 - [x] ✅ 行号、代码折叠、搜索替换
 - [x] ✅ 多 Tab 文件编辑 + IndexedDB 自动保存
 - [x] ✅ 未保存提示 (dot 指示器) + Ctrl+S / 双击保存到远程
-- [ ] 🟡 文件类型自动识别（内容嗅探）
+- [x] ✅ 文件类型自动识别（内容嗅探 — shebang + magic bytes + 已知文件名）
 
 ### 🟡 文件格式化
 
 - [x] ✅ JSON 格式化/压缩/验证（通过插件 json-formatter）
 - [x] ✅ Base64 编解码（通过插件 base64-encode）
-- [ ] 🟢 YAML 格式化
-- [ ] 🟢 Markdown 预览（实时渲染）
+- [x] ✅ YAML 格式化/验证/→JSON 转换（通过插件 yaml-formatter）
+- [x] ✅ Markdown 预览（零外部依赖 MD→HTML 渲染器）
 
 ### 🔴 插件系统
 
@@ -124,7 +124,7 @@
 
 - [x] ✅ README.md / CHANGELOG.md / CONTRIBUTING.md / DEPLOY.md
 - [x] ✅ docs/PLUGIN_API.md — 插件开发文档（9720 字）
-- [ ] 🟡 docs/ARCHITECTURE.md
+- [x] ✅ docs/ARCHITECTURE.md — 全面架构文档（402行，含整体架构/模块划分/数据流/安全设计/ADR）
 
 ### 🟢 CI/CD
 
@@ -140,5 +140,5 @@
 |------|------|------|------|------|
 | M3 SSH + SFTP | 27 | 0 | 27 | 🎉 100% |
 | M4 AI + 插件 | 20 | 0 | 20 | 🎉 100% |
-| M5 打磨发布 | 14 | 0 | 14 | 🎉 100% |
-| **总计** | **61** | **0** | **61** | **🎉 100% 完工** |
+| M5 打磨发布 | 17 | 0 | 17 | 🎉 100% |
+| **总计** | **64** | **0** | **64** | **🎉 100% 完工** |

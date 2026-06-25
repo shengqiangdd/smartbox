@@ -12,23 +12,25 @@
 
 | 功能 | 状态 | 说明 |
 |------|------|------|
-| 🖥️ **SSH 终端** | ✅ | xterm.js + node-pty，支持多连接管理、实时交互 |
-| 📁 **文件管理器** | ✅ | 文件树浏览、创建、删除、重命名 |
-| 📝 **CodeMirror 编辑器** | ✅ | 8 种语言语法高亮，IndexedDB 自动保存 |
-| 🤖 **AI 侧边栏** | ✅ | OpenRouter API 集成，选中代码一键 AI 优化 |
-| 🔌 **插件系统** | ✅ | 5 个示例插件，可热加载，开放 API |
-| 🎨 **主题切换** | ✅ | 亮色 / 暗色主题，全局生效 |
-| ⌨️ **命令面板** | ✅ | Ctrl+P 快速搜索和执行命令 |
-| 📡 **WebSocket 实时通信** | ✅ | 实时消息推送 |
-| 🐳 **Docker 部署** | ✅ | 一键容器化部署 |
-| 📦 **PWA 支持** | 🚧 | 下一阶段 |
-| 🖱️ **终端分屏** | 🚧 | 下一阶段 |
+| 🖥️ **SSH 终端** | ✅ | xterm.js + WebSocket，多连接/多Tab/分屏/同步命令/搜索 |
+| 📁 **SFTP 文件管理器** | ✅ | 树形浏览/拖拽上传/大文件分块/递归搜索/右键菜单 |
+| 📝 **CodeMirror 编辑器** | ✅ | 20+ 语言语法高亮，内容嗅探智能识别，IndexedDB 自动保存 |
+| 🤖 **AI 侧边栏** | ✅ | OpenRouter API 集成，65+ 模型，选中代码→6 种 AI 操作（解释/重构/修复/优化/注释/翻译） |
+| 🔌 **插件系统** | ✅ | iframe 沙箱隔离，14 个内置插件（46 条命令），在线市场安装，热加载 |
+| 🎨 **主题切换** | ✅ | 亮色/暗色/跟随系统，CSS 变量体系全局生效 |
+| ⌨️ **命令面板** | ✅ | Ctrl+P 模糊搜索，快捷键列表（Shift+?） |
+| 📡 **WebSocket 实时通信** | ✅ | 心跳保活/指数退避重连/单一通道复用 |
+| 🐳 **Docker 部署** | ✅ | 一键容器化，CI 自动构建推送 |
+| 📦 **PWA 支持** | ✅ | vite-plugin-pwa + Workbox 预缓存，离线体验优化 + 网络状态指示条 |
+| 🖱️ **终端分屏** | ✅ | SplitContainer 递归分屏，拖拽合并（4 方向插入），多主机同步命令 |
+| 🔒 **安全加固** | ✅ | SSH 凭据 AES-GCM 加密存储，CSP 头，路径穿越防护，插件 iframe 沙箱 |
 
 ## 🛠️ 技术栈
 
 ```
-前端: React 18 + TypeScript + Vite 6 + CodeMirror 6 + xterm.js + Tailwind CSS 3 + Zustand
-后端: Node.js 18+ (原生 http 模块) + WebSocket (ws) + SSH2 (node-pty)
+前端: React 18 + TypeScript + Vite 6 + CodeMirror 6 + xterm.js + Tailwind CSS 3 + Zustand + lucide-react
+后端: Node.js 22 + Express 5 + express-ws + ssh2 (SSH/SFTP)
+部署: Docker + Docker Compose (单容器), CI: GitHub Actions
 ```
 
 ## 🚀 快速开始
