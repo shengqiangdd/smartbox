@@ -904,6 +904,10 @@ function handleSftp(ws, connectionId, requestId, payload) {
 
       conn.sftp.write(handle, buf, 0, buf.length, writeOffset, (writeErr) => {
         if (writeErr) {
+          conn.sftp.close(state.handle, () => {})
+          global.__chunkUploads.delete(chunkKey)
+          const rmCmd = `rm -f ${escapeShellArg(state.tmpPath)}`
+          sudoExec(conn, rmCmd, () => {})
           return sendError(ws, connectionId, requestId, 'SFTP_ERROR', `写入分块失败: ${writeErr.message}`)
         }
         state.writeOffset += buf.length
@@ -937,6 +941,8 @@ function handleSftp(ws, connectionId, requestId, payload) {
       conn.sftp.close(handle, (closeErr) => {
         global.__chunkUploads.delete(chunkKey)
         if (closeErr) {
+          const rmCmd = `rm -f ${escapeShellArg(tmpPath)}`
+          sudoExec(conn, rmCmd, () => {})
           return sendError(ws, connectionId, requestId, 'SFTP_ERROR', `关闭临时文件失败: ${closeErr.message}`)
         }
 
@@ -1188,6 +1194,9 @@ function cleanupConnection(connectionId) {
     for (const [key, state] of global.__chunkUploads) {
       if (key.startsWith(`${connectionId}:`)) {
         try { conn.sftp.close(state.handle) } catch (_) { /* ignore */ }
+        // 删除远程临时文件（如果存在）
+        const rmCmd = `rm -f ${escapeShellArg(state.tmpPath)}`
+        sudoExec(conn, rmCmd, () => {})
         global.__chunkUploads.delete(key)
       }
     }
