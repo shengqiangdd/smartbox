@@ -18,6 +18,10 @@ interface HostStats {
   loadAvg: string
   netRx: number
   netTx: number
+  /** Top 5 CPU 消耗进程 */
+  topProcs: Array<{ pid: number; user: string; cpu: number; mem: number; command: string }>
+  /** 磁盘 IO 统计 */
+  io: { readBps: number; writeBps: number }
   timestamp: number
 }
 
@@ -109,6 +113,46 @@ function parseNetRxTx(stdout: string): { rx: number; tx: number } {
     }
   }
   return ifaceCount > 0 ? { rx: rxTotal, tx: txTotal } : { rx: 0, tx: 0 }
+}
+
+/** 解析 ps aux 输出的 Top 5 CPU 进程 */
+function parseTopProcs(stdout: string): Array<{ pid: number; user: string; cpu: number; mem: number; command: string }> {
+  const lines = stdout.trim().split('\n')
+  const procs: Array<{ pid: number; user: string; cpu: number; mem: number; command: string }> = []
+  for (const line of lines) {
+    const parts = line.trim().split(/\s+/)
+    if (parts.length >= 11 && parts[0] !== 'USER') {
+      procs.push({
+        user: parts[0],
+        pid: parseInt(parts[1]) || 0,
+        cpu: parseFloat(parts[2]) || 0,
+        mem: parseFloat(parts[3]) || 0,
+        command: parts.slice(10).join(' ').slice(0, 50),
+      })
+    }
+  }
+  return procs.slice(0, 5)
+}
+
+/** 解析 /proc/diskstats 获取磁盘 IO（累计扇区数，512 字节/扇区） */
+function parseDiskIo(stdout: string): { readBps: number; writeBps: number } {
+  const lines = stdout.trim().split('\n')
+  let readSectors = 0
+  let writeSectors = 0
+  for (const line of lines) {
+    const parts = line.trim().split(/\s+/)
+    // 格式: major minor name reads_completed reads_merged sectors_read ... writes_completed writes_merged sectors_written
+    if (parts.length >= 14) {
+      const devName = parts[2]
+      // 只统计主磁盘（sdX / vdX / nvmeXnY），跳过分区
+      if (/^(sd|vd|nvme\d+n\d+|xvd)[a-z]?$/.test(devName) || /^nvme\d+n\d+$/.test(devName)) {
+        readSectors += parseInt(parts[5]) || 0
+        writeSectors += parseInt(parts[9]) || 0
+      }
+    }
+  }
+  // 返回累计值，外部做差分计算
+  return { readBps: readSectors * 512, writeBps: writeSectors * 512 }
 }
 
 function formatBytes(bytes: number): string {
@@ -246,6 +290,14 @@ function mockStats(id: string, name: string, host: string): HostStats {
     loadAvg: `${s.load1.toFixed(2)}, ${s.load5.toFixed(2)}, ${s.load15.toFixed(2)}`,
     netRx: Math.round(s.netRx),
     netTx: Math.round(s.netTx),
+    topProcs: [
+      { pid: 1024, user: 'root', cpu: Math.round(s.cpu * 0.3 * 10) / 10, mem: 2.1, command: 'node server.js' },
+      { pid: 2048, user: 'www', cpu: Math.round(s.cpu * 0.2 * 10) / 10, mem: 3.5, command: 'nginx: worker' },
+      { pid: 3072, user: 'root', cpu: Math.round(s.cpu * 0.1 * 10) / 10, mem: 1.2, command: 'sshd: root@pts/0' },
+      { pid: 4096, user: 'mysql', cpu: Math.round(s.cpu * 0.08 * 10) / 10, mem: 8.4, command: 'mysqld' },
+      { pid: 5120, user: 'root', cpu: Math.round(s.cpu * 0.05 * 10) / 10, mem: 0.5, command: 'bash' },
+    ],
+    io: { readBps: Math.round(Math.random() * 5e6 + 1e6), writeBps: Math.round(Math.random() * 3e6 + 5e5) },
     timestamp: Date.now(),
   }
 }
@@ -309,7 +361,7 @@ export default function MonitorPage() {
 
     try {
       // 并发执行多个命令
-      const [cpuRes, memRes, diskRes, uptimeRes, netRes] = await Promise.all([
+      const [cpuRes, memRes, diskRes, uptimeRes, netRes, procRes, ioRes] = await Promise.all([
         fetch('/api/ssh/exec', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -334,6 +386,16 @@ export default function MonitorPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ connectionId: hostId, command: "cat /proc/net/dev" }),
+        }).then((r) => r.json()),
+        fetch('/api/ssh/exec', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ connectionId: hostId, command: 'ps aux --sort=-%cpu | head -6' }),
+        }).then((r) => r.json()),
+        fetch('/api/ssh/exec', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ connectionId: hostId, command: 'cat /proc/diskstats' }),
         }).then((r) => r.json()),
       ])
 
@@ -363,6 +425,9 @@ export default function MonitorPage() {
       }
       prevNetRef.current[hostId] = { rx: net.rx, tx: net.tx, time: now }
 
+      const topProcs = parseTopProcs(procRes.stdout || '')
+      const ioRaw = parseDiskIo(ioRes.stdout || '')
+
       return {
         host: conn.host,
         name: conn.name || hostId.slice(0, 8),
@@ -373,6 +438,8 @@ export default function MonitorPage() {
         loadAvg,
         netRx: netRxSpeed,
         netTx: netTxSpeed,
+        topProcs,
+        io: ioRaw,
         timestamp: Date.now(),
       }
     } catch {
@@ -644,7 +711,51 @@ export default function MonitorPage() {
                             ↑ <span className="text-slate-300 font-mono">{formatSpeed(s.netTx)}</span>
                           </span>
                         </div>
+                        {/* 磁盘 IO */}
+                        <HardDrive size={12} className="text-teal-500" />
+                        <div className="flex gap-4 text-[11px]">
+                          <span className="text-slate-400">
+                            R <span className="text-slate-300 font-mono">{formatSpeed(s.io.readBps)}</span>
+                          </span>
+                          <span className="text-slate-400">
+                            W <span className="text-slate-300 font-mono">{formatSpeed(s.io.writeBps)}</span>
+                          </span>
+                        </div>
                       </div>
+
+                      {/* Top 5 进程 */}
+                      {s.topProcs.length > 0 && (
+                        <div className="pt-2 border-t border-slate-700/30">
+                          <div className="text-[10px] text-slate-500 mb-1.5 flex items-center gap-1">
+                            <Cpu size={10} className="text-cyan-500" />
+                            Top 5 进程
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-[10px]">
+                              <thead>
+                                <tr className="text-slate-600">
+                                  <th className="text-left font-normal pr-2">PID</th>
+                                  <th className="text-left font-normal pr-2">USER</th>
+                                  <th className="text-right font-normal pr-2">CPU%</th>
+                                  <th className="text-right font-normal pr-2">MEM%</th>
+                                  <th className="text-left font-normal">COMMAND</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {s.topProcs.map((p, i) => (
+                                  <tr key={p.pid} className={i % 2 === 0 ? 'text-slate-400' : 'text-slate-500'}>
+                                    <td className="pr-2 font-mono">{p.pid}</td>
+                                    <td className="pr-2">{p.user}</td>
+                                    <td className="pr-2 text-right font-mono">{p.cpu}</td>
+                                    <td className="pr-2 text-right font-mono">{p.mem}</td>
+                                    <td className="truncate max-w-[120px]">{p.command}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

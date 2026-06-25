@@ -39,6 +39,18 @@ export interface ExportData {
     }
     /** 已启用的插件列表 */
     enabledPlugins: string[]
+    /** 告警配置 */
+    alertConfig?: {
+      enabled: boolean
+      rules: Array<{
+        id: string
+        metric: string
+        threshold: number
+        severity: string
+        enabled: boolean
+        consecutive: number
+      }>
+    }
     /** 应用状态 */
     appState: {
       theme: 'dark' | 'light' | 'system'
@@ -105,6 +117,18 @@ export function collectExportData(): ExportData['data'] {
     fmSidebarOpen?: boolean
   } | null
 
+  const alertStore = getStore('smartbox-alerts') as {
+    enabled?: boolean
+    rules?: Array<{
+      id: string
+      metric: string
+      threshold: number
+      severity: string
+      enabled: boolean
+      consecutive: number
+    }>
+  } | null
+
   return {
     connections: sshStore?.connections || [],
     aiConfig: aiStore?.config || {
@@ -119,6 +143,9 @@ export function collectExportData(): ExportData['data'] {
       pluginStore?.plugins
         ?.filter((p) => p.enabled)
         .map((p) => p.manifest.id) || [],
+    alertConfig: alertStore?.rules
+      ? { enabled: alertStore.enabled ?? true, rules: alertStore.rules }
+      : undefined,
     appState: {
       theme: (appStore?.theme as 'dark' | 'light' | 'system') || 'dark',
       sidebarCollapsed: appStore?.sidebarCollapsed ?? false,
@@ -289,7 +316,21 @@ function applyImportData(data: ExportData['data']): void {
     }
   }
 
-  // 4. 导入 App 状态（仅覆盖 UI 偏好）
+  // 4. 导入告警配置
+  if (d.alertConfig) {
+    try {
+      const raw = localStorage.getItem('smartbox-alerts')
+      const store = raw ? JSON.parse(raw) : { state: {} }
+      store.state = store.state || {}
+      store.state.enabled = d.alertConfig.enabled
+      store.state.rules = d.alertConfig.rules
+      localStorage.setItem('smartbox-alerts', JSON.stringify(store))
+    } catch (e) {
+      console.warn('[ImportExport] 导入告警配置失败:', e)
+    }
+  }
+
+  // 5. 导入 App 状态（仅覆盖 UI 偏好）
   if (d.appState) {
     try {
       const raw = localStorage.getItem('smartbox-app')

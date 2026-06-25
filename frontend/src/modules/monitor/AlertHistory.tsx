@@ -1,7 +1,7 @@
 /**
  * 告警历史面板
  *
- * 展示最近的告警事件记录，支持清空和折叠。
+ * 展示最近的告警事件记录，支持清空、折叠和导出（CSV / JSON）。
  */
 
 import { useState } from 'react'
@@ -13,6 +13,9 @@ import {
   ShieldAlert,
   Shield,
   Clock,
+  Download,
+  FileSpreadsheet,
+  FileJson,
 } from 'lucide-react'
 import { useAlertStore } from '../../stores/alert-store'
 import type { AlertEvent } from '../../stores/alert-store'
@@ -93,6 +96,58 @@ function EventRow({ event }: { event: AlertEvent }) {
   )
 }
 
+const METRIC_LABELS: Record<string, string> = {
+  cpu: 'CPU',
+  memory: '内存',
+  disk: '磁盘',
+}
+
+function exportToCsv(history: AlertEvent[]) {
+  if (history.length === 0) return
+  const header = '时间,主机,指标,当前值(%),阈值(%),严重级别\n'
+  const rows = history
+    .map((e) => {
+      const time = new Date(e.timestamp).toLocaleString('zh-CN')
+      const metric = METRIC_LABELS[e.metric] || e.metric
+      const severity = e.severity === 'critical' ? '严重' : '警告'
+      return `"${time}","${e.hostName}","${metric}",${e.value},${e.threshold},"${severity}"`
+    })
+    .join('\n')
+  const bom = '\uFEFF' // UTF-8 BOM for Excel
+  const blob = new Blob([bom + header + rows], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `smartbox-alerts-${new Date().toISOString().slice(0, 10)}.csv`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+function exportToJson(history: AlertEvent[]) {
+  if (history.length === 0) return
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    count: history.length,
+    events: history.map((e) => ({
+      ...e,
+      time: new Date(e.timestamp).toISOString(),
+      metricLabel: METRIC_LABELS[e.metric] || e.metric,
+      severityLabel: e.severity === 'critical' ? '严重' : '警告',
+    })),
+  }
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `smartbox-alerts-${new Date().toISOString().slice(0, 10)}.json`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 export default function AlertHistory() {
   const { history, clearHistory } = useAlertStore()
   const [expanded, setExpanded] = useState(false)
@@ -124,18 +179,42 @@ export default function AlertHistory() {
           </span>
         )}
 
-        {/* 清空按钮 */}
+        {/* 导出 + 清空按钮 */}
         {history.length > 0 && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              clearHistory()
-            }}
-            className="ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-slate-600 transition-colors hover:bg-red-900/20 hover:text-red-400"
-          >
-            <Trash2 size={10} />
-            清空
-          </button>
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                exportToCsv(history)
+              }}
+              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-slate-600 transition-colors hover:bg-smartbox-900/20 hover:text-smartbox-400"
+              title="导出 CSV"
+            >
+              <FileSpreadsheet size={10} />
+              CSV
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                exportToJson(history)
+              }}
+              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-slate-600 transition-colors hover:bg-smartbox-900/20 hover:text-smartbox-400"
+              title="导出 JSON"
+            >
+              <FileJson size={10} />
+              JSON
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                clearHistory()
+              }}
+              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-slate-600 transition-colors hover:bg-red-900/20 hover:text-red-400"
+            >
+              <Trash2 size={10} />
+              清空
+            </button>
+          </div>
         )}
       </button>
 
