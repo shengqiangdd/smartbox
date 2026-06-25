@@ -14,10 +14,12 @@ import {
   Eye,
   EyeOff,
   Play,
+  Upload,
 } from 'lucide-react'
 import { useSshStore } from '../../stores/ssh-store'
 import ConnectionForm from './ConnectionForm'
 import BatchExecPanel from './BatchExecPanel'
+import BatchFilePanel from './BatchFilePanel'
 import type { SshConnection } from '../../types/ssh'
 
 interface Props {
@@ -32,6 +34,7 @@ export default function ConnectionList({ onConnect }: Props) {
 
   const [showForm, setShowForm] = useState(false)
   const [showBatch, setShowBatch] = useState(false)
+  const [showFileBatch, setShowFileBatch] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [filter, setFilter] = useState('')
 
@@ -124,6 +127,14 @@ export default function ConnectionList({ onConnect }: Props) {
             className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500"
           />
         </div>
+        <button
+          onClick={() => setShowFileBatch(true)}
+          className="btn-ghost shrink-0"
+          title="批量文件分发"
+        >
+          <Upload size={14} />
+          分发
+        </button>
         <button
           onClick={() => setShowBatch(true)}
           className="btn-ghost shrink-0"
@@ -321,6 +332,9 @@ export default function ConnectionList({ onConnect }: Props) {
           }}
         />
       )}
+
+      {/* 批量文件分发弹窗 */}
+      {showFileBatch && <BatchFilePanel onClose={() => setShowFileBatch(false)} />}
 
       {/* 批量执行弹窗 */}
       {showBatch && <BatchExecPanel onClose={() => setShowBatch(false)} />}
