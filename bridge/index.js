@@ -308,6 +308,43 @@ app.post('/api/docker/rmi', (req, res) => {
   dockerExec(connectionId, `docker rmi ${f} ${escapeShellArg(id)} 2>&1`, res)
 })
 
+// 拉取镜像
+app.post('/api/docker/pull', (req, res) => {
+  const { connectionId, image, allTags } = req.body
+  if (!connectionId || !image) return res.status(400).json({ error: 'Missing connectionId or image' })
+  const flag = allTags ? '--all-tags ' : ''
+  dockerExec(connectionId, `docker pull ${flag}${escapeShellArg(image)} 2>&1`, res)
+})
+
+// 推送镜像
+app.post('/api/docker/push', (req, res) => {
+  const { connectionId, image } = req.body
+  if (!connectionId || !image) return res.status(400).json({ error: 'Missing connectionId or image' })
+  dockerExec(connectionId, `docker push ${escapeShellArg(image)} 2>&1`, res)
+})
+
+// 打标签
+app.post('/api/docker/tag', (req, res) => {
+  const { connectionId, source, target } = req.body
+  if (!connectionId || !source || !target) return res.status(400).json({ error: 'Missing connectionId, source or target' })
+  dockerExec(connectionId, `docker tag ${escapeShellArg(source)} ${escapeShellArg(target)} 2>&1`, res)
+})
+
+// 清理未使用镜像
+app.post('/api/docker/prune', (req, res) => {
+  const { connectionId, all } = req.body
+  if (!connectionId) return res.status(400).json({ error: 'Missing connectionId' })
+  const flag = all ? '-a ' : ''
+  dockerExec(connectionId, `docker image prune ${flag}-f 2>&1`, res)
+})
+
+// 查看镜像历史
+app.post('/api/docker/history', (req, res) => {
+  const { connectionId, id } = req.body
+  if (!connectionId || !id) return res.status(400).json({ error: 'Missing connectionId or id' })
+  dockerExec(connectionId, `docker history ${escapeShellArg(id)} --no-trunc --format '{{json .}}' 2>/dev/null`, res)
+})
+
 // 在容器中执行命令（交互式终端）
 app.post('/api/docker/exec', (req, res) => {
   const { connectionId, id, command, shell } = req.body
