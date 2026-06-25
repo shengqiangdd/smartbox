@@ -56,11 +56,11 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
 
   // 初始化：加载当前已连接的 sessions
   const loadConnectedSessions = useCallback(() => {
-    const available = sessions.map((s) => {
-      const conn = connections.find((c) => c.id === s.connectionId)
+    const available = sessions.map((id) => {
+      const conn = connections.find((c) => c.id === id)
       return {
-        connId: s.connectionId,
-        name: conn?.name || s.connectionId.slice(0, 8),
+        connId: id,
+        name: conn?.name || id.slice(0, 8),
         host: conn?.host || 'unknown',
         path: destPath,
         status: 'pending' as const,
@@ -136,7 +136,7 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
         })
 
         try {
-          const wsClient = getWsClient(target.connId)
+          const wsClient = getWsClient()
           if (!wsClient) {
             throw new Error('WebSocket 未连接')
           }
@@ -157,7 +157,8 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
             await chunkedUpload(wsClient, target.connId, content, fullPath, file.size, i)
           } else {
             // 小文件：直接 writeFile
-            const result = await wsClient.request('sftp', {
+            const result = await wsClient.request({
+              type: 'sftp',
               connectionId: target.connId,
               operation: 'writefile',
               path: fullPath,
@@ -165,7 +166,7 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
             })
 
             if (!result.success) {
-              throw new Error(result.error || '上传失败')
+              throw new Error(String(result.error || '上传失败'))
             }
 
             setTargets((prev) => {
@@ -211,14 +212,15 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
     return new Promise(async (resolve, reject) => {
       try {
         // 启动分块会话
-        const startResult = await wsClient.request('sftp', {
+        const startResult = await wsClient.request({
+          type: 'sftp',
           connectionId: connId,
           operation: 'chunk_start',
           path,
         })
 
         if (!startResult.success) {
-          return reject(new Error(startResult.error || '分块上传启动失败'))
+          return reject(new Error(String(startResult.error || '分块上传启动失败')))
         }
 
         const chunkId = startResult.chunkId
@@ -231,7 +233,8 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
           const end = Math.min(start + CHUNK_SIZE, content.length)
           const chunkContent = content.slice(start, end)
 
-          const appendResult = await wsClient.request('sftp', {
+          const appendResult = await wsClient.request({
+            type: 'sftp',
             connectionId: connId,
             operation: 'chunk_append',
             chunkId,
@@ -239,7 +242,7 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
           })
 
           if (!appendResult.success) {
-            return reject(new Error(appendResult.error || '分块写入失败'))
+            return reject(new Error(String(appendResult.error || '分块写入失败')))
           }
 
           const progress = Math.round(((c + 1) / totalChunks) * 90) + 10
@@ -255,7 +258,8 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
         }
 
         // 完成
-        const finishResult = await wsClient.request('sftp', {
+        const finishResult = await wsClient.request({
+          type: 'sftp',
           connectionId: connId,
           operation: 'chunk_finish',
           chunkId,
@@ -263,7 +267,7 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
         })
 
         if (!finishResult.success) {
-          return reject(new Error(finishResult.error || '分块上传完成失败'))
+          return reject(new Error(String(finishResult.error || '分块上传完成失败')))
         }
 
         resolve()

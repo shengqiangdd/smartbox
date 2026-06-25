@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { X } from 'lucide-react'
-import type { QuickCommand } from './index'
+import type { QuickCommand, CommandVariable } from './index'
 import { resolveCommandTemplate, extractVariables } from './index'
 
 interface VariableModalProps {
@@ -66,7 +66,7 @@ export default function VariableModal({ cmd, onConfirm, onCancel }: VariableModa
         <div className="space-y-3 p-4">
           <p className="text-[11px] text-slate-500">此命令包含变量占位符，请填写实际值：</p>
 
-          {(cmd.variables || Object.keys(values).map((k) => ({ name: k, label: k }))).map((v) => (
+          {(cmd.variables || Object.keys(values).map((k) => ({ name: k, label: k } as CommandVariable))).map((v) => (
             <div key={v.name}>
               <label className="mb-1 block text-[11px] font-medium text-slate-400">
                 {v.label || v.name}
