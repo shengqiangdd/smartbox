@@ -42,6 +42,7 @@ import {
 } from 'lucide-react'
 import { useFileStore } from '../../stores/file-store'
 import { getWsClient } from '../../services/websocket'
+import { sniffLanguage } from '../../utils/content-sniff'
 import { AlertModal, ConfirmModal } from '../../components/ConfirmModal'
 import type { SftpEntry } from '../../types/ssh'
 import type { WsClient } from '../../services/websocket'
@@ -641,7 +642,7 @@ export default function SftpBrowser({
   const openInEditor = async (entry: SftpEntry) => {
     if (!sessionId || entry.type === 'directory') return
     const tabId = `sftp_${sessionId}_${entry.path}`
-    const lang = detectLanguage(entry.name)
+    let lang = detectLanguage(entry.name)
 
     // 先尝试读取文件内容
     try {
@@ -653,6 +654,11 @@ export default function SftpBrowser({
       })
       if (resp.type === 'sftp-result' && resp.operation === 'readfile') {
         const content = atob(resp.data as string)
+        // 扩展名未识别时，用内容嗅探提升准确度
+        if (lang === 'text' && content) {
+          const sniffed = sniffLanguage(entry.name, content)
+          lang = sniffed.language
+        }
         fileStore.openFile({
           id: tabId,
           name: entry.name,
