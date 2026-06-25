@@ -9,7 +9,7 @@ import {
   PlugZap,
   Brain,
 } from 'lucide-react'
-import { useSshStore } from '../../stores/ssh-store'
+import { useSshStore, decryptConnection } from '../../stores/ssh-store'
 import { useAppStore, type SplitDef } from '../../stores/app-store'
 import { getWsClient, type WsStatus } from '../../services/websocket'
 import ConnectionList from './ConnectionList'
@@ -78,14 +78,16 @@ export default function SshPlaceholder() {
     const store = useSshStore.getState()
 
     try {
+      // 🔐 解密存储的密码/私钥后再发送
+      const decryptedConn = await decryptConnection(conn)
       await wsClient.request({
         type: 'connect',
         connectionId: sessionId,
         host: conn.host,
         port: conn.port,
         username: conn.username,
-        password: conn.password,
-        privateKey: conn.privateKey,
+        password: decryptedConn.password,
+        privateKey: decryptedConn.privateKey,
       })
 
       const session: SshSession = {

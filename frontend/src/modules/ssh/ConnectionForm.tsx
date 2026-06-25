@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react'
 import { X, CheckCircle2, AlertCircle, Loader2, PlugZap, Eye, EyeOff } from 'lucide-react'
-import { useSshStore } from '../../stores/ssh-store'
+import { useSshStore, decryptConnection } from '../../stores/ssh-store'
 import { getWsClient } from '../../services/websocket'
+import { encryptField } from '../../services/secure-store'
 import type { AuthType, SshConnection } from '../../types/ssh'
 
 interface Props {
@@ -23,9 +24,18 @@ export default function ConnectionForm({ onClose, editId }: Props) {
   const [port, setPort] = useState(String(existing?.port || 22))
   const [username, setUsername] = useState(existing?.username || 'root')
   const [authType, setAuthType] = useState<AuthType>(existing?.authType || 'password')
-  const [password, setPassword] = useState(existing?.password || '')
+  // 如果是编辑已有连接，existing 中的 password/privateKey 可能是加密的
+  // 这里直接展示原始值（加密字符串），让用户重新输入或覆盖
+  // 如果加密值以 !e: 开头，显示为占位符提示用户重新输入
+  const existingPwd = existing?.password || ''
+  const existingKey = existing?.privateKey || ''
+  const [password, setPassword] = useState(
+    existingPwd.startsWith('!e:') ? '' : existingPwd,
+  )
   const [showPassword, setShowPassword] = useState(false)
-  const [privateKey, setPrivateKey] = useState(existing?.privateKey || '')
+  const [privateKey, setPrivateKey] = useState(
+    existingKey.startsWith('!e:') ? '' : existingKey,
+  )
   const [group, setGroup] = useState(existing?.group || '')
   const [testStatus, setTestStatus] = useState<TestStatus>('idle')
   const [testMessage, setTestMessage] = useState('')
@@ -82,26 +92,34 @@ export default function ConnectionForm({ onClose, editId }: Props) {
     }
   }, [host, port, username, password, privateKey, authType, wsClient])
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!name || !host || !username) return
-    const data = getConnectionData()
+    const raw = getConnectionData()
     // 检查重复连接：相同 host + port + username
     if (!existing) {
       const dup = connections.find(c =>
-        c.host === data.host &&
-        c.port === data.port &&
-        c.username === data.username
+        c.host === raw.host &&
+        c.port === raw.port &&
+        c.username === raw.username
       )
       if (dup) {
         setError('已存在完全相同的连接：' + (dup.name || dup.host))
         return
       }
     }
+    // ⚠️ 加密密码和私钥后再存
+    const data = { ...raw }
+    if (data.password) {
+      data.password = await encryptField(data.password) as string
+    }
+    if (data.privateKey) {
+      data.privateKey = await encryptField(data.privateKey) as string
+    }
     if (existing) {
-      updateConnection(existing.id, data)
+      updateConnection(existing.id, data as SshConnection)
     } else {
-      addConnection(data)
+      addConnection(data as SshConnection)
     }
     onClose()
   }

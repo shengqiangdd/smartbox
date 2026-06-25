@@ -37,6 +37,27 @@ expressWs(app)
 
 // 中间件
 app.use(cors())
+
+// ─── 安全头 ───
+app.use((req, res, next) => {
+  // Content Security Policy — 限制脚本来源
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; font-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'self'",
+  )
+  // 防止 MIME 类型嗅探
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  // 防止点击劫持
+  res.setHeader('X-Frame-Options', 'DENY')
+  // 禁用服务器信息泄露
+  res.setHeader('X-Powered-By', '')
+  // 引用来源策略
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
+  // 权限限制
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+  next()
+})
+
 app.use(express.json({ limit: '100mb' }))
 
 // ========== HTTP API 路由 ==========
@@ -86,8 +107,17 @@ app.get('/api/plugins', (req, res) => {
 
 // 获取单个插件的 JS 文件
 app.get('/api/plugins/:id/plugin.js', (req, res) => {
-  const pluginDir = path.join(pluginsDir, req.params.id)
+  // ⚠️ 路径穿越防护：确保路径在 pluginsDir 内
+  const id = req.params.id.replace(/\.\.\//g, '').replace(/\.\./g, '').replace(/[\\/]/g, '')
+  if (!id) {
+    return res.status(400).json({ error: 'Invalid plugin ID' })
+  }
+  const pluginDir = path.join(pluginsDir, id)
   const jsPath = path.join(pluginDir, 'plugin.js')
+  // 确保最终路径在 pluginsDir 内
+  if (!jsPath.startsWith(pluginsDir + path.sep)) {
+    return res.status(400).json({ error: 'Invalid plugin ID' })
+  }
   if (fs.existsSync(jsPath)) {
     const content = fs.readFileSync(jsPath, 'utf-8')
     res.setHeader('Content-Type', 'application/javascript')
@@ -255,7 +285,11 @@ app.post('/api/plugins/uninstall', (req, res) => {
 
 // 获取单个插件的 Manifest
 app.get('/api/plugins/:id/manifest.json', (req, res) => {
-  const manifestPath = path.join(pluginsDir, req.params.id, 'manifest.json')
+  const id = req.params.id.replace(/\.\.\//g, '').replace(/\.\./g, '').replace(/[\\/]/g, '')
+  if (!id) {
+    return res.status(400).json({ error: 'Invalid plugin ID' })
+  }
+  const manifestPath = path.join(pluginsDir, id, 'manifest.json')
   if (fs.existsSync(manifestPath)) {
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'))
     res.json(manifest)

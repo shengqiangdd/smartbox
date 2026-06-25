@@ -22,7 +22,7 @@ import {
   PanelLeft,
   Loader2,
 } from 'lucide-react'
-import { useSshStore } from '../../stores/ssh-store'
+import { useSshStore, decryptConnection } from '../../stores/ssh-store'
 import { useAppStore } from '../../stores/app-store'
 import { useFileStore } from '../../stores/file-store'
 import { getWsClient } from '../../services/websocket'
@@ -105,14 +105,16 @@ async function ensureSftpSession(
   onStatus('正在连接...')
 
   try {
+    // 🔐 解密存储的密码/私钥后再发送
+    const decryptedConn = await decryptConnection(conn)
     await wsClient.request({
       type: 'connect',
       connectionId: sessionId,
       host: conn.host,
       port: conn.port,
       username: conn.username,
-      password: conn.password,
-      privateKey: conn.privateKey,
+      password: decryptedConn.password,
+      privateKey: decryptedConn.privateKey,
     })
     addSession({
       id: sessionId,
