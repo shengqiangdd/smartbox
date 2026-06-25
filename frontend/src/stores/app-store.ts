@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 export type Theme = 'dark' | 'light' | 'system'
-export type NavId = 'ssh' | 'commands' | 'files' | 'logs' | 'plugins' | 'settings' | 'docker'
+export type NavId = 'ssh' | 'commands' | 'files' | 'logs' | 'plugins' | 'settings' | 'docker' | 'monitor'
 
 interface RightPanelContent {
   title: string

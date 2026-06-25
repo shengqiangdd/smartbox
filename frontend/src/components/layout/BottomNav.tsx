@@ -1,8 +1,9 @@
-import { Terminal, FileCode2, Puzzle, Settings } from 'lucide-react'
+import { Terminal, FileCode2, Puzzle, Settings, Activity } from 'lucide-react'
 import { useAppStore } from '../../stores/app-store'
 
 const navItems = [
   { id: 'ssh', label: 'SSH', icon: Terminal },
+  { id: 'monitor', label: '监控', icon: Activity },
   { id: 'files', label: '文件', icon: FileCode2 },
   { id: 'plugins', label: '插件', icon: Puzzle },
   { id: 'settings', label: '设置', icon: Settings },
