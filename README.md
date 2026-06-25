@@ -14,21 +14,26 @@
 |------|------|------|
 | 🖥️ **SSH 终端** | ✅ | xterm.js + WebSocket，多连接/多Tab/分屏/同步命令/搜索 |
 | 📁 **SFTP 文件管理器** | ✅ | 树形浏览/拖拽上传/大文件分块/递归搜索/右键菜单 |
-| 📝 **CodeMirror 编辑器** | ✅ | 20+ 语言语法高亮，内容嗅探智能识别，IndexedDB 自动保存 |
-| 🤖 **AI 侧边栏** | ✅ | OpenRouter API 集成，65+ 模型，选中代码→6 种 AI 操作（解释/重构/修复/优化/注释/翻译） |
+| 📝 **CodeMirror 编辑器** | ✅ | 20+ 语言语法高亮，内容嗅探智能识别，Markdown 实时预览，IndexedDB 自动保存 |
+| 🤖 **AI 侧边栏** | ✅ | OpenRouter API 集成，65+ 模型，选中代码→6 种 AI 操作（解释/重构/修复/优化/注释/翻译），流式取消 |
 | 🔌 **插件系统** | ✅ | iframe 沙箱隔离，14 个内置插件（46 条命令），在线市场安装，热加载 |
 | 🎨 **主题切换** | ✅ | 亮色/暗色/跟随系统，CSS 变量体系全局生效 |
-| ⌨️ **命令面板** | ✅ | Ctrl+P 模糊搜索，快捷键列表（Shift+?） |
+| ⌨️ **命令面板** | ✅ | Ctrl+P 模糊搜索，快捷键列表（Shift+?），自定义命令 + 变量替换 + 分组管理 |
 | 📡 **WebSocket 实时通信** | ✅ | 心跳保活/指数退避重连/单一通道复用 |
-| 🐳 **Docker 部署** | ✅ | 一键容器化，CI 自动构建推送 |
+| 🐳 **Docker 管理** | ✅ | 容器/镜像/Compose 全生命周期管理 + 实时资源监控（CPU/内存折线图）+ 容器终端 |
 | 📦 **PWA 支持** | ✅ | vite-plugin-pwa + Workbox 预缓存，离线体验优化 + 网络状态指示条 |
 | 🖱️ **终端分屏** | ✅ | SplitContainer 递归分屏，拖拽合并（4 方向插入），多主机同步命令 |
 | 🔒 **安全加固** | ✅ | SSH 凭据 AES-GCM 加密存储，CSP 头，路径穿越防护，插件 iframe 沙箱 |
+| 📊 **主机性能看板** | ✅ | 多主机 CPU/内存/磁盘/网络/负载实时监控，SVG Sparkline，Mock 演示模式 |
+| 📋 **日志聚合** | ✅ | 多服务器日志源配置，tail 实时跟踪 + grep 搜索，WebSocket 流式传输 |
+| ⚡ **批量执行** | ✅ | 选中多台主机并发执行命令，结果汇总展示 |
+| 📤 **批量文件分发** | ✅ | 文件上传/下载到多台主机，大文件分块传输 + 进度追踪 |
+| 📚 **脚本模板库** | ✅ | 28 条内置命令 + 自定义 CRUD，变量占位符替换，收藏 + 分组管理 |
 
 ## 🛠️ 技术栈
 
 ```
-前端: React 18 + TypeScript + Vite 6 + CodeMirror 6 + xterm.js + Tailwind CSS 3 + Zustand + lucide-react
+前端: React 19 + TypeScript + Vite 8 + CodeMirror 6 + xterm.js + Tailwind CSS 4 + Zustand + lucide-react
 后端: Node.js 22 + Express 5 + express-ws + ssh2 (SSH/SFTP)
 部署: Docker + Docker Compose (单容器), CI: GitHub Actions
 ```
@@ -100,7 +105,7 @@ docker compose down
 
 ## 🧩 插件开发
 
-### 目录结构
+### 示例插件
 
 ```
 plugins/
@@ -145,28 +150,36 @@ plugins/
 
 ```
 smartbox/
-├── bridge/               # 后端服务（HTTP + WebSocket + SSH）
-│   ├── index.js          # 主入口
+├── bridge/               # 后端服务（HTTP + WebSocket + SSH + Docker + 日志）
+│   ├── index.js          # 主入口（~1900 行，REST + WebSocket）
 │   └── package.json
 ├── frontend/             # 前端应用（React SPA）
-│   ├── src/              # 源码
-│   │   ├── components/   # 通用组件
+│   ├── src/
+│   │   ├── components/   # 通用组件（CommandPalette, CodeMirrorEditor, PluginSandbox…）
 │   │   ├── modules/      # 功能模块
-│   │   ├── services/     # 服务层
-│   │   ├── stores/       # 状态管理
+│   │   │   ├── ssh/      #   SSH 终端 + SFTP + 批量执行 + 批量分发
+│   │   │   ├── docker/   #   Docker 容器/镜像/Compose/监控
+│   │   │   ├── monitor/  #   主机性能看板
+│   │   │   ├── logs/     #   日志聚合面板
+│   │   │   ├── commands/ #   命令面板 + 脚本模板库
+│   │   │   ├── plugins/  #   插件管理 + 市场
+│   │   │   ├── settings/ #   设置面板 + AI 配置
+│   │   │   └── file-manager/ # 文件管理器
+│   │   ├── services/     # 服务层（WebSocket, AI, 导入导出, 安全存储…）
+│   │   ├── stores/       # Zustand 状态管理
 │   │   └── types/        # TypeScript 类型
+│   ├── vite.config.ts    # Vite 8 配置 + PWA + Chunk 分割
 │   └── package.json
-├── plugins/              # 示例插件
-├── docs/                 # 规划文档
-├── tests/                # 测试（TODO）
-├── .github/              # GitHub 配置
-├── Dockerfile            # Docker 部署
+├── plugins/              # 14 个内置插件
+├── docs/                 # 文档（架构/插件 API）
+├── .github/              # CI/CD（构建 + Docker + 每周清理）
+├── Dockerfile            # 多阶段构建
 ├── docker-compose.yml    # Docker Compose
-├── README.md             # 本文件
+├── README.md
 ├── DEPLOY.md             # 部署指南
 ├── CHANGELOG.md          # 变更日志
 ├── CONTRIBUTING.md       # 贡献指南
-└── LICENSE               # MIT 许可证
+└── LICENSE               # MIT
 ```
 
 ## 📄 许可证
