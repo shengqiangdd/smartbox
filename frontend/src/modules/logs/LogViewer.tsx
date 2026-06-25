@@ -1,10 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Download, Search, X, ArrowUpDown } from 'lucide-react'
+import { Download, Search, X, ArrowUpDown, Radio, Activity } from 'lucide-react'
 
 interface LogViewerProps {
   connectionId: string
   logPath: string
   onClose: () => void
+}
+
+/** 获取 WebSocket 基础 URL */
+function getWsBase(): string {
+  const loc = window.location
+  const protocol = loc.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${loc.host}/ws`
 }
 
 export default function LogViewer({ connectionId, logPath, onClose }: LogViewerProps) {
@@ -16,10 +23,12 @@ export default function LogViewer({ connectionId, logPath, onClose }: LogViewerP
   const [searchResult, setSearchResult] = useState<string>('')
   const [searching, setSearching] = useState(false)
   const [autoScroll, setAutoScroll] = useState(true)
+  const [followMode, setFollowMode] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const preRef = useRef<HTMLPreElement>(null)
+  const wsRef = useRef<WebSocket | null>(null)
+  const requestIdRef = useRef(`logtail-${Date.now()}`)
 
-  // 获取日志内容
+  // ─── 获取初始日志（REST） ───
   const fetchLogs = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -46,14 +55,106 @@ export default function LogViewer({ connectionId, logPath, onClose }: LogViewerP
     fetchLogs()
   }, [fetchLogs])
 
-  // 自动滚动到底部
+  // ─── 自动滚动 ───
   useEffect(() => {
     if (autoScroll && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [content, autoScroll])
 
-  // 搜索
+  // ─── WebSocket 实时跟踪 ───
+  const startFollow = useCallback(() => {
+    setError(null)
+    const ws = new WebSocket(getWsBase())
+    const reqId = requestIdRef.current
+    wsRef.current = ws
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({
+        type: 'logtail_start',
+        connectionId,
+        requestId: reqId,
+        logPath,
+        lines: lineCount,
+      }))
+    }
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data)
+        if (msg.type === 'logtail_started') {
+          setFollowMode(true)
+        } else if (msg.type === 'logtail_data' && msg.lines) {
+          setContent((prev) => {
+            const combined = prev + (prev.endsWith('\n') ? '' : '\n') + msg.lines.join('\n')
+            // 限制内存使用：最大 50000 行
+            const lineArr = combined.split('\n')
+            if (lineArr.length > 50000) {
+              return lineArr.slice(lineArr.length - 50000).join('\n')
+            }
+            return combined
+          })
+        } else if (msg.type === 'logtail_stopped') {
+          setFollowMode(false)
+        } else if (msg.type === 'error') {
+          setError(msg.message)
+          setFollowMode(false)
+        }
+      } catch {}
+    }
+
+    ws.onerror = () => {
+      setError('WebSocket 连接失败')
+      setFollowMode(false)
+    }
+
+    ws.onclose = () => {
+      setFollowMode(false)
+      wsRef.current = null
+    }
+  }, [connectionId, logPath, lineCount])
+
+  // 停止跟踪
+  const stopFollow = useCallback(() => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'logtail_stop',
+        connectionId,
+        requestId: requestIdRef.current,
+        logPath,
+      }))
+      wsRef.current.close()
+    }
+    wsRef.current = null
+    setFollowMode(false)
+  }, [connectionId, logPath])
+
+  // 切换跟踪
+  const toggleFollow = useCallback(() => {
+    if (followMode) {
+      stopFollow()
+    } else {
+      startFollow()
+    }
+  }, [followMode, startFollow, stopFollow])
+
+  // 组件卸载时停止跟踪
+  useEffect(() => {
+    return () => {
+      if (wsRef.current) {
+        try {
+          wsRef.current.send(JSON.stringify({
+            type: 'logtail_stop',
+            connectionId,
+            logPath,
+          }))
+        } catch {}
+        wsRef.current.close()
+      }
+    }
+  }, [connectionId, logPath])
+
+  // ─── 搜索 ───
   const handleSearch = useCallback(async () => {
     if (!searchTerm.trim()) return
     setSearching(true)
@@ -62,17 +163,11 @@ export default function LogViewer({ connectionId, logPath, onClose }: LogViewerP
       const res = await fetch('/api/logs/grep', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          connectionId,
-          path: logPath,
-          pattern: searchTerm,
-          context: 2,
-        }),
+        body: JSON.stringify({ connectionId, path: logPath, pattern: searchTerm, context: 2 }),
       })
       const json = await res.json()
       if (json.success) {
-        const lines = json.data.trim()
-        setSearchResult(lines || '未找到匹配内容')
+        setSearchResult(json.data.trim() || '未找到匹配内容')
       } else {
         setSearchResult(`搜索错误: ${json.error}`)
       }
@@ -83,12 +178,12 @@ export default function LogViewer({ connectionId, logPath, onClose }: LogViewerP
     }
   }, [connectionId, logPath, searchTerm])
 
-  // 下载
+  // ─── 下载 ───
   const handleDownload = useCallback(() => {
     const blob = new Blob([content], { type: 'text/plain' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    const fileName = logPath.replace(/^.*[\\/]/, '') || `log-${Date.now()}.log`
+    const fileName = logPath.replace(/^.*[/\\]/, '') || `log-${Date.now()}.log`
     a.href = url
     a.download = fileName
     a.click()
@@ -102,34 +197,48 @@ export default function LogViewer({ connectionId, logPath, onClose }: LogViewerP
         <span className="text-slate-400">📄</span>
         <span className="font-mono text-slate-300">{logPath}</span>
 
-        {/* 行数选择 */}
-        <select
-          value={lineCount}
-          onChange={(e) => setLineCount(Number(e.target.value))}
-          className="ml-auto rounded border border-slate-700 bg-slate-800 px-1.5 py-0.5 text-xs text-slate-300"
-        >
-          <option value={50}>50行</option>
-          <option value={200}>200行</option>
-          <option value={500}>500行</option>
-          <option value={1000}>1000行</option>
-          <option value={5000}>5000行</option>
-        </select>
+        {/* 行数选择（仅非跟踪模式可用） */}
+        {!followMode && (
+          <select
+            value={lineCount}
+            onChange={(e) => setLineCount(Number(e.target.value))}
+            className="ml-auto rounded border border-slate-700 bg-slate-800 px-1.5 py-0.5 text-xs text-slate-300"
+          >
+            <option value={50}>50行</option>
+            <option value={200}>200行</option>
+            <option value={500}>500行</option>
+            <option value={1000}>1000行</option>
+            <option value={5000}>5000行</option>
+          </select>
+        )}
 
         <button
           onClick={fetchLogs}
-          disabled={loading}
+          disabled={loading || followMode}
           className="rounded px-2 py-0.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200 disabled:opacity-50"
         >
           {loading ? '加载中...' : '刷新'}
+        </button>
+
+        {/* 实时跟踪按钮 */}
+        <button
+          onClick={toggleFollow}
+          className={`flex items-center gap-1 rounded px-2 py-0.5 transition-colors ${
+            followMode
+              ? 'bg-emerald-600/20 text-emerald-400'
+              : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+          }`}
+          title={followMode ? '停止实时跟踪' : '实时跟踪 (tail -f)'}
+        >
+          {followMode ? <Activity size={14} /> : <Radio size={14} />}
+          {followMode ? '跟踪中' : '跟踪'}
         </button>
 
         {/* 搜索按钮 */}
         <button
           onClick={() => setSearchResult(prev => prev ? '' : ' ')}
           className={`rounded px-2 py-0.5 transition-colors ${
-            searchResult
-              ? 'bg-smartbox-600/20 text-smartbox-400'
-              : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+            searchResult ? 'bg-smartbox-600/20 text-smartbox-400' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
           }`}
           title="搜索"
         >
@@ -140,9 +249,7 @@ export default function LogViewer({ connectionId, logPath, onClose }: LogViewerP
         <button
           onClick={() => setAutoScroll(!autoScroll)}
           className={`rounded px-1.5 py-0.5 transition-colors ${
-            autoScroll
-              ? 'text-smartbox-400'
-              : 'text-slate-500 hover:text-slate-300'
+            autoScroll ? 'text-smartbox-400' : 'text-slate-500 hover:text-slate-300'
           }`}
           title="自动滚动"
         >
@@ -199,9 +306,7 @@ export default function LogViewer({ connectionId, logPath, onClose }: LogViewerP
             <Search size={12} />
             <span>搜索结果</span>
           </div>
-          <pre className="whitespace-pre-wrap text-xs leading-relaxed text-slate-300">
-            {searchResult}
-          </pre>
+          <pre className="whitespace-pre-wrap text-xs leading-relaxed text-slate-300">{searchResult}</pre>
         </div>
       )}
 
@@ -213,23 +318,27 @@ export default function LogViewer({ connectionId, logPath, onClose }: LogViewerP
       )}
 
       {/* 日志内容 */}
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-auto bg-slate-950/80"
-      >
+      <div ref={scrollRef} className="flex-1 overflow-auto bg-slate-950/80">
         {loading && !content ? (
           <div className="flex h-full items-center justify-center">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-600 border-t-blue-500" />
           </div>
         ) : (
           <pre
-            ref={preRef}
             className="min-h-full whitespace-pre-wrap p-3 font-mono text-xs leading-relaxed text-slate-300"
           >
             {content || '(空)'}
           </pre>
         )}
       </div>
+
+      {/* 跟踪模式指示条 */}
+      {followMode && (
+        <div className="flex shrink-0 items-center gap-2 border-t border-emerald-800/40 bg-emerald-950/30 px-3 py-1">
+          <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+          <span className="text-[10px] text-emerald-400">实时跟踪中 — 新行将自动追加</span>
+        </div>
+      )}
     </div>
   )
 }

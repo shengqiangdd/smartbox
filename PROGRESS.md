@@ -25,9 +25,27 @@
 
 ### 代码库指标
 - 总计 15+ 个前端模块，7 个 service 层文件，5 个 store
-- 后端单文件约 1200 行，覆盖 REST + WebSocket + SSH/SFTP
+- 后端单文件约 1525 行，覆盖 REST + WebSocket + SSH/SFTP + Docker + 日志
 - 14 个内置插件，46 条命令
-- 最后 push: `0a46a39` 归档 commit
+- 最后 push: `8efd5f1` (日志聚合面板)
+
+## 2026-06-25 — 新功能阶段
+
+### 🐳 Docker 管理面板 ✅
+- 后端新增 11 个 API（ps/images/stats/inspect/logs/start/stop/restart/rm/rmi/compose）
+- 前端 6 个组件（主页面/容器列表/镜像列表/日志弹窗/详情/类型定义）
+- 复用 SSH 连接，零额外依赖，~22kB 总大小（按需懒加载）
+- commit: `3246939`
+
+### 📋 日志聚合面板 ✅
+- 后端新增 3 个 API（list-sources/tail/grep）
+- 前端 4 个组件（主页面/LogViewer/SourceConfig/类型定义）
+- 自动发现 20+ 常见系统日志（syslog/auth/nginx/mysql/redis 等）
+- 自定义日志源管理（localStorage 持久化）
+- 支持 tail 行数切换（50~5000行）、grep 搜索（上下文+大小写控制）、下载
+- 双栏布局：左侧日志源树 + 右侧日志查看器
+- 构建 9.31s，TypeScript 零错误，13.8kB chunk
+- commit: `8efd5f1`
 
 ## 2026-06-24 — 搜索功能 + 快捷键列表完成，48/61 (79%) ✅
 

@@ -613,6 +613,14 @@ function handleMessage(ws, clientId, msg) {
       handleSftp(ws, connectionId, requestId, payload)
       break
 
+    case 'logtail_start':
+      handleLogtailStart(ws, connectionId, requestId, payload)
+      break
+
+    case 'logtail_stop':
+      handleLogtailStop(ws, connectionId, requestId, payload)
+      break
+
     default:
       sendError(ws, connectionId, requestId, 'UNKNOWN_TYPE', `未知消息类型: ${type}`)
   }
@@ -1441,6 +1449,114 @@ function cleanupConnection(connectionId) {
   }
 
   connections.delete(connectionId)
+}
+
+// ========== 实时日志跟踪 (tail -f) ==========
+
+/** 存储活跃的 tail stream：connectionId:logPath → { shellStream, logPath } */
+const activeLogtails = new Map()
+
+async function handleLogtailStart(ws, connectionId, requestId, payload) {
+  const conn = connections.get(connectionId)
+  if (!conn || !conn.ssh) {
+    return sendError(ws, connectionId, requestId, 'NOT_CONNECTED', 'SSH 未连接')
+  }
+
+  const { logPath, lines } = payload
+  if (!logPath) {
+    return sendError(ws, connectionId, requestId, 'INVALID_PATH', '缺少日志路径')
+  }
+
+  const tailKey = `${connectionId}:${logPath}`
+
+  // 如果已有同名 tail，先停止
+  if (activeLogtails.has(tailKey)) {
+    try { activeLogtails.get(tailKey).close() } catch (_) {}
+    activeLogtails.delete(tailKey)
+  }
+
+  const n = typeof lines === 'number' ? Math.min(Math.max(lines, 10), 5000) : 200
+
+  conn.ssh.exec(`tail -n ${n} -f ${escapeShellArg(logPath)} 2>&1`, (err, stream) => {
+    if (err) {
+      return sendError(ws, connectionId, requestId, 'TAIL_FAILED', `无法跟踪日志: ${err.message}`)
+    }
+
+    activeLogtails.set(tailKey, stream)
+
+    // 确认启动
+    sendJson(ws, {
+      type: 'logtail_started',
+      connectionId,
+      requestId,
+      logPath,
+    })
+
+    let buffer = ''
+
+    stream.on('data', (data) => {
+      buffer += data.toString()
+      // 按行分割发送，避免单条消息过大
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || '' // 保留不完整的最后一行
+
+      if (lines.length > 0 && ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'logtail_data',
+          connectionId,
+          logPath,
+          lines,
+        }))
+      }
+    })
+
+    stream.stderr.on('data', (data) => {
+      if (ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'logtail_data',
+          connectionId,
+          logPath,
+          lines: [data.toString()],
+          isStderr: true,
+        }))
+      }
+    })
+
+    stream.on('close', () => {
+      activeLogtails.delete(tailKey)
+      if (ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'logtail_stopped',
+          connectionId,
+          logPath,
+        }))
+      }
+    })
+
+    stream.on('error', (err) => {
+      activeLogtails.delete(tailKey)
+      sendError(ws, connectionId, null, 'TAIL_ERROR', `日志跟踪出错: ${err.message}`)
+    })
+  })
+}
+
+function handleLogtailStop(ws, connectionId, requestId, payload) {
+  const { logPath } = payload
+  if (!logPath) return
+
+  const tailKey = `${connectionId}:${logPath}`
+  const stream = activeLogtails.get(tailKey)
+  if (stream) {
+    try { stream.close() } catch (_) {}
+    activeLogtails.delete(tailKey)
+  }
+
+  sendJson(ws, {
+    type: 'logtail_stopped',
+    connectionId,
+    requestId,
+    logPath,
+  })
 }
 
 // ========== 错误响应辅助 ==========
