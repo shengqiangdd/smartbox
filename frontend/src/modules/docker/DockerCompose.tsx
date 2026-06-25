@@ -8,12 +8,16 @@ import {
   StopCircle,
   FileText,
   Terminal,
-  AlertCircle,
   Loader2,
   ChevronRight,
   ChevronDown,
   Search,
 } from 'lucide-react'
+
+function notify(message: string, type: 'success' | 'error' | 'info' = 'info') {
+  const ev = new CustomEvent('smartbox-toast', { detail: { message, type } })
+  window.dispatchEvent(ev)
+}
 
 interface ComposeProject {
   path: string
@@ -36,14 +40,12 @@ interface Props {
 export default function DockerCompose({ connectionId }: Props) {
   const [projects, setProjects] = useState<ComposeProject[]>([])
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [expandedPath, setExpandedPath] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [search, setSearch] = useState('')
 
   const discoverProjects = useCallback(async () => {
     setLoading(true)
-    setError(null)
     try {
       // 自动发现 compose 文件
       const res = await fetch('/api/docker/compose', {
@@ -53,7 +55,7 @@ export default function DockerCompose({ connectionId }: Props) {
       })
       const json = await res.json()
       if (!json.success) {
-        setError(json.error || '获取 Compose 文件失败')
+        notify(json.error || '获取 Compose 文件失败', 'error')
         setProjects([])
         return
       }
@@ -70,7 +72,7 @@ export default function DockerCompose({ connectionId }: Props) {
       })
       setProjects(parsed)
     } catch (err: any) {
-      setError(err.message || '请求失败')
+      notify(err.message || '请求失败', 'error')
       setProjects([])
     } finally {
       setLoading(false)
@@ -146,13 +148,17 @@ export default function DockerCompose({ connectionId }: Props) {
         body: JSON.stringify({ connectionId, filePath: path, action, service }),
       })
       const json = await res.json()
+      if (!json.success) {
+        notify(`${action} 失败: ${json.error || '未知错误'}`, 'error')
+      } else {
+        notify(`${action} 成功`, 'success')
+      }
       // 操作完成后刷新状态
       if (expandedPath === path) {
         setTimeout(() => fetchServices(path), 500)
       }
-      return json
-    } catch {
-      // ignore
+    } catch (err: any) {
+      notify(`${action} 请求失败: ${err.message}`, 'error')
     } finally {
       setActionLoading(null)
     }
@@ -190,15 +196,6 @@ export default function DockerCompose({ connectionId }: Props) {
           扫描
         </button>
       </div>
-
-      {/* 错误 */}
-      {error && (
-        <div className="mb-3 flex items-center gap-2 rounded-md bg-red-950/30 px-3 py-2 text-xs text-red-400">
-          <AlertCircle size={14} />
-          {error}
-          <button onClick={() => setError(null)} className="ml-auto text-red-500 hover:text-red-300">✕</button>
-        </div>
-      )}
 
       {/* 项目列表 */}
       {loading && projects.length === 0 ? (

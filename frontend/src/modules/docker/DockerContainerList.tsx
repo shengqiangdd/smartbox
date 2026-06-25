@@ -8,6 +8,11 @@ import { STATUS_DOTS } from './index'
 const DockerContainerLogs = lazy(() => import('./DockerContainerLogs'))
 const DockerDetail = lazy(() => import('./DockerDetail'))
 
+function notify(message: string, type: 'success' | 'error' | 'info' = 'info') {
+  const ev = new CustomEvent('smartbox-toast', { detail: { message, type } })
+  window.dispatchEvent(ev)
+}
+
 interface Props {
   connectionId: string
   containers: DockerContainer[]
@@ -21,7 +26,6 @@ export default function DockerContainerList({ connectionId, containers, loading,
   const [logTarget, setLogTarget] = useState<string | null>(null)
   const [detailTarget, setDetailTarget] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
 
   const filtered = filter
     ? containers.filter((c) =>
@@ -33,7 +37,6 @@ export default function DockerContainerList({ connectionId, containers, loading,
 
   const doAction = useCallback(async (id: string, action: string) => {
     setActionLoading(id)
-    setError(null)
     try {
       const res = await fetch(`/api/docker/${action}`, {
         method: 'POST',
@@ -42,12 +45,13 @@ export default function DockerContainerList({ connectionId, containers, loading,
       })
       const json = await res.json()
       if (!json.success) {
-        setError(`${action} 失败: ${json.error || '未知错误'}`)
+        notify(`${action} 失败: ${json.error || '未知错误'}`, 'error')
       } else {
+        notify(`${action} 成功`, 'success')
         onRefresh()
       }
     } catch (err: any) {
-      setError(`${action} 请求失败: ${err.message}`)
+      notify(`${action} 请求失败: ${err.message}`, 'error')
     } finally {
       setActionLoading(null)
     }
@@ -79,14 +83,6 @@ export default function DockerContainerList({ connectionId, containers, loading,
           />
         </div>
       </div>
-
-      {/* 错误 */}
-      {error && (
-        <div className="flex shrink-0 items-center gap-2 border-b border-red-900/30 bg-red-950/20 px-4 py-2 text-xs text-red-400">
-          <span>{error}</span>
-          <button onClick={() => setError(null)} className="ml-auto text-red-500 hover:text-red-300">✕</button>
-        </div>
-      )}
 
       {/* 列表 */}
       <div className="flex-1 overflow-auto">

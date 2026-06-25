@@ -1,6 +1,11 @@
 import { useState, useCallback } from 'react'
-import { Trash2, Search, RefreshCw, Download, Upload, Tag as TagIcon, Layers, X, AlertCircle } from 'lucide-react'
+import { Trash2, Search, RefreshCw, Download, Upload, Tag as TagIcon, Layers, X } from 'lucide-react'
 import type { DockerImage } from './index'
+
+function notify(message: string, type: 'success' | 'error' | 'info' = 'info') {
+  const ev = new CustomEvent('smartbox-toast', { detail: { message, type } })
+  window.dispatchEvent(ev)
+}
 
 interface Props {
   connectionId: string
@@ -22,8 +27,6 @@ type ActionType = 'pull' | 'push' | 'tag' | 'prune'
 export default function DockerImages({ connectionId, images, loading, onRefresh }: Props) {
   const [filter, setFilter] = useState('')
   const [actionLoading, setActionLoading] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [successMsg, setSuccessMsg] = useState<string | null>(null)
 
   // 模态框状态
   const [modal, setModal] = useState<{ type: ActionType; image?: DockerImage } | null>(null)
@@ -50,8 +53,6 @@ export default function DockerImages({ connectionId, images, loading, onRefresh 
   // 删除镜像
   const doRmi = useCallback(async (id: string, force?: boolean) => {
     setActionLoading(id)
-    setError(null)
-    setSuccessMsg(null)
     try {
       const res = await fetch('/api/docker/rmi', {
         method: 'POST',
@@ -60,13 +61,13 @@ export default function DockerImages({ connectionId, images, loading, onRefresh 
       })
       const json = await res.json()
       if (!json.success) {
-        setError(`删除失败: ${json.error || '未知错误'}`)
+        notify(`删除失败: ${json.error || '未知错误'}`, 'error')
       } else {
-        setSuccessMsg(`已删除镜像 ${id.slice(0, 12)}`)
+        notify(`已删除镜像 ${id.slice(0, 12)}`, 'success')
         onRefresh()
       }
     } catch (err: any) {
-      setError(`删除请求失败: ${err.message}`)
+      notify(`删除请求失败: ${err.message}`, 'error')
     } finally {
       setActionLoading(null)
     }
@@ -84,15 +85,12 @@ export default function DockerImages({ connectionId, images, loading, onRefresh 
       setModalInput('')
       setModalInput2('')
     }
-    setError(null)
   }, [])
 
   // 执行操作
   const doAction = useCallback(async () => {
     if (!modal) return
     setModalLoading(true)
-    setError(null)
-    setSuccessMsg(null)
     try {
       let url = ''
       const body: any = { connectionId }
@@ -119,15 +117,15 @@ export default function DockerImages({ connectionId, images, loading, onRefresh 
       })
       const json = await res.json()
       if (!json.success) {
-        setError(`${getActionLabel(modal.type)}失败: ${json.error || '未知错误'}`)
+        notify(`${getActionLabel(modal.type)}失败: ${json.error || '未知错误'}`, 'error')
       } else {
         const msg = json.data ? json.data.trim().split('\n').pop() || '' : ''
-        setSuccessMsg(`${getActionLabel(modal.type)}成功${msg ? ': ' + msg.slice(0, 80) : ''}`)
+        notify(`${getActionLabel(modal.type)}成功${msg ? ': ' + msg.slice(0, 80) : ''}`, 'success')
         setModal(null)
         onRefresh()
       }
     } catch (err: any) {
-      setError(`${getActionLabel(modal.type)}请求失败: ${err.message}`)
+      notify(`${getActionLabel(modal.type)}请求失败: ${err.message}`, 'error')
     } finally {
       setModalLoading(false)
     }
@@ -213,21 +211,6 @@ export default function DockerImages({ connectionId, images, loading, onRefresh 
           <Trash2 size={14} /> 清理
         </button>
       </div>
-
-      {/* 消息提示 */}
-      {error && (
-        <div className="flex shrink-0 items-center gap-2 border-b border-red-900/30 bg-red-950/20 px-4 py-2 text-xs text-red-400">
-          <AlertCircle size={14} />
-          <span className="flex-1">{error}</span>
-          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-300">✕</button>
-        </div>
-      )}
-      {successMsg && (
-        <div className="flex shrink-0 items-center gap-2 border-b border-emerald-900/30 bg-emerald-950/20 px-4 py-2 text-xs text-emerald-400">
-          <span className="flex-1">{successMsg}</span>
-          <button onClick={() => setSuccessMsg(null)} className="text-emerald-500 hover:text-emerald-300">✕</button>
-        </div>
-      )}
 
       {/* 主区域：列表 + 详情面板 */}
       <div className="flex flex-1 overflow-hidden">
@@ -495,12 +478,6 @@ export default function DockerImages({ connectionId, images, loading, onRefresh 
                   <p className="text-xs text-amber-400">
                     将清理所有未使用的镜像（dangling images 和未被任何容器引用的镜像）。此操作不可撤销。
                   </p>
-                </div>
-              )}
-
-              {error && (
-                <div className="rounded border border-red-900/30 bg-red-950/20 px-3 py-2 text-xs text-red-400">
-                  {error}
                 </div>
               )}
             </div>

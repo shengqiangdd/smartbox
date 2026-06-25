@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import Layout from './components/layout/Layout'
-import CommandPalette from './components/CommandPalette'
+import CommandPalette, { registerCommand } from './components/CommandPalette'
 import ShortcutHelpModal from './components/ShortcutHelpModal'
 import Toast from './components/Toast'
 import { useAppStore } from './stores/app-store'
@@ -16,19 +16,17 @@ function AppContent() {
 
   // 注册快捷键列表命令到命令面板
   useEffect(() => {
-    import('./components/CommandPalette').then(({ registerCommand }) => {
-      registerCommand({
-        id: 'shortcut-help',
-        label: '快捷键列表',
-        description: '查看所有可用的快捷键和操作',
-        keywords: ['shortcut', '快捷键', 'hotkey', 'help', '帮助', '键盘', 'key'],
-        icon: 'Keyboard',
-        category: '工具',
-        action: () => {
-          useAppStore.getState().setCommandPaletteOpen(false)
-          setShortcutHelpOpen(true)
-        },
-      })
+    registerCommand({
+      id: 'shortcut-help',
+      label: '快捷键列表',
+      description: '查看所有可用的快捷键和操作',
+      keywords: ['shortcut', '快捷键', 'hotkey', 'help', '帮助', '键盘', 'key'],
+      icon: 'Keyboard',
+      category: '工具',
+      action: () => {
+        useAppStore.getState().setCommandPaletteOpen(false)
+        setShortcutHelpOpen(true)
+      },
     })
   }, [])
 

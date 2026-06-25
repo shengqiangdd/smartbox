@@ -3,6 +3,11 @@ import { X, Loader2, Cpu, HardDrive, Network, Box, Terminal } from 'lucide-react
 import type { DockerInspectInfo } from './index'
 import DockerTerminal from './DockerTerminal'
 
+function notify(message: string, type: 'success' | 'error' | 'info' = 'info') {
+  const ev = new CustomEvent('smartbox-toast', { detail: { message, type } })
+  window.dispatchEvent(ev)
+}
+
 interface Props {
   connectionId: string
   containerId: string
@@ -12,13 +17,11 @@ interface Props {
 export default function DockerDetail({ connectionId, containerId, onClose }: Props) {
   const [data, setData] = useState<DockerInspectInfo | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [showTerminal, setShowTerminal] = useState(false)
 
   useEffect(() => {
     ;(async () => {
       setLoading(true)
-      setError(null)
       try {
         const res = await fetch('/api/docker/inspect', {
           method: 'POST',
@@ -30,15 +33,17 @@ export default function DockerDetail({ connectionId, containerId, onClose }: Pro
           const parsed = JSON.parse(json.data)
           setData(Array.isArray(parsed) ? parsed[0] : parsed)
         } else {
-          setError(json.error || '获取详情失败')
+          notify(json.error || '获取详情失败', 'error')
+          onClose()
         }
       } catch (err: any) {
-        setError(err.message || '请求失败')
+        notify(err.message || '请求失败', 'error')
+        onClose()
       } finally {
         setLoading(false)
       }
     })()
-  }, [connectionId, containerId])
+  }, [connectionId, containerId, onClose])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -71,8 +76,6 @@ export default function DockerDetail({ connectionId, containerId, onClose }: Pro
               <Loader2 size={16} className="animate-spin" />
               加载中...
             </div>
-          ) : error ? (
-            <div className="flex h-full items-center justify-center text-red-400">{error}</div>
           ) : data ? (
             <div className="space-y-6">
               {/* 基本信息 */}
