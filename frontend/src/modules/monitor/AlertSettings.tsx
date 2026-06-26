@@ -118,6 +118,14 @@ function RuleRow({
   )
 }
 
+function notify(message: string, type: 'error' | 'info') {
+  window.dispatchEvent(
+    new CustomEvent('smartbox-notification', {
+      detail: { message, type },
+    }),
+  )
+}
+
 function AddRuleForm({ onClose }: { onClose: () => void }) {
   const addRule = useAlertStore((s) => s.addRule)
   const [metric, setMetric] = useState<AlertMetric>('cpu')
@@ -126,6 +134,13 @@ function AddRuleForm({ onClose }: { onClose: () => void }) {
   const [consecutive, setConsecutive] = useState(3)
 
   const handleAdd = () => {
+    // 检查是否已存在相同 metric+severity 的规则
+    const existing = useAlertStore.getState().rules
+    const duplicate = existing.some((r) => r.metric === metric && r.severity === severity)
+    if (duplicate) {
+      notify(`已存在 ${METRIC_OPTIONS.find((m) => m.value === metric)?.label} - ${SEVERITY_OPTIONS.find((s) => s.value === severity)?.label} 规则`, 'info')
+      return
+    }
     addRule({ metric, severity, threshold, consecutive, enabled: true })
     onClose()
   }

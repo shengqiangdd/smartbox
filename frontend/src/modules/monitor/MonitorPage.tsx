@@ -8,6 +8,13 @@ import AlertHistory from './AlertHistory'
 
 // ─── 类型定义 ───
 
+interface HealthData {
+  uptime: number
+  version: string
+  memory: { rss: number; heapUsed: number; heapTotal: number; systemFree: number; systemTotal: number }
+  connections: { active: number; loadavg: number[] }
+}
+
 interface HostStats {
   host: string
   name: string
@@ -326,7 +333,8 @@ export default function MonitorPage() {
   const [interval, setIntervalDuration] = useState(5)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const prevNetRef = useRef<Record<string, { rx: number; tx: number; time: number }>>({})
-  const [health, setHealth] = useState<{ uptime: number; version: string; memory: { rss: number; heapUsed: number; systemFree: number; systemTotal: number }; connections: { active: number; loadavg: number[] } } | null>(null)
+  const [health, setHealth] = useState<HealthData | null>(null)
+  const [healthError, setHealthError] = useState(false)
   const alertHistory = useAlertStore((s) => s.history)
 
   // 扫描已连接的主机
@@ -534,8 +542,15 @@ export default function MonitorPage() {
   const fetchHealth = useCallback(async () => {
     try {
       const res = await fetch('/api/health')
-      if (res.ok) setHealth(await res.json())
-    } catch { /* 静默失败 */ }
+      if (res.ok) {
+        setHealth(await res.json())
+        setHealthError(false)
+      } else {
+        setHealthError(true)
+      }
+    } catch {
+      setHealthError(true) // Bridge 不可达时标记错误
+    }
   }, [])
 
   useEffect(() => {
@@ -613,14 +628,14 @@ export default function MonitorPage() {
       </div>
 
       {/* ─── 健康概览卡片 ─── */}
-      {health && (
+      {health && !healthError && (
         <div className="flex shrink-0 items-center gap-4 border-b border-slate-700/30 px-4 py-2 overflow-x-auto">
           {/* Bridge 运行时间 */}
           <div className="flex items-center gap-1.5 shrink-0">
             <Activity size={12} className="text-green-400" />
             <span className="text-[10px] text-slate-500">运行</span>
             <span className="text-[11px] text-slate-300 font-mono">
-              {Math.floor(health.uptime / 3600)}h{Math.floor((health.uptime % 3600) / 60)}m
+              {(() => { const d = Math.floor(health.uptime / 86400); const h = Math.floor((health.uptime % 86400) / 3600); const m = Math.floor((health.uptime % 3600) / 60); return d > 0 ? `${d}d${h}h${m}m` : `${h}h${m}m` })()}
             </span>
           </div>
           {/* Node 版本 */}
@@ -640,7 +655,7 @@ export default function MonitorPage() {
             <MemoryStick size={12} className="text-violet-400" />
             <span className="text-[10px] text-slate-500">内存</span>
             <span className="text-[11px] text-slate-300 font-mono">
-              {Math.round((1 - health.memory.systemFree / health.memory.systemTotal) * 100)}%
+              {health.memory.systemTotal > 0 ? Math.round((1 - health.memory.systemFree / health.memory.systemTotal) * 100) : 0}%
             </span>
           </div>
           {/* 负载均值 */}
@@ -659,6 +674,14 @@ export default function MonitorPage() {
               {alertHistory.length}
             </span>
           </div>
+        </div>
+      )}
+
+      {/* Bridge 连接异常提示 */}
+      {healthError && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-red-800/30 bg-red-900/10 px-4 py-1.5">
+          <Activity size={12} className="text-red-400" />
+          <span className="text-[11px] text-red-400">Bridge 服务不可达，请检查后端是否运行</span>
         </div>
       )}
 
