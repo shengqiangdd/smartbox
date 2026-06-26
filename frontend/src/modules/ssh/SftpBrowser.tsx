@@ -41,6 +41,7 @@ import {
   ChevronDown,
 } from 'lucide-react'
 import { useFileStore } from '../../stores/file-store'
+import { useAppStore } from '../../stores/app-store'
 import { getWsClientSync } from '../../services/websocket'
 import { sniffLanguage } from '../../utils/content-sniff'
 import { AlertModal, ConfirmModal } from '../../components/ConfirmModal'
@@ -407,6 +408,7 @@ export default function SftpBrowser({
   wsRef.current = wsClient
   const retryCountRef = useRef(0)
   const fileStore = useFileStore()
+  const setActiveNav = useAppStore((s) => s.setActiveNav)
   const notifyRef = useRef<HTMLDivElement>(null)
   const dragCounterRef = useRef(0)
 
@@ -670,6 +672,8 @@ export default function SftpBrowser({
           isDirty: false,
           sessionId,
         })
+        // 切换到文件管理页面以显示编辑器
+        setActiveNav('files')
       }
     } catch (err) {
       setAlertModal({ title: '打开失败', message: (err as Error).message })
