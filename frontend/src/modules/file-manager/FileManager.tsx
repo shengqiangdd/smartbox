@@ -25,7 +25,7 @@ import {
 import { useSshStore, decryptConnection } from '../../stores/ssh-store'
 import { useAppStore } from '../../stores/app-store'
 import { useFileStore } from '../../stores/file-store'
-import { getWsClient } from '../../services/websocket'
+import { getWsClientSync, WsClient } from '../../services/websocket'
 import SftpBrowser from '../ssh/SftpBrowser'
 import CodeMirrorEditor from '../../components/CodeMirrorEditor'
 import ResizablePanel from '../../components/ResizablePanel'
@@ -50,13 +50,13 @@ function getFileIcon(name: string) {
 
 /** 等待 sftp-ready 事件，最多等 8 秒 */
 function waitForSftpReady(
-  wsClient: ReturnType<typeof getWsClient>,
+  wsClient: WsClient,
   sessionId: string,
   timeout = 8000,
 ): Promise<boolean> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(false), timeout)
-    const unsub = wsClient.on('sftp-ready', (data) => {
+    const unsub = wsClient.on('sftp-ready', (data: any) => {
       if (data.connectionId === sessionId) {
         clearTimeout(timer)
         unsub()
@@ -74,7 +74,7 @@ async function ensureSftpSession(
   connId: string,
   existingSessions: ReturnType<typeof useSshStore.getState>['sessions'],
   addSession: ReturnType<typeof useSshStore.getState>['addSession'],
-  wsClient: ReturnType<typeof getWsClient>,
+  wsClient: WsClient,
   onStatus: (msg: string) => void,
 ): Promise<string | null> {
   const conns = useSshStore.getState().connections
@@ -151,7 +151,7 @@ export default function FileManager() {
   const removeSession = useSshStore((s) => s.removeSession)
   const [connecting, setConnecting] = useState(false)
   const [statusMsg, setStatusMsg] = useState('')
-  const wsClient = getWsClient()
+  const wsClient = getWsClientSync()
   const fileStore = useFileStore()
   const connectingRef = useRef(false)
   const mountedRef = useRef(false)

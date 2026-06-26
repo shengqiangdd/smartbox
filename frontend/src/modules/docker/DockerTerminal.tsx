@@ -3,7 +3,7 @@ import { Terminal as XTerm } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import 'xterm/css/xterm.css'
 import { X } from 'lucide-react'
-import { getWsClient } from '../../services/websocket'
+import { getWsClientSync } from '../../services/websocket'
 
 const TERMINAL_THEME = {
   background: '#0f172a',
@@ -66,7 +66,7 @@ export default function DockerTerminal({ connectionId, containerId, shell = '/bi
       setTimeout(() => fitAddon.fit(), 100)
     }
 
-    const wsClient = getWsClient()
+    const wsClient = getWsClientSync()
     const reqId = `docker-shell-${containerId}`
     let connected = false
 

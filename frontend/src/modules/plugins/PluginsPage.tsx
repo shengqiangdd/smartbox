@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { Puzzle, Check, X, Loader2, RefreshCw, AlertCircle, Shield, Terminal, Play, Globe } from 'lucide-react'
 import { fetchPlugins, fetchPluginCode, unloadPlugin } from '../../services/pluginManager'
 import { usePluginStore } from '../../stores/plugin-store'
-import { getWsClient } from '../../services/websocket'
+import { getWsClientSync } from '../../services/websocket'
 import PluginSandbox from '../../components/PluginSandbox'
 import { pluginSandboxManager } from '../../services/pluginSandboxManager'
 import type { PluginCatalogItem } from '../../services/pluginManager'
@@ -101,7 +101,7 @@ export default function PluginsPage() {
     loadPlugins()
 
     // 监听插件热加载通知（开发模式）
-    const unsub = getWsClient().on('plugins-changed', () => {
+    const unsub = getWsClientSync().on('plugins-changed', () => {
       handleReload()
     })
     return unsub

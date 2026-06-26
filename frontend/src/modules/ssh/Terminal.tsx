@@ -3,7 +3,7 @@ import { Terminal as XTerm } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import { SearchAddon } from 'xterm-addon-search'
 import 'xterm/css/xterm.css'
-import { getWsClient } from '../../services/websocket'
+import { getWsClient, getWsClientSync } from '../../services/websocket'
 import { Search, X, ChevronUp, ChevronDown } from 'lucide-react'
 
 /** 分屏面板配置 */
@@ -65,7 +65,8 @@ export default function TerminalView({ connectionId, sessionId, className = '', 
  const searchInputRef = useRef<HTMLInputElement>(null)
  /** generation ID：每次 mount 递增，防止旧实例的异步回调污染新实例 */
  const genRef = useRef(0)
- const wsClient = getWsClient()
+ // 用 ref 持有 wsClient，避免 effect 依赖数组问题
+ const wsClientRef = useRef(getWsClientSync())
 
  useEffect(() => {
  if (!containerRef.current) return
@@ -136,7 +137,7 @@ export default function TerminalView({ connectionId, sessionId, className = '', 
  navigator.clipboard.readText().then((text) => {
  if (text) {
  const encoded = btoa(unescape(encodeURIComponent(text)))
- wsClient.send({ type: 'exec', connectionId, data: encoded })
+ wsClientRef.current.send({ type: 'exec', connectionId, data: encoded })
  onTerminalData?.(encoded)
  }
  }).catch(() => {})
@@ -162,7 +163,7 @@ export default function TerminalView({ connectionId, sessionId, className = '', 
  navigator.clipboard.readText().then((text) => {
  if (text) {
  const encoded = btoa(unescape(encodeURIComponent(text)))
- wsClient.send({ type: 'exec', connectionId, data: encoded })
+ wsClientRef.current.send({ type: 'exec', connectionId, data: encoded })
  onTerminalData?.(encoded)
  }
  }).catch(() => {})
@@ -175,7 +176,7 @@ export default function TerminalView({ connectionId, sessionId, className = '', 
  term.onData((data) => {
  // 将用户输入以 base64 编码发送
  const encoded = btoa(unescape(encodeURIComponent(data)))
- wsClient.send({
+ wsClientRef.current.send({
  type: 'exec',
  connectionId,
  data: encoded,
@@ -185,7 +186,7 @@ export default function TerminalView({ connectionId, sessionId, className = '', 
  })
 
  // 监听终端数据（来自后端）
- const unsubData = wsClient.on('data', (msg) => {
+ const unsubData = wsClientRef.current.on('data', (msg) => {
  if (msg.connectionId === connectionId) {
  const raw = msg.data as string
  try {
@@ -203,7 +204,7 @@ export default function TerminalView({ connectionId, sessionId, className = '', 
  })
 
  // 监听连接状态
- const unsubConnected = wsClient.on('connected', (msg) => {
+ const unsubConnected = wsClientRef.current.on('connected', (msg) => {
  if (msg.connectionId === connectionId) {
  connectedRef.current = true
  term.focus()
@@ -217,7 +218,7 @@ export default function TerminalView({ connectionId, sessionId, className = '', 
  }
  })
 
- const unsubDisconnected = wsClient.on('disconnected', (msg) => {
+ const unsubDisconnected = wsClientRef.current.on('disconnected', (msg) => {
  if (msg.connectionId === connectionId) {
  connectedRef.current = false
  if (!disposedRef.current) {
@@ -228,7 +229,7 @@ export default function TerminalView({ connectionId, sessionId, className = '', 
  })
 
  // 错误处理
- const unsubError = wsClient.on('error', (msg) => {
+ const unsubError = wsClientRef.current.on('error', (msg) => {
  if (msg.connectionId === connectionId) {
  if (!disposedRef.current) {
  term.write(`\r\n\x1b[31m[错误] ${msg.message || msg.code}\x1b[0m\r\n`)
@@ -250,7 +251,7 @@ export default function TerminalView({ connectionId, sessionId, className = '', 
 
  // 发送 resize 到后端
  term.onResize(({ cols, rows }) => {
- wsClient.send({
+ wsClientRef.current.send({
  type: 'resize',
  connectionId,
  cols,

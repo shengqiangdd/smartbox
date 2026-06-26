@@ -33,7 +33,7 @@ export const useAiStore = create<AiState>()(
     (set) => ({
       config: {
         apiKey: '',
-        model: 'deepseek/deepseek-v4-flash:free',
+        model: 'google/gemma-4-31b-it:free',
         baseUrl: 'https://openrouter.ai/api/v1',
         provider: 'openrouter',
         customBaseUrl: false,
@@ -87,7 +87,7 @@ export const useAiStore = create<AiState>()(
 
       getDefaultConfig: () => ({
         apiKey: '',
-        model: 'deepseek/deepseek-v4-flash:free',
+        model: 'google/gemma-4-31b-it:free',
         baseUrl: 'https://openrouter.ai/api/v1',
         provider: 'openrouter',
         customBaseUrl: false,

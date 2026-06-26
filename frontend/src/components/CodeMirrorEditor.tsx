@@ -37,7 +37,7 @@ import { oneDark } from '@codemirror/theme-one-dark'
 import { closeBrackets } from '@codemirror/autocomplete'
 import { useFileStore } from '../stores/file-store'
 import { useAiStore } from '../stores/ai-store'
-import { getWsClient } from '../services/websocket'
+import { getWsClientSync } from '../services/websocket'
 import { Loader2, Save, Sparkles, X, Check, Copy } from 'lucide-react'
 import { pluginSandboxManager } from '../services/pluginSandboxManager'
 import { aiCodeAction, computeDiffLines, ACTION_LABELS, ACTION_ICONS } from '../services/ai-operations'
@@ -51,7 +51,7 @@ export default function CodeMirrorEditor() {
   const fileStore = useFileStore()
   const aiConfig = useAiStore((s) => s.config)
   const activeTab = fileStore.openTabs.find(t => t.id === fileStore.activeTabId)
-  const wsClient = getWsClient()
+  const wsClient = getWsClientSync()
   const [aiMenuOpen, setAiMenuOpen] = useState(false)
   const [aiMenuPos, setAiMenuPos] = useState({ x: 0, y: 0 })
   const [aiProcessing, setAiProcessing] = useState<AiCodeAction | null>(null)

@@ -44,6 +44,11 @@ export class WsClient {
 
   // ─── 生命周期 ───
 
+  /** 更新连接 URL（用于 token 刷新后） */
+  setUrl(url: string) {
+    this.url = url
+  }
+
   connect() {
     // 如果已连接或正在连接，不重复创建
     if (this.ws) {
@@ -219,8 +224,47 @@ export class WsClient {
 
 // 单例
 let _instance: WsClient | null = null
+let _tokenReady = false
 
-export function getWsClient(): WsClient {
+/** 获取 WS 连接地址（带一次性 token） */
+async function resolveWsUrl(): Promise<string> {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const host = window.location.host
+  try {
+    const resp = await fetch(`${window.location.protocol}//${host}/api/ws-token`, { method: 'POST' })
+    if (resp.ok) {
+      const { token } = await resp.json()
+      return `${protocol}//${host}/ws?token=${token}`
+    }
+  } catch { /* ignore */ }
+  // 降级：不带 token（后端会拒绝，但至少不崩溃）
+  return `${protocol}//${host}/ws`
+}
+
+/**
+ * 获取 WS 客户端（异步，确保 token 就绪后连接）
+ * 所有需要 WS 连接的组件都应通过此函数获取客户端。
+ */
+export async function getWsClient(): Promise<WsClient> {
+  if (!_instance) {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const host = window.location.host
+    _instance = new WsClient(`${protocol}//${host}/ws`)
+  }
+  // 每次都刷新 token 并连接（token 是一次性的）
+  const url = await resolveWsUrl()
+  _instance.setUrl(url)
+  _tokenReady = true
+  _instance.connect()
+  return _instance
+}
+
+/**
+ * 同步获取已有实例（不触发连接，仅用于事件监听）
+ * ⚠️ 必须先调用 getWsClient() 完成 token 获取和连接。
+ * 此函数仅在 getWsClient() 已完成初始化后安全使用。
+ */
+export function getWsClientSync(): WsClient {
   if (!_instance) {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host

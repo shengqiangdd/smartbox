@@ -41,7 +41,7 @@ import {
   ChevronDown,
 } from 'lucide-react'
 import { useFileStore } from '../../stores/file-store'
-import { getWsClient } from '../../services/websocket'
+import { getWsClientSync } from '../../services/websocket'
 import { sniffLanguage } from '../../utils/content-sniff'
 import { AlertModal, ConfirmModal } from '../../components/ConfirmModal'
 import type { SftpEntry } from '../../types/ssh'
@@ -200,7 +200,7 @@ function FilePreviewModal({
   const [editMode, setEditMode] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saveMsg, setSaveMsg] = useState<string | null>(null)
-  const wsClient = getWsClient()
+  const wsClient = getWsClientSync()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => { loadFile() }, [entry.path])
@@ -402,7 +402,7 @@ export default function SftpBrowser({
     onCancel: () => void
   } | null>(null)
 
-  const wsClient = getWsClient()
+  const wsClient = getWsClientSync()
   const wsRef = useRef(wsClient)
   wsRef.current = wsClient
   const retryCountRef = useRef(0)

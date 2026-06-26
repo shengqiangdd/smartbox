@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { X, CheckCircle2, AlertCircle, Loader2, PlugZap, Eye, EyeOff } from 'lucide-react'
 import { useSshStore, decryptConnection } from '../../stores/ssh-store'
-import { getWsClient } from '../../services/websocket'
+import { getWsClientSync } from '../../services/websocket'
 import { encryptField } from '../../services/secure-store'
 import type { AuthType, SshConnection } from '../../types/ssh'
 
@@ -41,7 +41,7 @@ export default function ConnectionForm({ onClose, editId }: Props) {
   const [testMessage, setTestMessage] = useState('')
   const [error, setError] = useState('')
 
-  const wsClient = getWsClient()
+  const wsClient = getWsClientSync()
 
   // 构建连接配置对象
   const getConnectionData = useCallback((): SshConnection => ({

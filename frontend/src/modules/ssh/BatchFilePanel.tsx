@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 import { useAppStore } from '../../stores/app-store'
 import { decryptConnection, useSshStore } from '../../stores/ssh-store'
-import { getWsClient } from '../../services/websocket'
+import { getWsClientSync } from '../../services/websocket'
 import type { WsClient } from '../../services/websocket'
 
 interface TransferTarget {
@@ -136,7 +136,7 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
         })
 
         try {
-          const wsClient = getWsClient()
+          const wsClient = getWsClientSync()
           if (!wsClient) {
             throw new Error('WebSocket 未连接')
           }
