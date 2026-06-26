@@ -88,7 +88,9 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        navigateFallback: '/',
         navigateFallbackDenylist: [/^\/api/, /^\/ws/],
+
         runtimeCaching: [
           {
             urlPattern: /^https?:\/\/.*\/api\/.*/i,
