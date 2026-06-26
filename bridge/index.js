@@ -1768,59 +1768,59 @@ async function handleLogtailStart(ws, connectionId, requestId, payload) {
 
  const n = typeof lines === 'number' ? Math.min(Math.max(lines, 10), 5000) : 200
 
-  const startTail = (cmd, retried = false) => {
-    conn.ssh.exec(cmd, (err, stream) => {
-      if (err) {
-        return sendError(ws, connectionId, requestId, 'TAIL_FAILED', `无法跟踪日志: ${err.message}`)
-      }
+ const startTail = (cmd, retried = false) => {
+ conn.ssh.exec(cmd, (err, stream) => {
+ if (err) {
+ return sendError(ws, connectionId, requestId, 'TAIL_FAILED', `无法跟踪日志: ${err.message}`)
+ }
 
-      activeLogtails.set(tailKey, stream)
+ activeLogtails.set(tailKey, stream)
 
-      // 确认启动
-      sendJson(ws, {
-        type: 'logtail_started',
-        connectionId,
-        requestId,
-        logPath,
-      })
+ // 确认启动
+ sendJson(ws, {
+ type: 'logtail_started',
+ connectionId,
+ requestId,
+ logPath,
+ })
 
-      let buffer = ''
-      let permDenied = false
+ let buffer = ''
+ let permDenied = false
 
-      stream.on('data', (data) => {
-        buffer += data.toString()
-        // 按行分割发送，避免单条消息过大
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || '' // 保留不完整的最后一行
+ stream.on('data', (data) => {
+ buffer += data.toString()
+ // 按行分割发送，避免单条消息过大
+ const lines = buffer.split('\n')
+ buffer = lines.pop() || '' // 保留不完整的最后一行
 
-        if (lines.length > 0 && ws.readyState === ws.OPEN) {
-          ws.send(JSON.stringify({
-            type: 'logtail_data',
-            connectionId,
-            logPath,
-            lines,
-          }))
-        }
-      })
+ if (lines.length > 0 && ws.readyState === ws.OPEN) {
+ ws.send(JSON.stringify({
+ type: 'logtail_data',
+ connectionId,
+ logPath,
+ lines,
+ }))
+ }
+ })
 
-      stream.stderr.on('data', (data) => {
-        const msg = data.toString()
-        // 权限不足 → 自动用 sudo 重试
-        if (!retried && /permission denied/i.test(msg)) {
-          permDenied = true
-          try { stream.close() } catch (_) {}
-          return startTail(`sudo tail -n ${n} -f ${escapeShellArg(logPath)} 2>&1`, true)
-        }
-        if (ws.readyState === ws.OPEN) {
-          ws.send(JSON.stringify({
-            type: 'logtail_data',
-            connectionId,
-            logPath,
-            lines: [msg],
-            isStderr: true,
-          }))
-        }
-      })
+ stream.stderr.on('data', (data) => {
+ const msg = data.toString()
+ // 权限不足 → 自动用 sudo 重试
+ if (!retried && /permission denied/i.test(msg)) {
+ permDenied = true
+ try { stream.close() } catch (_) {}
+ return startTail(`sudo tail -n ${n} -f ${escapeShellArg(logPath)} 2>&1`, true)
+ }
+ if (ws.readyState === ws.OPEN) {
+ ws.send(JSON.stringify({
+ type: 'logtail_data',
+ connectionId,
+ logPath,
+ lines: [msg],
+ isStderr: true,
+ }))
+ }
+ })
 
  stream.on('close', () => {
  activeLogtails.delete(tailKey)
@@ -1836,8 +1836,11 @@ async function handleLogtailStart(ws, connectionId, requestId, payload) {
  stream.on('error', (err) => {
  activeLogtails.delete(tailKey)
  sendError(ws, connectionId, null, 'TAIL_ERROR', `日志跟踪出错: ${err.message}`)
- })
- })
+    })
+  })
+  startTail(`tail -n ${n} -f ${escapeShellArg(logPath)} 2>&1`)
+}
+
 }
 
 function handleLogtailStop(ws, connectionId, requestId, payload) {

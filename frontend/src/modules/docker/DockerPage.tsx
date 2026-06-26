@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import { Container, RefreshCw, Activity, AlertCircle } from 'lucide-react'
 import { useAppStore } from '../../stores/app-store'
+import { useSshStore } from '../../stores/ssh-store'
 import type { DockerContainer, DockerImage } from './index'
 
 const DockerContainerList = lazy(() => import('./DockerContainerList'))
@@ -22,8 +23,8 @@ export default function DockerPage() {
   const isVisible = activeNav === 'docker'
 
   // 获取当前 SSH 连接 ID
-  const sessions = useAppStore((s) => s.sshSessions)
-  const currentConnId = sessions.length > 0 ? sessions[0] : null
+  const sessions = useSshStore((s) => s.sessions)
+  const currentConnId = sessions.length > 0 ? sessions[0].id : null
 
   const fetchContainers = useCallback(async () => {
     if (!currentConnId) return

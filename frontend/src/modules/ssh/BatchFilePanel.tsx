@@ -14,7 +14,6 @@ import {
   ChevronRight,
   Clock,
 } from 'lucide-react'
-import { useAppStore } from '../../stores/app-store'
 import { decryptConnection, useSshStore } from '../../stores/ssh-store'
 import { getWsClientSync } from '../../services/websocket'
 import type { WsClient } from '../../services/websocket'
@@ -34,7 +33,7 @@ interface TransferTarget {
 type TransferMode = 'upload' | 'command'
 
 export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
-  const sessions = useAppStore((s) => s.sshSessions)
+  const sessions = useSshStore((s) => s.sessions)
   const connections = useSshStore((s) => s.connections)
   const [mode, setMode] = useState<TransferMode>('upload')
 
@@ -56,12 +55,12 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
 
   // 初始化：加载当前已连接的 sessions
   const loadConnectedSessions = useCallback(() => {
-    const available = sessions.map((id) => {
-      const conn = connections.find((c) => c.id === id)
+    const available = sessions.map((sess) => {
+      const conn = connections.find((c) => c.id === sess.connectionId)
       return {
-        connId: id,
-        name: conn?.name || id.slice(0, 8),
-        host: conn?.host || 'unknown',
+        connId: sess.id,
+        name: sess.connectionName || sess.id.slice(0, 8),
+        host: sess.host || 'unknown',
         path: destPath,
         status: 'pending' as const,
         progress: 0,

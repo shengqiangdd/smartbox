@@ -1,14 +1,15 @@
 import { useState, useCallback } from 'react'
 import { ScrollText, PanelLeftOpen, PanelLeftClose } from 'lucide-react'
-import { useAppStore } from '../../stores/app-store'
+import { useSshStore } from '../../stores/ssh-store'
 import LogViewer from './LogViewer'
 import SourceConfig from './SourceConfig'
 
 export default function LogsPage() {
-  const sessions = useAppStore((s) => s.sshSessions)
+  // 直接读取 ssh-store 的活跃会话（唯一的 session 来源）
+  const sessions = useSshStore((s) => s.sessions)
 
-  // 取第一个连接作为当前连接
-  const currentConnId = sessions.length > 0 ? sessions[0] : null
+  // 取第一个活跃 session 的 ID 作为当前连接
+  const currentConnId = sessions.length > 0 ? sessions[0].id : null
 
   const [currentPath, setCurrentPath] = useState<string | null>(null)
   const [sourcePanelOpen, setSourcePanelOpen] = useState(true)

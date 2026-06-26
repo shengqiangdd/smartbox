@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { Zap, Terminal, Download, Upload, PanelLeftOpen, PanelLeftClose, Tags } from 'lucide-react'
-import { useAppStore } from '../../stores/app-store'
+import { useSshStore } from '../../stores/ssh-store'
 import { useCommands } from './useCommands'
 import CommandsList from './CommandsList'
 import CommandOutput from './CommandOutput'
@@ -11,8 +11,8 @@ import { COMMAND_GROUPS } from './index'
 import type { QuickCommand } from './index'
 
 export default function CommandsPage() {
-  const sessions = useAppStore((s) => s.sshSessions)
-  const connectionId = sessions.length > 0 ? sessions[0] : null
+  const sessions = useSshStore((s) => s.sessions)
+  const connectionId = sessions.length > 0 ? sessions[0].id : null
 
   const {
     customCommands,

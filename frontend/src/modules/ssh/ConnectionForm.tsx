@@ -94,7 +94,10 @@ export default function ConnectionForm({ onClose, editId }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name || !host || !username) return
+    if (!name || !host || !username) {
+      setError('请填写名称、主机和用户名')
+      return
+    }
     const raw = getConnectionData()
     // 检查重复连接：相同 host + port + username
     if (!existing) {
@@ -108,13 +111,17 @@ export default function ConnectionForm({ onClose, editId }: Props) {
         return
       }
     }
-    // ⚠️ 加密密码和私钥后再存
+    // ⚠️ 加密密码和私钥后再存，加密失败则明文存储（回退）
     const data = { ...raw }
-    if (data.password) {
-      data.password = await encryptField(data.password) as string
-    }
-    if (data.privateKey) {
-      data.privateKey = await encryptField(data.privateKey) as string
+    try {
+      if (data.password) {
+        data.password = await encryptField(data.password) as string
+      }
+      if (data.privateKey) {
+        data.privateKey = await encryptField(data.privateKey) as string
+      }
+    } catch (err) {
+      console.warn('[ConnectionForm] 加密失败，使用明文存储:', err)
     }
     if (existing) {
       updateConnection(existing.id, data as SshConnection)

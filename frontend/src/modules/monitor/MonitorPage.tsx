@@ -1,6 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { Activity, Cpu, MemoryStick, HardDrive, Network, RefreshCw, Server, Loader2, ShieldAlert, ChevronDown, ChevronRight, Bell } from 'lucide-react'
-import { useAppStore } from '../../stores/app-store'
 import { useSshStore } from '../../stores/ssh-store'
 import { useAlertStore } from '../../stores/alert-store'
 import AlertSettings from './AlertSettings'
@@ -321,7 +320,7 @@ function mockHistory(): HistoryPoint[] {
 }
 
 export default function MonitorPage() {
-  const sessions = useAppStore((s) => s.sshSessions)
+  const sessions = useSshStore((s) => s.sessions)
   const connections = useSshStore((s) => s.connections)
   const isMock = sessions.length === 0
   const [hosts, setHosts] = useState<{ id: string; name: string }[]>([])
@@ -354,9 +353,9 @@ export default function MonitorPage() {
       setHistory(mockHistoryMap)
       return
     }
-    const list = sessions.map((id) => {
-      const conn = connections.find((c) => c.id === id)
-      return { id, name: conn?.name || id.slice(0, 8) }
+    const list = sessions.map((sess) => {
+      const conn = connections.find((c) => c.id === sess.connectionId)
+      return { id: sess.id, name: sess.connectionName || sess.host || sess.id.slice(0, 8) }
     })
     setHosts(list)
     if (selected.length === 0 && list.length > 0) {
@@ -366,8 +365,8 @@ export default function MonitorPage() {
 
   // 采集单台主机数据
   const collectHostStats = useCallback(async (hostId: string): Promise<HostStats | null> => {
-    const conn = connections.find((c) => c.id === hostId)
-    if (!conn) return null
+    const sess = sessions.find((s) => s.id === hostId)
+    if (!sess) return null
 
     try {
       // 并发执行多个命令
@@ -439,8 +438,8 @@ export default function MonitorPage() {
       const ioRaw = parseDiskIo(ioRes.stdout || '')
 
       return {
-        host: conn.host,
-        name: conn.name || hostId.slice(0, 8),
+        host: sess.host,
+        name: sess.connectionName || sess.host || hostId.slice(0, 8),
         cpu,
         memory,
         disk,
