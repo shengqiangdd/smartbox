@@ -25,6 +25,8 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
         run: |
           cd frontend && npm install
 
@@ -35,6 +37,12 @@ jobs:
       - name: Build
         run: |
           cd frontend && npm run build
+
+      - name: Auto test
+        run: |
+          cd frontend && npx vite preview --port 3100 &
+          sleep 3
+          cd .. && bash scripts/auto-test.sh 3100
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
