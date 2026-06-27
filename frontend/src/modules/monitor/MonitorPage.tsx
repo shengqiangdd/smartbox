@@ -441,7 +441,7 @@ export default function MonitorPage() {
     } catch {
       return null
     }
-  }, [connections])
+  }, [connections, sessions])
 
   // 采集所有选中的主机
   const collectAll = useCallback(async () => {
