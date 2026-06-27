@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { AiConfig, AiMessage, AiSuggestion } from '../types/ai'
+import type { AiConfig, AiMessage, AiSuggestion, AiProviderModel } from '../types/ai'
 
 interface AiState {
   config: AiConfig
@@ -8,6 +8,12 @@ interface AiState {
   suggestions: AiSuggestion[]
   isStreaming: boolean
   streamingContent: string
+  /** 从 API 动态获取的免费模型列表 */
+  fetchedModels: AiProviderModel[]
+  /** 上次获取时间 */
+  fetchedModelsAt: number | null
+  /** 是否正在获取 */
+  isFetchingModels: boolean
 
   // 配置操作
   setConfig: (config: Partial<AiConfig>) => void
@@ -23,6 +29,10 @@ interface AiState {
   addSuggestion: (suggestion: AiSuggestion) => void
   markSuggestionApplied: (id: string) => void
   removeSuggestion: (id: string) => void
+
+  // 模型更新
+  setFetchedModels: (models: AiProviderModel[]) => void
+  setIsFetchingModels: (v: boolean) => void
 
   // 默认配置
   getDefaultConfig: () => AiConfig
@@ -43,6 +53,9 @@ export const useAiStore = create<AiState>()(
       suggestions: [],
       isStreaming: false,
       streamingContent: '',
+      fetchedModels: [],
+      fetchedModelsAt: null,
+      isFetchingModels: false,
 
       setConfig: (partial) =>
         set((s) => ({ config: { ...s.config, ...partial } })),
@@ -84,6 +97,11 @@ export const useAiStore = create<AiState>()(
         set((s) => ({
           suggestions: s.suggestions.filter((sg) => sg.id !== id),
         })),
+
+      setFetchedModels: (models) =>
+        set({ fetchedModels: models, fetchedModelsAt: Date.now() }),
+
+      setIsFetchingModels: (v) => set({ isFetchingModels: v }),
 
       getDefaultConfig: () => ({
         apiKey: '',
