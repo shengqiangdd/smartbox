@@ -399,7 +399,7 @@ export default function MonitorPage() {
         return null
       }
 
-      const cpu = parseCpuUsage(cpuRes.stdout || '')
+      const cpu = parseCpuUsage(cpuRes.stdout || '') || 0
       const memory = parseMemory(memRes.stdout || '')
       const disk = parseDisk(diskRes.stdout || '')
       const uptime = parseUptime(uptimeRes.stdout || '')
@@ -423,6 +423,9 @@ export default function MonitorPage() {
 
       const topProcs = parseTopProcs(procRes.stdout || '')
       const ioRaw = parseDiskIo(ioRes.stdout || '')
+      // 限制 IO 值在合理范围（最大 10 GB/s）
+      if (ioRaw.readBps > 10e9) ioRaw.readBps = 0
+      if (ioRaw.writeBps > 10e9) ioRaw.writeBps = 0
 
       return {
         host: sess.host,
