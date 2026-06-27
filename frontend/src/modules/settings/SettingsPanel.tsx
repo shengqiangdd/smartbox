@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import { useAppStore } from '../../stores/app-store'
 import { useAiStore } from '../../stores/ai-store'
+import { useSshStore } from '../../stores/ssh-store'
 import { AI_PROVIDERS } from '../../types/ai'
 import type { AiProvider } from '../../types/ai'
 import {
@@ -59,8 +60,7 @@ export default function SettingsPanel() {
   const [importError, setImportError] = useState('')
   const [isImporting, setIsImporting] = useState(false)
   const [showExportConfirm, setShowExportConfirm] = useState(false)
-  const [showReloadConfirm, setShowReloadConfirm] = useState(false)
-  const [pendingReload, setPendingReload] = useState(false)
+  const [importSuccess, setImportSuccess] = useState(false)
 
   const themeOptions = [
     { value: 'dark' as const, label: '深色', icon: Moon },
@@ -165,7 +165,12 @@ export default function SettingsPanel() {
         setImportingFile(null)
         setImportPassword('')
         setImportError('')
-        setShowReloadConfirm(true)
+        setImportSuccess(true)
+        setTimeout(() => setImportSuccess(false), 3000)
+        // 自动刷新 zustand stores（从 localStorage 恢复最新数据）
+        useSshStore.persist.rehydrate()
+        useAppStore.persist.rehydrate()
+        useAiStore.persist.rehydrate()
       })
       .catch((err: any) => {
         setImportError(err.message || '导入失败')
@@ -520,18 +525,20 @@ export default function SettingsPanel() {
 
           {/* 启用 Agent */}
           <div className="mb-3">
-            <label className="flex items-center gap-2">
+            <label className="flex cursor-pointer items-center gap-2">
               <input
                 type="checkbox"
                 checked={aiConfig.enabled}
                 onChange={(e) => setAiConfig({ enabled: e.target.checked })}
-                className="h-4 w-4 rounded border-slate-600 bg-slate-700 text-smartbox-500 focus:ring-smartbox-500"
+                className="h-4 w-4 rounded border-slate-600 bg-slate-700 text-smartbox-500 focus:ring-smartbox-500 cursor-pointer"
               />
-              <span className="text-xs text-slate-400">启用 AI Agent 功能</span>
+              <div>
+                <span className="text-xs text-slate-400">启用 AI Agent 功能</span>
+                <p className="mt-0.5 text-[11px] text-slate-600">
+                  开启后可在 SSH 终端界面使用 AI 助手，通过自然语言控制服务器
+                </p>
+              </div>
             </label>
-            <p className="mt-1 text-[11px] text-slate-600 pl-6">
-              开启后可在 SSH 终端界面使用 AI 助手，通过自然语言控制服务器
-            </p>
           </div>
         </section>
 
@@ -597,6 +604,13 @@ export default function SettingsPanel() {
                 </button>
               </div>
             </div>
+
+            {/* 导入成功提示 */}{importSuccess && (
+              <div className="flex items-center gap-2 rounded-md border border-emerald-600/30 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-400">
+                <CheckCircle2 size={14} />
+                <span>导入成功，配置已自动刷新</span>
+              </div>
+            )}
 
             {/* 提示信息 */}
             <p className="text-[11px] text-slate-600 leading-relaxed px-1">

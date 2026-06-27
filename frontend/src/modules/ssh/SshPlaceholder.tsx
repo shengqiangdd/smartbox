@@ -45,6 +45,25 @@ export default function SshPlaceholder() {
  const [aiOpen, setAiOpen] = useState(false)
  const aiEnabled = useAiStore((s) => s.config.enabled)
 
+ // ─── 触摸滑动控制侧边栏 ───
+ const touchStartX = useRef(0)
+
+ const handleTouchStart = useCallback((e: React.TouchEvent) => {
+ touchStartX.current = e.touches[0].clientX
+ }, [])
+
+ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+ const diff = e.changedTouches[0].clientX - touchStartX.current
+ if (Math.abs(diff) < 50) return // 滑动距离不够
+ if (diff > 0 && touchStartX.current < 100) {
+ // 从屏幕左侧右滑 → 打开侧边栏
+ setSidebarOpen(true)
+ } else if (diff < 0 && sidebarOpen) {
+ // 右滑关闭
+ setSidebarOpen(false)
+ }
+ }, [sidebarOpen, setSidebarOpen])
+
  // 用 ref 追踪连接状态，防止闭包过期
  const connectingRef = useRef(false)
  const wsClientRef = useRef<WsClient | null>(null)
@@ -387,7 +406,7 @@ export default function SshPlaceholder() {
  )
 
  return (
- <div className="relative flex h-full">
+    <div className="relative flex h-full" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
  {/* 移动端侧边栏遮罩 */}
  {sidebarOpen && (
  <div
@@ -542,28 +561,28 @@ export default function SshPlaceholder() {
  </div>
  )}
 
-  {/* AI 侧边栏（桌面端侧栏，移动端全屏覆盖） */}
-  {aiOpen && activeSession && (
-    <div className="fixed inset-0 z-40 bg-slate-950 md:static md:z-auto md:shrink-0 md:border-l md:border-slate-700/50">
-      <div className="flex h-full flex-col">
-        <div className="flex items-center justify-between border-b border-slate-700/50 px-3 py-2 md:hidden">
-          <span className="text-xs font-medium text-slate-400">AI Agent</span>
-          <button onClick={() => setAiOpen(false)} className="btn-icon text-slate-500 hover:text-slate-300">
-            <X size={14} />
-          </button>
-        </div>
-        <div className="flex-1 overflow-hidden">
-          <ResizablePanel side="left" defaultSize={340} minSize={280} maxSize={600}>
-            <AiSidebar
-              sessionId={activeSession.id}
-              connectionId={activeSession.id}
-              onClose={() => setAiOpen(false)}
-            />
-          </ResizablePanel>
-        </div>
-      </div>
-    </div>
-  )}
+ {/* AI 侧边栏（桌面端侧栏，移动端全屏覆盖） */}
+ {aiOpen && activeSession && (
+ <div className="fixed inset-0 z-40 bg-slate-950 md:static md:z-auto md:shrink-0 md:border-l md:border-slate-700/50">
+ <div className="flex h-full flex-col">
+ <div className="flex items-center justify-between border-b border-slate-700/50 px-3 py-2 md:hidden">
+ <span className="text-xs font-medium text-slate-400">AI Agent</span>
+ <button onClick={() => setAiOpen(false)} className="btn-icon text-slate-500 hover:text-slate-300">
+ <X size={14} />
+ </button>
+ </div>
+ <div className="flex-1 overflow-hidden">
+ <ResizablePanel side="left" defaultSize={340} minSize={280} maxSize={600}>
+ <AiSidebar
+ sessionId={activeSession.id}
+ connectionId={activeSession.id}
+ onClose={() => setAiOpen(false)}
+ />
+ </ResizablePanel>
+ </div>
+ </div>
+ </div>
+ )}
  </div>
  </>
  ) : (

@@ -322,7 +322,9 @@ function mockHistory(): HistoryPoint[] {
 export default function MonitorPage() {
   const sessions = useSshStore((s) => s.sessions)
   const connections = useSshStore((s) => s.connections)
-  const isMock = sessions.length === 0
+  // 无活跃 session 但有已保存连接时，使用已保存连接作为监控目标
+  const hasLiveSessions = sessions.length > 0
+  const isMock = sessions.length === 0 && connections.length === 0
   const [hosts, setHosts] = useState<{ id: string; name: string }[]>([])
   const [selected, setSelected] = useState<string[]>([])
   const [stats, setStats] = useState<Record<string, HostStats>>({})
@@ -353,15 +355,13 @@ export default function MonitorPage() {
       setHistory(mockHistoryMap)
       return
     }
-    const list = sessions.map((sess) => {
-      const conn = connections.find((c) => c.id === sess.connectionId)
-      return { id: sess.id, name: sess.connectionName || sess.host || sess.id.slice(0, 8) }
-    })
+    // 将已保存的连接作为监控主机列表（无论是否已有活跃 session）
+    const list = connections.map((conn) => ({ id: conn.id, name: conn.name }))
     setHosts(list)
     if (selected.length === 0 && list.length > 0) {
       setSelected(list.map((h) => h.id))
     }
-  }, [sessions, connections, selected.length, isMock])
+  }, [connections, selected.length, isMock])
 
   // 采集单台主机数据
   const collectHostStats = useCallback(async (hostId: string): Promise<HostStats | null> => {
