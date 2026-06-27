@@ -338,25 +338,17 @@ export default function MonitorPage() {
   const [healthError, setHealthError] = useState(false)
   const alertHistory = useAlertStore((s) => s.history)
 
-  // 扫描主机（已保存连接 + 活跃 session）
+  // 扫描主机（仅显示活跃 session，已保存但未连接的不列入）
   const scanHosts = useCallback(() => {
-    const list: { id: string; name: string }[] = []
-    // 已保存的连接
-    for (const conn of connections) {
-      list.push({ id: conn.id, name: conn.name })
-    }
-    // 活跃 session（快速连接不保存到 connections）
-    for (const sess of sessions) {
-      const name = sess.connectionName || sess.host || sess.id.slice(0, 8)
-      if (!list.some((h) => h.id === sess.id)) {
-        list.push({ id: sess.id, name })
-      }
-    }
+    const list = sessions.map((sess) => ({
+      id: sess.id,
+      name: sess.connectionName || sess.host || sess.id.slice(0, 8),
+    }))
     setHosts(list)
     if (list.length > 0 && selected.length === 0) {
       setSelected(list.map((h) => h.id))
     }
-  }, [connections, sessions, selected.length])
+  }, [sessions, selected.length])
 
   // 采集单台主机数据
   const collectHostStats = useCallback(async (hostId: string): Promise<HostStats | null> => {
@@ -571,12 +563,6 @@ export default function MonitorPage() {
       <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-700/50 px-4 py-3">
         <Activity size={18} className="text-smartbox-400" />
         <h2 className="text-sm font-semibold text-slate-200">主机性能看板</h2>
-        {isMock && (
-          <span className="flex items-center gap-1 rounded bg-amber-900/20 px-1.5 py-0.5 text-[10px] text-amber-400">
-            <Activity size={10} />
-            演示模式
-          </span>
-        )}
 
         <div className="ml-auto flex items-center gap-3">
           {/* 刷新间隔选择 */}
