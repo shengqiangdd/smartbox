@@ -71,6 +71,18 @@ export default function SettingsPanel() {
   // ── Provider 切换 ──
   const currentProvider = AI_PROVIDERS.find((p) => p.id === aiConfig.provider) || AI_PROVIDERS[0]
 
+  // ── 从 API 获取的免费模型列表（在 allModels / selectedModelLabel 之前声明） ──
+  const allModels = currentProvider.id === 'openrouter' && fetchedModels.length > 0
+    ? [
+        ...fetchedModels,
+        ...currentProvider.models.filter((m) => !m.free), // 保留付费模型
+      ]
+    : currentProvider.models
+
+  const formattedFetchTime = fetchedModelsAt
+    ? new Date(fetchedModelsAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    : null
+
   const handleSelectProvider = useCallback((provider: AiProvider) => {
     if (provider.id === 'custom') {
       setAiConfig({
@@ -130,19 +142,6 @@ export default function SettingsPanel() {
       setIsFetchingModels(false)
     }
   }, [setFetchedModels, setIsFetchingModels])
-
-  // 格式化上次获取时间
-  const formattedFetchTime = fetchedModelsAt
-    ? new Date(fetchedModelsAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-    : null
-
-  // 当前 provider 的完整模型列表（静态 + 动态获取的免费模型）
-  const allModels = currentProvider.id === 'openrouter' && fetchedModels.length > 0
-    ? [
-        ...fetchedModels,
-        ...currentProvider.models.filter((m) => !m.free), // 保留付费模型
-      ]
-    : currentProvider.models
 
   // ─── 导入导出处理函数 ───
 
@@ -454,8 +453,8 @@ export default function SettingsPanel() {
                             </>
                           )}
 
-                          {/* 内置免费模型组 */}
-                          {allModels.filter((m) => m.free).length > 0 && (
+                          {/* 内置免费模型组（仅当无 API 动态获取时显示，避免重复） */}
+                          {fetchedModels.length === 0 && allModels.filter((m) => m.free).length > 0 && (
                             <>
                               <div className="border-b border-slate-700/50 px-3 py-1.5 text-[10px] uppercase tracking-wider text-emerald-400/70">
                                 🆓 免费模型
