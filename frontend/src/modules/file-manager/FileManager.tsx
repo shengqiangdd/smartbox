@@ -316,8 +316,8 @@ export default function FileManager() {
     )
 
   return (
-    <div className="flex h-full flex-col md:flex-row md:overflow-hidden">
-      {/* 左侧文件浏览器（可拖拽调整宽度） */}
+    <div className="flex h-full md:overflow-hidden">
+      {/* 左侧文件浏览器 */}
       {sidebarOpen && (
         <div className="flex shrink-0 flex-col border-r border-slate-700/50">
           <ResizablePanel side="right" defaultSize={260} minSize={200} maxSize={500}>

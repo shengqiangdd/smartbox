@@ -1111,7 +1111,7 @@ ${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n...还有 ${errors.leng
 
       {/* 文件列表 */}
       <div
-        className="relative flex-1 overflow-hidden"
+        className="relative flex-1 overflow-y-auto"
         onContextMenu={handleEmptyContextMenu}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
