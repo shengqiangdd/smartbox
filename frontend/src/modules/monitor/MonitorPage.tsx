@@ -322,9 +322,9 @@ function mockHistory(): HistoryPoint[] {
 export default function MonitorPage() {
   const sessions = useSshStore((s) => s.sessions)
   const connections = useSshStore((s) => s.connections)
-  // 无活跃 session 时全部使用 mock 数据展示（已保存连接也作为主机列表）
-  const hasLiveSessions = sessions.length > 0
-  const isMock = sessions.length === 0
+  // 仅当有已连接的 session 时才用真实数据
+  const hasLiveSessions = sessions.some((s) => s.status === 'connected')
+  const isMock = !hasLiveSessions
   const [hosts, setHosts] = useState<{ id: string; name: string }[]>([])
   const [selected, setSelected] = useState<string[]>([])
   const [stats, setStats] = useState<Record<string, HostStats>>({})
@@ -340,28 +340,13 @@ export default function MonitorPage() {
 
   // 扫描已连接的主机
   const scanHosts = useCallback(() => {
-    if (isMock) {
-      const list = MOCK_HOSTS.map((h) => ({ id: h.id, name: h.name }))
-      setHosts(list)
-      setSelected(list.map((h) => h.id))
-      // 直接注入 mock 数据
-      const mockStatsMap: Record<string, HostStats> = {}
-      const mockHistoryMap: Record<string, HistoryPoint[]> = {}
-      MOCK_HOSTS.forEach((h) => {
-        mockStatsMap[h.id] = mockStats(h.id, h.name, h.host)
-        mockHistoryMap[h.id] = mockHistory()
-      })
-      setStats(mockStatsMap)
-      setHistory(mockHistoryMap)
-      return
-    }
-    // 将已保存的连接作为监控主机列表（无论是否已有活跃 session）
+    // 显示已保存的 SSH 连接作为监控主机（而非生成 mock 数据）
     const list = connections.map((conn) => ({ id: conn.id, name: conn.name }))
     setHosts(list)
-    if (selected.length === 0 && list.length > 0) {
+    if (list.length > 0 && selected.length === 0) {
       setSelected(list.map((h) => h.id))
     }
-  }, [connections, selected.length, isMock])
+  }, [connections, selected.length])
 
   // 采集单台主机数据
   const collectHostStats = useCallback(async (hostId: string): Promise<HostStats | null> => {
@@ -462,33 +447,15 @@ export default function MonitorPage() {
     setLoading(true)
     setError('')
 
-    if (isMock) {
-      // Mock 模式：刷新随机数据
-      const mockStatsMap: Record<string, HostStats> = {}
-      const now = Date.now()
-      selected.forEach((id) => {
-        const host = MOCK_HOSTS.find((h) => h.id === id)
-        if (host) {
-          mockStatsMap[id] = mockStats(id, host.name, host.host)
-          setHistory((prev) => {
-            const h = prev[id] || []
-            h.push({ time: now, cpu: mockStatsMap[id].cpu, mem: mockStatsMap[id].memory.pct, disk: mockStatsMap[id].disk.pct })
-            return { ...prev, [id]: h.slice(-60) }
-          })
-        }
-      })
-      setStats((prev) => ({ ...prev, ...mockStatsMap }))
-      // 告警评估
-      const evaluate = useAlertStore.getState().evaluate
-      for (const id of selected) {
-        const s = mockStatsMap[id]
-        if (s) evaluate(id, s.name, { cpu: s.cpu, memory: s.memory.pct, disk: s.disk.pct })
+    try {
+      if (isMock) {
+        // 无活跃连接时提示
+        setError('请先连接 SSH 服务器以采集监控数据')
+        setLoading(false)
+        return
       }
-      setLoading(false)
-      return
-    }
 
-    const results = await Promise.all(selected.map((id) => collectHostStats(id)))
+      const results = await Promise.all(selected.map((id) => collectHostStats(id)))
 
     const newStats: Record<string, HostStats> = {}
     const now = Date.now()
@@ -516,8 +483,12 @@ export default function MonitorPage() {
       const s = newStats[id]
       if (s) evaluate(id, s.name, { cpu: s.cpu, memory: s.memory.pct, disk: s.disk.pct })
     }
-    setLoading(false)
-  }, [selected, collectHostStats])
+    } catch (err: any) {
+      setError('采集失败: ' + (err?.message || '未知错误'))
+    } finally {
+      setLoading(false)
+    }
+  }, [selected, collectHostStats, isMock])
 
   // 自动刷新
   const startAutoRefresh = useCallback(() => {

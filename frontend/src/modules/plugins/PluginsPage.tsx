@@ -358,8 +358,8 @@ export default function PluginsPage() {
                           {sandboxReady[plugin.id] ? '沙箱就绪' : '加载中'}
                         </span>
                       </div>
-                      <div className="h-48 sm:h-32">
-                        {sandboxKeys[plugin.id] && (
+                      <div className="h-48 sm:h-32 flex items-center justify-center">
+                        {sandboxKeys[plugin.id] ? (
                           <PluginSandbox
                             key={sandboxKeys[plugin.id] as number}
                             manifest={{
@@ -375,6 +375,8 @@ export default function PluginsPage() {
                             onReady={(handle) => handleSandboxReady(plugin.id, handle)}
                             onError={(err) => console.error(`[Plugins] ${plugin.name} error:`, err)}
                           />
+                        ) : (
+                          <span className="text-[10px] text-slate-600">点击左侧命令按钮执行</span>
                         )}
                       </div>
                     </div>

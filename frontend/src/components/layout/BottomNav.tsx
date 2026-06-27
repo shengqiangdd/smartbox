@@ -17,32 +17,26 @@ export default function BottomNav() {
   const activeNav = useAppStore((s) => s.activeNav)
   const setActiveNav = useAppStore((s) => s.setActiveNav)
   const sshSessions = useAppStore((s) => s.sshSessions)
+  const sshSftpOpen = useAppStore((s) => s.sshSftpOpen)
 
-  // 仅在 SSH 页面有已连接 session 且正在查看终端时才隐藏导航
   const isSshPage = activeNav === 'ssh'
   const hasActiveSession = sshSessions.length > 0
-  const sshSftpOpen = useAppStore((s) => s.sshSftpOpen)
-  const hideNav = isSshPage && hasActiveSession && !sshSftpOpen
-  const showNav = !hideNav
+  // SSH 终端全屏时隐藏底部导航
+  if (isSshPage && hasActiveSession && !sshSftpOpen) return null
 
   return (
-    <nav className={`flex items-center justify-evenly border-t border-slate-700/50 bg-slate-900 px-1 no-scrollbar transition-all duration-200 md:hidden ${
-      showNav ? 'h-auto pb-safe pt-0.5 sm:h-12' : 'h-0 overflow-hidden border-t-0 py-0'
-    }`}>
+    <nav className="flex items-center justify-evenly border-t border-slate-700/50 bg-slate-900 md:hidden" style={{ minHeight: '48px' }}>
       {navItems.map((item) => {
         const Icon = item.icon
         return (
           <button
             key={item.id}
             onClick={() => setActiveNav(item.id)}
-            className={`flex shrink-0 flex-col items-center gap-0.5 px-2 py-1.5 text-[10px] transition-colors sm:flex-row sm:gap-1 sm:px-3 sm:py-1 ${
-              activeNav === item.id
-                ? 'text-smartbox-400'
-                : 'text-slate-500 hover:text-slate-300'
-            }`}
+            className="flex shrink-0 flex-col items-center justify-center gap-0.5 px-1 py-1 text-[10px] transition-colors touch-manipulation"
+            style={{ minWidth: '44px', minHeight: '44px' }}
           >
-            <Icon size={18} />
-            <span className="sm:text-xs">{item.label}</span>
+            <Icon size={20} className={activeNav === item.id ? 'text-smartbox-400' : 'text-slate-500'} />
+            <span className={activeNav === item.id ? 'text-smartbox-400' : 'text-slate-500'} style={{ fontSize: '9px', lineHeight: '1' }}>{item.label}</span>
           </button>
         )
       })}
