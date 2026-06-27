@@ -291,17 +291,21 @@ export default function PluginsPage() {
                               onClick={() => {
                                 if (enabled) {
                                   pluginSandboxManager.executeCommand(plugin.id, cmd.id)
+                                  // 触发全局通知
+                                  window.dispatchEvent(new CustomEvent('smartbox-notification', {
+                                    detail: { message: `已执行: ${plugin.name} → ${cmd.label || cmd.id}`, type: 'info' }
+                                  }))
                                 }
                               }}
                               disabled={!enabled}
                               title={cmd.description || cmd.label || cmd.id}
-                              className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] transition-colors ${
+                              className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] transition-colors ${
                                 enabled
                                   ? 'bg-slate-800/50 text-slate-400 hover:bg-slate-700 hover:text-slate-200'
                                   : 'bg-slate-800/30 text-slate-600 cursor-not-allowed'
                               }`}
                             >
-                              {enabled && <Play size={8} className="shrink-0" />}
+                              {enabled && <Play size={10} className="shrink-0" />}
                               {cmd.label || cmd.id}
                             </button>
                           ))}
@@ -354,7 +358,7 @@ export default function PluginsPage() {
                           {sandboxReady[plugin.id] ? '沙箱就绪' : '加载中'}
                         </span>
                       </div>
-                      <div className="h-32">
+                      <div className="h-48 sm:h-32">
                         {sandboxKeys[plugin.id] && (
                           <PluginSandbox
                             key={sandboxKeys[plugin.id] as number}
