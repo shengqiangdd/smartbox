@@ -143,11 +143,11 @@ export default function PluginsPage() {
   const sandboxKeys = sandboxKeysRef.current
 
   return (
-    <div className="flex h-full flex-col p-6">
+    <div className="flex h-full flex-col p-4 sm:p-6">
       {/* 标题栏 + 标签切换 */}
       <div className="mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
               <Puzzle size={20} className="text-slate-400" />
               <h2 className="text-lg font-semibold text-slate-200">插件</h2>
@@ -245,9 +245,9 @@ export default function PluginsPage() {
 
       {/* 插件列表 */}
       {catalog.length > 0 && (
-        <div className="flex flex-1 gap-4 overflow-hidden">
+        <div className="flex flex-1 flex-col sm:flex-row gap-4 overflow-hidden">
           {/* 左侧：插件列表 */}
-          <div className="w-72 shrink-0 space-y-3 overflow-y-auto pr-2">
+          <div className="w-full sm:w-72 shrink-0 space-y-3 overflow-y-auto sm:pr-2 max-h-[40vh] sm:max-h-none">
             {catalog.map((plugin) => {
               const enabled = isPluginEnabled(plugin.id)
               const ready = sandboxReady[plugin.id]
@@ -335,7 +335,7 @@ export default function PluginsPage() {
                 {Object.keys(sandboxReady).filter((k) => sandboxReady[k]).length}/{catalog.length} 就绪
               </span>
             </div>
-            <div className="grid grid-cols-2 gap-4 p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 p-3 sm:p-4">
               {catalog
                 .filter((p) => sandboxCodes[p.id])
                 .map((plugin) => (

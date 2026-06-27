@@ -124,8 +124,8 @@ export default function DockerPage() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* 头部 */}
-      <div className="flex shrink-0 items-center border-b border-slate-700/50 bg-slate-900/80 px-4 py-2">
-        <Container size={18} className="mr-2 text-smartbox-400" />
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-700/50 bg-slate-900/80 px-4 py-2">
+        <Container size={18} className="mr-1 text-smartbox-400" />
         <h1 className="text-sm font-semibold text-slate-200">Docker 管理</h1>
         <div className="ml-auto flex items-center gap-2">
           {/* 自动刷新开关 */}

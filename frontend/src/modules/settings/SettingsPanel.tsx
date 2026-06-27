@@ -203,7 +203,7 @@ export default function SettingsPanel() {
   }, [])
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto p-6">
+    <div className="flex h-full flex-col overflow-y-auto p-4 sm:p-6">
       <div className="mb-6 flex items-center gap-2">
         <Settings size={20} className="text-slate-400" />
         <h2 className="text-lg font-semibold text-slate-200">设置</h2>

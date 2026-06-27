@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { ScrollText, PanelLeftOpen, PanelLeftClose } from 'lucide-react'
+import { ScrollText, PanelLeftOpen, PanelLeftClose, X } from 'lucide-react'
 import { useSshStore } from '../../stores/ssh-store'
 import LogViewer from './LogViewer'
 import SourceConfig from './SourceConfig'
@@ -34,10 +34,10 @@ export default function LogsPage() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* 头部 */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-slate-700/50 bg-slate-900/80 px-4 py-2">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-700/50 bg-slate-900/80 px-4 py-2">
         <ScrollText size={18} className="text-sky-400" />
         <h1 className="text-sm font-semibold text-slate-200">日志聚合</h1>
-        <span className="ml-2 rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-500">
+        <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-500">
           {sessions.length > 1 ? `${sessions.length} 个连接可用` : '1 个连接'}
         </span>
 
@@ -57,7 +57,13 @@ export default function LogsPage() {
       <div className="flex flex-1 overflow-hidden">
         {/* 左侧：日志源列表 */}
         {sourcePanelOpen && (
-          <div className="w-72 shrink-0 border-r border-slate-700/30 bg-slate-900/40">
+          <div className="fixed inset-y-0 left-0 z-40 w-72 border-r border-slate-700/30 bg-slate-950 md:static md:z-auto md:bg-slate-900/40">
+            <div className="flex items-center justify-between border-b border-slate-700/30 px-3 py-1.5 md:hidden">
+              <span className="text-xs font-medium text-slate-400">日志源</span>
+              <button onClick={() => setSourcePanelOpen(false)} className="btn-icon text-slate-500 hover:text-slate-300">
+                <X size={14} />
+              </button>
+            </div>
             <SourceConfig
               connectionId={currentConnId}
               currentPath={currentPath}

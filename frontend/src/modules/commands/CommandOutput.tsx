@@ -7,9 +7,10 @@ interface CommandOutputProps {
   onClose: (index: number) => void
   onClear: () => void
   onSendToTerminal: (cmd: string) => void
+  onPanelClose?: () => void
 }
 
-export default function CommandOutput({ results, onClose, onClear, onSendToTerminal }: CommandOutputProps) {
+export default function CommandOutput({ results, onClose, onClear, onSendToTerminal, onPanelClose }: CommandOutputProps) {
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
 
   const handleCopy = async (text: string, idx: number) => {
@@ -35,12 +36,22 @@ export default function CommandOutput({ results, onClose, onClear, onSendToTermi
       {/* 头部 */}
       <div className="flex shrink-0 items-center justify-between border-b border-slate-700/30 px-3 py-1.5">
         <span className="text-xs font-medium text-slate-400">执行记录</span>
-        <button
-          onClick={onClear}
-          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-slate-500 transition-colors hover:bg-red-900/20 hover:text-red-400"
-        >
-          <Trash2 size={11} /> 清空
-        </button>
+        <div className="flex items-center gap-1">
+          {onPanelClose && (
+            <button
+              onClick={onPanelClose}
+              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-slate-500 transition-colors hover:text-slate-300 md:hidden"
+            >
+              <X size={12} /> 关闭
+            </button>
+          )}
+          <button
+            onClick={onClear}
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-slate-500 transition-colors hover:bg-red-900/20 hover:text-red-400"
+          >
+            <Trash2 size={11} /> 清空
+          </button>
+        </div>
       </div>
 
       {/* 结果列表 */}

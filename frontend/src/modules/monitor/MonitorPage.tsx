@@ -578,11 +578,11 @@ export default function MonitorPage() {
   return (
     <div className="flex h-full flex-col">
       {/* 头部 */}
-      <div className="flex shrink-0 items-center border-b border-slate-700/50 px-4 py-3">
-        <Activity size={18} className="mr-2 text-smartbox-400" />
+      <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-700/50 px-4 py-3">
+        <Activity size={18} className="text-smartbox-400" />
         <h2 className="text-sm font-semibold text-slate-200">主机性能看板</h2>
         {isMock && (
-          <span className="ml-2 flex items-center gap-1 rounded bg-amber-900/20 px-1.5 py-0.5 text-[10px] text-amber-400">
+          <span className="flex items-center gap-1 rounded bg-amber-900/20 px-1.5 py-0.5 text-[10px] text-amber-400">
             <Activity size={10} />
             演示模式
           </span>
@@ -711,7 +711,7 @@ export default function MonitorPage() {
       )}
 
       {/* 主机看板 */}
-      <div className="flex-1 overflow-auto p-4">
+      <div className="flex-1 overflow-auto p-3 sm:p-4">
         {selected.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-center">

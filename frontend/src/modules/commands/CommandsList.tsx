@@ -127,8 +127,8 @@ export default function CommandsList({
                           )}
                         </div>
 
-                        {/* 操作按钮 */}
-                        <div className="ml-2 flex shrink-0 items-center gap-0.5 opacity-70 group-hover:opacity-100">
+                        {/* 操作按钮：移动端始终显示，桌面端 hover 显示 */}
+                        <div className="ml-2 flex shrink-0 items-center gap-0.5 opacity-100 md:opacity-70 md:group-hover:opacity-100">
                           <button
                             onClick={() => onExecute(cmd)}
                             disabled={executingId === cmd.id || !connectionId}
