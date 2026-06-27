@@ -537,6 +537,15 @@ export default function MonitorPage() {
     scanHosts()
   }, [scanHosts])
 
+  // 扫描到主机后自动开始采集
+  useEffect(() => {
+    if (hosts.length > 0) {
+      collectAll()
+      startAutoRefresh()
+    }
+    return () => stopAutoRefresh()
+  }, [hosts.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // 拉取 Bridge 健康数据
   const fetchHealth = useCallback(async () => {
     try {

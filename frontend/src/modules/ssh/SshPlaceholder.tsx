@@ -422,10 +422,9 @@ export default function SshPlaceholder() {
       transition-transform duration-200 md:static md:z-auto md:translate-x-0
       ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
     `}
-    style={{ width: sidebarOpen ? undefined : 0 }}
   >
-    <div className="h-full overflow-hidden" style={{ width: sidebarOpen ? undefined : 0 }}>
- <ResizablePanel side="right" defaultSize={256} minSize={160} maxSize={500}>
+  <div className="h-full">
+  <ResizablePanel side="right" defaultSize={256} minSize={160} maxSize={500}>
  <div className="flex h-full flex-col">
  <div className="flex items-center justify-between border-b border-slate-700/50 px-3 py-1.5">
  <WsIndicator />
@@ -442,7 +441,7 @@ export default function SshPlaceholder() {
  </div>
  </ResizablePanel>
  </div>
-  </div>
+ </div>
 
  {/* 中间终端区域 */}
  <div className="flex flex-1 flex-col overflow-hidden">
