@@ -564,21 +564,23 @@ function logExec(connectionId, cmd, res, { _sudoRetry = false } = {}) {
  })
 
  stream.on('close', (code) => {
- clearTimeout(timeout)
- // 权限不足且未重试过 → 自动用 sudo -S 重试
- if (code !== 0 && !_sudoRetry && /permission denied/i.test(stderr)) {
- const sudoPwd = conn.sudoPassword
- let sudoCmd
- if (sudoPwd) {
- // 有 sudo 密码：用 echo + sudo -S
- const escapedPwd = sudoPwd.replace(/'/g, "'\\''")
- sudoCmd = `echo '${escapedPwd}' | sudo -S ${cmd}`
- } else {
- // 无密码 sudo（NOPASSWD 配置）
- sudoCmd = `sudo ${cmd}`
- }
- return logExec(connectionId, sudoCmd, res, { _sudoRetry: true })
- }
+        clearTimeout(timeout)
+        // 权限不足且未重试过 → 自动用 sudo -S 重试
+        // 同时检查 stdout 和 stderr（因为有些命令用了 2>&1）
+        const permDenied = /permission denied/i.test(stderr) || /permission denied/i.test(stdout)
+        if (code !== 0 && !_sudoRetry && permDenied) {
+          const sudoPwd = conn.sudoPassword
+          let sudoCmd
+          if (sudoPwd) {
+            // 有 sudo 密码：用 echo + sudo -S
+            const escapedPwd = sudoPwd.replace(/'/g, "'\\''")
+            sudoCmd = `echo '${escapedPwd}' | sudo -S ${cmd}`
+          } else {
+            // 无密码 sudo（NOPASSWD 配置）
+            sudoCmd = `sudo ${cmd}`
+          }
+          return logExec(connectionId, sudoCmd, res, { _sudoRetry: true })
+        }
  if (code !== 0 && !stdout.trim()) {
  return res.json({ success: false, error: stderr.trim() || `Exit code: ${code}`, exitCode: code })
  }
