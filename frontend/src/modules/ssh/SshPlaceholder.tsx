@@ -533,22 +533,23 @@ export default function SshPlaceholder() {
  ) : null}
 
  {/* SFTP 侧边栏（可拖拽调整宽度） */}
-      {sftpOpen && !aiOpen && activeSession && (
-        <div className="shrink-0 border-l border-slate-700/50 hidden md:block">
-          <ResizablePanel side="left" defaultSize={260} minSize={200} maxSize={500}>
-            <SftpSidebar sessionId={activeSession.id} />
-          </ResizablePanel>
-        </div>
-      )}
+ {sftpOpen && !aiOpen && activeSession && (
+ <div className="shrink-0 border-l border-slate-700/50 hidden md:block">
+ <ResizablePanel side="left" defaultSize={260} minSize={200} maxSize={500}>
+ <SftpSidebar sessionId={activeSession.id} />
+ </ResizablePanel>
+ </div>
+ )}
 
  {/* AI 侧边栏（可拖拽调整宽度） */}
  {aiOpen && activeSession && (
  <div className="shrink-0 border-l border-slate-700/50">
  <ResizablePanel side="left" defaultSize={340} minSize={280} maxSize={600}>
- <AiSidebar
- sessionId={activeSession.id}
- onClose={() => setAiOpen(false)}
- />
+            <AiSidebar
+            sessionId={activeSession.id}
+            connectionId={activeSession.connectionId}
+            onClose={() => setAiOpen(false)}
+          />
  </ResizablePanel>
  </div>
  )}

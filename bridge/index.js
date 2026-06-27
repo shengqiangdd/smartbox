@@ -215,42 +215,47 @@ app.get('/api/plugins/:id/plugin.js', (req, res) => {
 
 // 执行 SSH 命令（通过 connectionId）
 app.post('/api/ssh/exec', (req, res) => {
- // 限制：只允许通过连接 ID 访问自己的连接
- const { connectionId, command } = req.body
- if (!connectionId || !command) {
- return res.status(400).json({ error: 'Missing connectionId or command' })
- }
+  // 限制：只允许通过连接 ID 访问自己的连接
+  const { connectionId, command } = req.body
+  if (!connectionId || !command) {
+    return res.status(400).json({ error: 'Missing connectionId or command' })
+  }
 
- const conn = connections.get(connectionId)
- if (!conn || !conn.ssh) {
- return res.status(400).json({ error: 'SSH not connected' })
- }
+  const conn = connections.get(connectionId)
+  if (!conn || !conn.ssh) {
+    return res.status(400).json({ error: 'SSH not connected' })
+  }
 
- conn.ssh.exec(command, (err, stream) => {
- if (err) {
- return res.status(500).json({ error: err.message })
- }
+  // 支持 sudo 提权：若连接配置了 sudoPassword，自动包装命令
+  const effectiveCmd = conn.sudoPassword
+    ? `echo '${conn.sudoPassword.replace(/'/g, "'\\''")}' | sudo -S ${command}`
+    : command
 
- let stdout = ''
- let stderr = ''
+  conn.ssh.exec(effectiveCmd, { pty: !!conn.sudoPassword }, (err, stream) => {
+    if (err) {
+      return res.status(500).json({ error: err.message })
+    }
 
- stream.on('data', (chunk) => {
- stdout += chunk.toString('utf-8')
- })
+    let stdout = ''
+    let stderr = ''
 
- stream.stderr.on('data', (chunk) => {
- stderr += chunk.toString('utf-8')
- })
+    stream.on('data', (chunk) => {
+      stdout += chunk.toString('utf-8')
+    })
 
- stream.on('close', (code) => {
- res.json({ stdout, stderr, exitCode: code })
- })
+    stream.stderr.on('data', (chunk) => {
+      stderr += chunk.toString('utf-8')
+    })
 
- // 超时兜底
- setTimeout(() => {
- stream.close()
- }, 30000)
- })
+    stream.on('close', (code) => {
+      res.json({ stdout, stderr, exitCode: code })
+    })
+
+    // 超时兜底
+    setTimeout(() => {
+      stream.close()
+    }, 30000)
+  })
 })
 
 // ========== Docker API ==========
@@ -560,9 +565,18 @@ function logExec(connectionId, cmd, res, { _sudoRetry = false } = {}) {
 
  stream.on('close', (code) => {
  clearTimeout(timeout)
- // 权限不足且未重试过 → 自动加 sudo 重试
+ // 权限不足且未重试过 → 自动用 sudo -S 重试
  if (code !== 0 && !_sudoRetry && /permission denied/i.test(stderr)) {
- const sudoCmd = cmd.replace(/^(\s*)/, '$1sudo ')
+ const sudoPwd = conn.sudoPassword
+ let sudoCmd
+ if (sudoPwd) {
+ // 有 sudo 密码：用 echo + sudo -S
+ const escapedPwd = sudoPwd.replace(/'/g, "'\\''")
+ sudoCmd = `echo '${escapedPwd}' | sudo -S ${cmd}`
+ } else {
+ // 无密码 sudo（NOPASSWD 配置）
+ sudoCmd = `sudo ${cmd}`
+ }
  return logExec(connectionId, sudoCmd, res, { _sudoRetry: true })
  }
  if (code !== 0 && !stdout.trim()) {
@@ -622,32 +636,32 @@ const MARKET_INDEX_URL = process.env.MARKET_INDEX_URL || 'https://raw.githubuser
 
 // 本地市场 fallback：从本地已安装插件生成市场数据
 function getLocalMarketIndex() {
-  const localPlugins = []
-  if (fs.existsSync(pluginsDir)) {
-    const entries = fs.readdirSync(pluginsDir, { withFileTypes: true })
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue
-      const manifestPath = path.join(pluginsDir, entry.name, 'manifest.json')
-      if (!fs.existsSync(manifestPath)) continue
-      try {
-        const m = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'))
-        localPlugins.push({
-          id: m.id || entry.name,
-          name: m.name || entry.name,
-          version: m.version || '1.0.0',
-          description: m.description || '',
-          author: m.author || 'SmartBox',
-          icon: m.icon || 'puzzle',
-          tags: m.tags || [],
-          manifestUrl: `local://${entry.name}/manifest.json`,
-          pluginUrl: `local://${entry.name}/plugin.js`,
-          updatedAt: '2026-06-26',
-          downloads: 0,
-        })
-      } catch { /* skip broken manifests */ }
-    }
-  }
-  return { plugins: localPlugins, updatedAt: new Date().toISOString().slice(0, 10), message: 'SmartBox 插件市场 - 内置插件集' }
+ const localPlugins = []
+ if (fs.existsSync(pluginsDir)) {
+ const entries = fs.readdirSync(pluginsDir, { withFileTypes: true })
+ for (const entry of entries) {
+ if (!entry.isDirectory()) continue
+ const manifestPath = path.join(pluginsDir, entry.name, 'manifest.json')
+ if (!fs.existsSync(manifestPath)) continue
+ try {
+ const m = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'))
+ localPlugins.push({
+ id: m.id || entry.name,
+ name: m.name || entry.name,
+ version: m.version || '1.0.0',
+ description: m.description || '',
+ author: m.author || 'SmartBox',
+ icon: m.icon || 'puzzle',
+ tags: m.tags || [],
+ manifestUrl: `local://${entry.name}/manifest.json`,
+ pluginUrl: `local://${entry.name}/plugin.js`,
+ updatedAt: '2026-06-26',
+ downloads: 0,
+ })
+ } catch { /* skip broken manifests */ }
+ }
+ }
+ return { plugins: localPlugins, updatedAt: new Date().toISOString().slice(0, 10), message: 'SmartBox 插件市场 - 内置插件集' }
 }
 
 // 获取市场插件列表（远程优先，失败 fallback 到本地）
@@ -657,85 +671,85 @@ app.get('/api/market/index', async (req, res) => {
  signal: AbortSignal.timeout(8000),
  })
  if (!response.ok) {
-   console.log('[market] Remote fetch failed, using local fallback')
-   return res.json(getLocalMarketIndex())
+ console.log('[market] Remote fetch failed, using local fallback')
+ return res.json(getLocalMarketIndex())
  }
  const data = await response.json()
  res.json(data)
  } catch (err) {
-   console.log(`[market] Remote fetch error: ${err.message}, using local fallback`)
-   res.json(getLocalMarketIndex())
+ console.log(`[market] Remote fetch error: ${err.message}, using local fallback`)
+ res.json(getLocalMarketIndex())
  }
 })
 
 // 辅助：从 URL 读取内容（支持 local:// 协议读本地文件）
 async function fetchContent(url, timeout = 15000) {
-  if (url.startsWith('local://')) {
-    const relPath = url.replace('local://', '')
-    const localPath = path.join(pluginsDir, relPath)
-    if (!fs.existsSync(localPath)) throw new Error(`Local file not found: ${relPath}`)
-    return fs.readFileSync(localPath, 'utf-8')
-  }
-  const resp = await fetch(url, { signal: AbortSignal.timeout(timeout) })
-  if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching ${url}`)
-  return resp.text()
+ if (url.startsWith('local://')) {
+ const relPath = url.replace('local://', '')
+ const localPath = path.join(pluginsDir, relPath)
+ if (!fs.existsSync(localPath)) throw new Error(`Local file not found: ${relPath}`)
+ return fs.readFileSync(localPath, 'utf-8')
+ }
+ const resp = await fetch(url, { signal: AbortSignal.timeout(timeout) })
+ if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching ${url}`)
+ return resp.text()
 }
 
 // 安装插件（从市场下载 manifest + plugin.js 到 plugins/ 目录，支持 local:// 协议）
 app.post('/api/plugins/install', async (req, res) => {
-  const { pluginId, manifestUrl, pluginUrl } = req.body
-  if (!pluginId || !manifestUrl || !pluginUrl) {
-    return res.status(400).json({ error: 'Missing pluginId, manifestUrl, or pluginUrl' })
-  }
+ const { pluginId, manifestUrl, pluginUrl } = req.body
+ if (!pluginId || !manifestUrl || !pluginUrl) {
+ return res.status(400).json({ error: 'Missing pluginId, manifestUrl, or pluginUrl' })
+ }
 
-  const targetDir = path.join(pluginsDir, pluginId)
+ const targetDir = path.join(pluginsDir, pluginId)
 
-  // 安全校验：不允许路径穿越
-  if (!targetDir.startsWith(pluginsDir)) {
-    return res.status(400).json({ error: 'Invalid plugin ID' })
-  }
+ // 安全校验：不允许路径穿越
+ if (!targetDir.startsWith(pluginsDir)) {
+ return res.status(400).json({ error: 'Invalid plugin ID' })
+ }
 
-  // 检查是否已安装
-  if (fs.existsSync(targetDir)) {
-    return res.status(409).json({ error: `Plugin "${pluginId}" is already installed` })
-  }
+ // 检查是否已安装
+ if (fs.existsSync(targetDir)) {
+ return res.status(409).json({ error: `Plugin "${pluginId}" is already installed` })
+ }
 
-  try {
-    // 创建目录
-    fs.mkdirSync(targetDir, { recursive: true })
+ try {
+ // 创建目录
+ fs.mkdirSync(targetDir, { recursive: true })
 
-    // 获取 manifest.json
-    const manifestText = await fetchContent(manifestUrl)
+ // 获取 manifest.json
+ const manifestText = await fetchContent(manifestUrl)
 
-    // 验证 manifest 格式
-    try {
-      const manifest = JSON.parse(manifestText)
-      if (!manifest.id || !manifest.name) {
-        throw new Error('Invalid manifest: missing id or name')
-      }
-    } catch (parseErr) {
-      fs.rmSync(targetDir, { recursive: true, force: true })
-      return res.status(400).json({ error: `Invalid manifest format: ${parseErr.message}` })
-    }
+ // 验证 manifest 格式
+ try {
+ const manifest = JSON.parse(manifestText)
+ if (!manifest.id || !manifest.name) {
+ throw new Error('Invalid manifest: missing id or name')
+ }
+ } catch (parseErr) {
+ fs.rmSync(targetDir, { recursive: true, force: true })
+ return res.status(400).json({ error: `Invalid manifest format: ${parseErr.message}` })
+ }
 
-    fs.writeFileSync(path.join(targetDir, 'manifest.json'), manifestText, 'utf-8')
+ fs.writeFileSync(path.join(targetDir, 'manifest.json'), manifestText, 'utf-8')
 
-    // 获取 plugin.js
-    const jsText = await fetchContent(pluginUrl, 30000)
+ // 获取 plugin.js
+ const jsText = await fetchContent(pluginUrl, 30000)
 
-    // 安全检查：简单验证 JS 代码不为空
-    if (!jsText.trim()) {
-      fs.rmSync(targetDir, { recursive: true, force: true })
-      return res.status(400).json({ error: 'Plugin JS is empty' })
-    }
+ // 安全检查：简单验证 JS 代码不为空
+ if (!jsText.trim()) {
+ fs.rmSync(targetDir, { recursive: true, force: true })
+ return res.status(400).json({ error: 'Plugin JS is empty' })
+ }
 
-    fs.writeFileSync(path.join(targetDir, 'plugin.js'), jsText, 'utf-8')
+ fs.writeFileSync(path.join(targetDir, 'plugin.js'), jsText, 'utf-8')
 
-    res.json({
-      success: true,
-      pluginId,
-      message: `Plugin "${pluginId}" installed successfully`,
-    })
+ res.json({
+ success: true,
+ pluginId,
+ message: `Plugin "${pluginId}" installed successfully`,
+ })
  } catch (err) {
  // 清理残留目录
  try { fs.rmSync(targetDir, { recursive: true, force: true }) } catch {}
@@ -927,7 +941,7 @@ function handleMessage(ws, clientId, msg) {
 // ========== SSH 连接处理 ==========
 
 async function handleConnect(ws, connectionId, requestId, config) {
- const { host, port, username, password, privateKey } = config
+ const { host, port, username, password, privateKey, sudoPassword } = config
 
  // ─── 输入验证 ───
  const validation = validateConnectionParams({ host, port, username, password, privateKey })
@@ -952,6 +966,8 @@ async function handleConnect(ws, connectionId, requestId, config) {
  connectionId,
  shellStream: null,
  shells: new Map(),
+ password: password || null, // 用于 sudo -S
+ sudoPassword: sudoPassword || password || null, // sudo 密码（可独立配置）
  }
  let connected = false
  let timedOut = false
@@ -1226,23 +1242,27 @@ function isPermissionError(err) {
  * 关键：用 pty 模式执行 sudo，避免某些系统 requiretty 导致失败
  */
 function sudoExec(conn, command, callback) {
- // 某些系统 sudo 需要 tty 才能运行，所以用 pty 模式
- conn.ssh.exec(command, { pty: true }, (err, stream) => {
- if (err) return callback(err)
- let stdout = ''
- let stderr = ''
- stream.on('data', (chunk) => { stdout += chunk.toString('utf-8') })
- stream.stderr.on('data', (chunk) => { stderr += chunk.toString('utf-8') })
- stream.on('close', (exitCode) => {
- if (exitCode !== 0) {
- callback(new Error(stderr.trim() || `命令退出码: ${exitCode}`))
- } else {
- callback(null, stdout)
- }
- })
- // 结束 stdin 避免 sudo 挂起等待输入
- stream.end()
- })
+  // 某些系统 sudo 需要 tty 才能运行，所以用 pty 模式
+  conn.ssh.exec(command, { pty: true }, (err, stream) => {
+    if (err) return callback(err)
+    let stdout = ''
+    let stderr = ''
+    stream.on('data', (chunk) => { stdout += chunk.toString('utf-8') })
+    stream.stderr.on('data', (chunk) => { stderr += chunk.toString('utf-8') })
+    stream.on('close', (exitCode) => {
+      if (exitCode !== 0) {
+        callback(new Error(stderr.trim() || `命令退出码: ${exitCode}`))
+      } else {
+        callback(null, stdout)
+      }
+    })
+    // 写入 sudo 密码到 stdin（sudo -S 模式从 stdin 读取密码）
+    if (conn.sudoPassword) {
+      stream.write(conn.sudoPassword + '\n')
+    }
+    // 结束 stdin 避免 sudo 挂起等待输入
+    stream.end()
+  })
 }
 
 /**
@@ -1882,9 +1902,9 @@ async function handleLogtailStart(ws, connectionId, requestId, payload) {
  stream.on('error', (err) => {
  activeLogtails.delete(tailKey)
  sendError(ws, connectionId, null, 'TAIL_ERROR', `日志跟踪出错: ${err.message}`)
-    })
-  })
-  startTail(`tail -n ${n} -f ${escapeShellArg(logPath)} 2>&1`)
+ })
+ })
+ startTail(`tail -n ${n} -f ${escapeShellArg(logPath)} 2>&1`)
 }
 
 }

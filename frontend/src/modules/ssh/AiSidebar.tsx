@@ -25,6 +25,8 @@ import type { AiMessage } from '../../types/ai'
 
 interface Props {
   sessionId: string | null
+  /** SSH 连接 ID，用于通过 REST API 执行命令 */
+  connectionId: string | null
   onClose: () => void
 }
 
@@ -89,7 +91,7 @@ async function* streamChat(
   }
 }
 
-export default function AiSidebar({ sessionId, onClose }: Props) {
+export default function AiSidebar({ sessionId, connectionId, onClose }: Props) {
   const aiConfig = useAiStore((s) => s.config)
   const abortRef = useRef<AbortController | null>(null)
   const [messages, setMessages] = useState<AiMessage[]>([
@@ -194,16 +196,51 @@ export default function AiSidebar({ sessionId, onClose }: Props) {
     return matches.map((m) => m.replace(/```bash\n/g, '').replace(/```/g, '').trim())
   }
 
-  // 将命令发送到终端
-  const executeCommand = (cmd: string) => {
-    if (!sessionId) return
-    const encoded = btoa(unescape(encodeURIComponent(cmd + '\n')))
-    wsClient.send({
-      type: 'exec',
-      connectionId: sessionId,
-      data: encoded,
-    })
+  // 通过 REST API 执行命令并获取结果，插入到对话中
+  const executeCommand = async (cmd: string) => {
+    if (!connectionId) return
+    // 添加占位消息表示正在执行
+    const execId = `exec_${Date.now()}`
+    setMessages((prev) => [...prev, {
+      role: 'assistant',
+      content: `⏳ 正在执行: \`${cmd}\``,
+      _execId: execId,
+      _executing: true,
+    } as any])
+
+    try {
+      const res = await fetch('/api/ssh/exec', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectionId, command: cmd }),
+      })
+      const result = await res.json()
+
+      // 替换占位消息为执行结果
+      setMessages((prev) => prev.map((m) =>
+        (m as any)._execId === execId
+          ? {
+              role: 'assistant',
+              content: formatExecResult(cmd, result),
+              _execResult: { command: cmd, ...result },
+            } as any
+          : m,
+      ))
+    } catch (err: any) {
+      setMessages((prev) => prev.map((m) =>
+        (m as any)._execId === execId
+          ? { role: 'assistant', content: `❌ 执行失败: ${err.message}` } as any
+          : m,
+      ))
+    }
   }
+
+  // 发送执行结果给 AI 分析
+  const analyzeResult = useCallback((cmd: string, stdout: string, stderr: string) => {
+    const prompt = `以下是命令的执行结果，请分析：\n\n命令: ${cmd}\n\n标准输出:\n${stdout || '(无输出)'}\n${stderr ? `\n标准错误:\n${stderr}` : ''}`
+    setInput(prompt)
+    inputRef.current?.focus()
+  }, [])
 
   // 复制命令
   const copyCommand = (cmd: string) => {
@@ -302,6 +339,18 @@ export default function AiSidebar({ sessionId, onClose }: Props) {
               <div className="whitespace-pre-wrap break-words">
                 {renderMessageContent(msg.content, extractCommands, copyCommand, executeCommand, copiedCmd)}
               </div>
+              {/* 执行结果：添加「发送给 AI 分析」按钮 */}
+              {(msg as any)._execResult && !(msg as any)._executing && (
+                <button
+                  onClick={() => {
+                    const r = (msg as any)._execResult
+                    analyzeResult(r.command, r.stdout || '', r.stderr || '')
+                  }}
+                  className="mt-2 flex items-center gap-1 rounded px-2 py-1 text-[10px] text-smartbox-400 hover:bg-smartbox-500/10 border border-smartbox-500/20"
+                >
+                  <Brain size={10} /> 发送给 AI 分析
+                </button>
+              )}
             </div>
           </div>
         ))}
@@ -376,6 +425,18 @@ export default function AiSidebar({ sessionId, onClose }: Props) {
       </div>
     </div>
   )
+}
+
+// 格式化命令执行结果为可读文本
+function formatExecResult(cmd: string, result: { stdout?: string; stderr?: string; exitCode?: number; error?: string }): string {
+  if (result.error) {
+    return `❌ 执行失败: ${result.error}`
+  }
+  const parts: string[] = []
+  if (result.stdout?.trim()) parts.push(result.stdout.trim())
+  if (result.stderr?.trim()) parts.push(`[stderr] ${result.stderr.trim()}`)
+  const output = parts.join('\n') || '(无输出)'
+  return `✅ \`${cmd}\` 执行完成 (exit: ${result.exitCode ?? '?'})\n\`\`\`\n${output}\n\`\`\``
 }
 
 // 渲染消息内容（支持代码块和命令按钮）

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { X, CheckCircle2, AlertCircle, Loader2, PlugZap, Eye, EyeOff } from 'lucide-react'
 import { useSshStore, decryptConnection } from '../../stores/ssh-store'
 import { getWsClientSync } from '../../services/websocket'
@@ -37,9 +37,19 @@ export default function ConnectionForm({ onClose, editId }: Props) {
     existingKey.startsWith('!e:') ? '' : existingKey,
   )
   const [group, setGroup] = useState(existing?.group || '')
+  // sudo 密码：默认与 SSH 密码相同，可独立设置
+  const [sudoPassword, setSudoPassword] = useState(existing?.sudoPassword || password || '')
+  const [showSudoPassword, setShowSudoPassword] = useState(false)
   const [testStatus, setTestStatus] = useState<TestStatus>('idle')
   const [testMessage, setTestMessage] = useState('')
   const [error, setError] = useState('')
+
+  // 同步：当密码变更时，若 sudo 密码未独立修改过，则同步更新
+  useEffect(() => {
+    if (!existing?.sudoPassword || existing.sudoPassword === existing.password) {
+      setSudoPassword(password)
+    }
+  }, [password, existing])
 
   const wsClient = getWsClientSync()
 
@@ -52,10 +62,11 @@ export default function ConnectionForm({ onClose, editId }: Props) {
     username,
     authType,
     ...(authType === 'password' ? { password } : { privateKey }),
+    sudoPassword: sudoPassword || password || undefined,
     group: group || undefined,
     createdAt: existing?.createdAt || Date.now(),
     lastConnectedAt: existing?.lastConnectedAt,
-  }), [existing, name, host, port, username, authType, password, privateKey, group])
+  }), [existing, name, host, port, username, authType, password, privateKey, sudoPassword, group])
 
   // 测试连接
   const handleTestConnection = useCallback(async () => {
@@ -77,6 +88,7 @@ export default function ConnectionForm({ onClose, editId }: Props) {
         username,
         password: authType === 'password' ? password : undefined,
         privateKey: authType === 'key' ? privateKey : undefined,
+        sudoPassword: sudoPassword || password || undefined,
       }, 12000)
 
       if ((msg as any).success) {
@@ -90,7 +102,7 @@ export default function ConnectionForm({ onClose, editId }: Props) {
       setTestStatus('error')
       setTestMessage(err.message || '连接测试超时')
     }
-  }, [host, port, username, password, privateKey, authType, wsClient])
+  }, [host, port, username, password, privateKey, sudoPassword, authType, wsClient])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -116,6 +128,9 @@ export default function ConnectionForm({ onClose, editId }: Props) {
     try {
       if (data.password) {
         data.password = await encryptField(data.password) as string
+      }
+      if (data.sudoPassword) {
+        data.sudoPassword = await encryptField(data.sudoPassword) as string
       }
       if (data.privateKey) {
         data.privateKey = await encryptField(data.privateKey) as string
@@ -249,6 +264,31 @@ export default function ConnectionForm({ onClose, editId }: Props) {
                 />
               </div>
             )}
+
+            <div className="col-span-2">
+              <label className="mb-1 block text-xs text-slate-500">
+                sudo 密码
+                <span className="text-slate-600 ml-1">（默认与 SSH 密码相同，用于 sudo -S 提权）</span>
+              </label>
+              <div className="relative">
+                <input
+                  className="input pr-10"
+                  type={showSudoPassword ? 'text' : 'password'}
+                  placeholder="sudo 密码（留空则使用 SSH 密码）"
+                  autoComplete="off"
+                  value={sudoPassword}
+                  onChange={(e) => setSudoPassword(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                  onClick={() => setShowSudoPassword(!showSudoPassword)}
+                  tabIndex={-1}
+                >
+                  {showSudoPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+            </div>
 
             <div className="col-span-2">
               <label className="mb-1 block text-xs text-slate-500">分组（可选）</label>

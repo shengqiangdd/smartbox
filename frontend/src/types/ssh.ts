@@ -9,6 +9,8 @@ export interface SshConnection {
   authType: AuthType
   password?: string
   privateKey?: string
+  /** sudo 密码，用于 sudo -S 提权执行日志读取/文件操作等 */
+  sudoPassword?: string
   group?: string
   createdAt: number
   lastConnectedAt?: number
