@@ -349,7 +349,22 @@ export default function CodeMirrorEditor() {
       </div>
 
       {/* 编辑器 / 预览容器 */}
-      {markdownPreview && isMarkdown ? (
+      {activeTab?.language === 'image' ? (
+        <div className="flex-1 flex items-center justify-center overflow-auto bg-slate-900/50" style={{ minHeight: 0 }}>
+          <img
+            src={activeTab.content}
+            alt={activeTab.name}
+            className="max-h-full max-w-full object-contain"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none'
+              const p = document.createElement('p')
+              p.className = 'text-sm text-red-400'
+              p.textContent = '图片加载失败'
+              e.currentTarget.parentElement?.appendChild(p)
+            }}
+          />
+        </div>
+      ) : markdownPreview && isMarkdown ? (
         <div className="flex-1 overflow-auto" style={{ minHeight: 0 }}>
           <MarkdownPreview
             content={activeTab?.content || ''}

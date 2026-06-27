@@ -644,6 +644,43 @@ export default function SftpBrowser({
   const openInEditor = async (entry: SftpEntry) => {
     if (!sessionId || entry.type === 'directory') return
     const tabId = `sftp_${sessionId}_${entry.path}`
+    const ext = entry.name.split('.').pop()?.toLowerCase() || ''
+    const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'ico', 'bmp']
+
+    // 图片文件 → 用 base64 data URL 显示
+    if (IMAGE_EXTS.includes(ext)) {
+      try {
+        const resp = await wsRef.current.request({
+          type: 'sftp',
+          connectionId: sessionId,
+          operation: 'readfile',
+          path: entry.path,
+        })
+        if (resp.type === 'sftp-result' && resp.operation === 'readfile') {
+          const mime: Record<string, string> = {
+            png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+            gif: 'image/gif', svg: 'image/svg+xml', webp: 'image/webp',
+            ico: 'image/x-icon', bmp: 'image/bmp',
+          }
+          fileStore.openFile({
+            id: tabId,
+            name: entry.name,
+            path: entry.path,
+            source: 'sftp',
+            language: 'image',
+            content: `data:${mime[ext] || 'image/png'};base64,${resp.data}`,
+            originalContent: resp.data as string,
+            isDirty: false,
+            sessionId,
+          })
+          setActiveNav('files')
+        }
+      } catch (err) {
+        setAlertModal({ title: '打开失败', message: (err as Error).message })
+      }
+      return
+    }
+
     let lang = detectLanguage(entry.name)
 
     // 先尝试读取文件内容
