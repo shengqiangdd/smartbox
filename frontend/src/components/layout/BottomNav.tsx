@@ -23,14 +23,13 @@ export default function BottomNav() {
   const hasActiveSession = sshSessions.length > 0
   const sshSftpOpen = useAppStore((s) => s.sshSftpOpen)
   const hideNav = isSshPage && hasActiveSession && !sshSftpOpen
+  const showNav = !hideNav
 
   return (
-    <nav
-      className={`flex items-center justify-evenly border-t border-slate-700/50 bg-slate-900 px-1 md:hidden no-scrollbar transition-all duration-200 ${
-        hideNav ? 'h-0 overflow-hidden border-t-0 py-0' : 'h-auto pb-safe pt-0.5 sm:h-12'
-      }`}
-    >
-      {!hideNav && navItems.map((item) => {
+    <nav className={`flex items-center justify-evenly border-t border-slate-700/50 bg-slate-900 px-1 no-scrollbar transition-all duration-200 md:hidden ${
+      showNav ? 'h-auto pb-safe pt-0.5 sm:h-12' : 'h-0 overflow-hidden border-t-0 py-0'
+    }`}>
+      {navItems.map((item) => {
         const Icon = item.icon
         return (
           <button
