@@ -91,7 +91,7 @@ export default function ShortcutHelpModal({ open, onClose }: Props) {
           <h2 className="text-sm font-semibold text-slate-200">快捷键列表</h2>
           <button
             onClick={onClose}
-            className="rounded p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-300"
+            className="min-w-[44px] min-h-[44px] rounded p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-300"
           >
             <X size={14} />
           </button>
