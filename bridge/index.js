@@ -147,36 +147,36 @@ app.post('/api/alerts', (req, res) => {
  value: typeof alert.value === 'number' ? alert.value : null,
  threshold: typeof alert.threshold === 'number' ? alert.threshold : null
  }
-  alertsStore.unshift(entry)
-  if (alertsStore.length > MAX_ALERTS) alertsStore.length = MAX_ALERTS
-  res.json(entry)
+ alertsStore.unshift(entry)
+ if (alertsStore.length > MAX_ALERTS) alertsStore.length = MAX_ALERTS
+ res.json(entry)
 })
 
 // ── 获取 OpenRouter 免费模型列表 ──
 app.get('/api/ai/fetch-free-models', async (_req, res) => {
-  try {
-    const resp = await fetch('https://openrouter.ai/api/v1/models')
-    if (!resp.ok) return res.status(502).json({ error: 'OpenRouter API error: ' + resp.status })
-    const { data } = await resp.json()
-    if (!Array.isArray(data)) return res.status(502).json({ error: 'Unexpected response format' })
-    const freeModels = data
-      .filter((m) => {
-        const p = m.pricing || {}
-        return String(p.prompt) === '0' && String(p.completion) === '0'
-      })
-      .map((m) => ({
-        value: m.id,
-        label: m.name.replace(/\(free\)/i, '').trim() + ' (免费)',
-        free: true,
-        description: m.description
-          ? m.description.slice(0, 120) + (m.description.length > 120 ? '…' : '')
-          : undefined,
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label))
-    res.json({ total: freeModels.length, models: freeModels })
-  } catch (err) {
-    res.status(502).json({ error: err.message })
-  }
+ try {
+ const resp = await fetch('https://openrouter.ai/api/v1/models')
+ if (!resp.ok) return res.status(502).json({ error: 'OpenRouter API error: ' + resp.status })
+ const { data } = await resp.json()
+ if (!Array.isArray(data)) return res.status(502).json({ error: 'Unexpected response format' })
+ const freeModels = data
+ .filter((m) => {
+ const p = m.pricing || {}
+ return String(p.prompt) === '0' && String(p.completion) === '0'
+ })
+ .map((m) => ({
+ value: m.id,
+ label: m.name.replace(/\(free\)/i, '').trim() + ' (免费)',
+ free: true,
+ description: m.description
+ ? m.description.slice(0, 120) + (m.description.length > 120 ? '…' : '')
+ : undefined,
+ }))
+ .sort((a, b) => a.label.localeCompare(b.label))
+ res.json({ total: freeModels.length, models: freeModels })
+ } catch (err) {
+ res.status(502).json({ error: err.message })
+ }
 })
 
 // 获取插件列表
@@ -498,7 +498,7 @@ app.post('/api/docker/compose', (req, res) => {
  dockerExec(connectionId, `docker compose -f ${escapeShellArg(filePath)} ps --format '{{json .}}' 2>/dev/null`, res)
  } else {
  // 自动发现 compose 文件
- dockerExec(connectionId, 'find / -maxdepth 4 -name "docker-compose*.yml" -o -name "docker-compose*.yaml" -o -name "compose*.yml" -o -name "compose*.yaml" 2>/dev/null | head -20', res)
+  dockerExec(connectionId, 'find /home /opt /srv /app /root /mnt -maxdepth 5 -name "docker-compose*.yml" -o -name "docker-compose*.yaml" -o -name "compose*.yml" -o -name "compose*.yaml" 2>/dev/null | head -30', res)
  }
 })
 

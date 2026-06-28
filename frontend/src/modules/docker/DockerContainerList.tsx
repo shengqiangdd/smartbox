@@ -129,7 +129,8 @@ export default function DockerContainerList({ connectionId, containers, loading,
                     </div>
                   </div>
 
-                  {/* 操作按钮 */}
+                  {/* 操作按钮（保护系统容器）*/}
+                  {!c.Names?.includes('smartbox') && !c.Image?.includes('shengqiangdd/smartbox') && (
                   <div className="flex shrink-0 items-center gap-1 md:opacity-0 md:group-hover:opacity-100" onClick={(e) => e.stopPropagation()}>
                     {isRunning ? (
                       <button
@@ -174,6 +175,7 @@ export default function DockerContainerList({ connectionId, containers, loading,
                       <Trash2 size={14} />
                     </button>
                   </div>
+                  )}
 
                   {/* 加载状态 */}
                   {isLoading && (
