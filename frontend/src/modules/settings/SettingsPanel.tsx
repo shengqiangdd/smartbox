@@ -168,10 +168,8 @@ export default function SettingsPanel() {
         setImportError('')
         setImportSuccess(true)
         setTimeout(() => setImportSuccess(false), 3000)
-        // 自动刷新 zustand stores（从 localStorage 恢复最新数据）
-        useSshStore.persist.rehydrate()
-        useAppStore.persist.rehydrate()
-        useAiStore.persist.rehydrate()
+        // 导入成功后刷新页面，确保所有 stores 重新从 localStorage 恢复
+        setTimeout(() => window.location.reload(), 1000)
       })
       .catch((err: any) => {
         setImportError(err.message || '导入失败')
