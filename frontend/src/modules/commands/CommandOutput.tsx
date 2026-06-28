@@ -40,14 +40,14 @@ export default function CommandOutput({ results, onClose, onClear, onSendToTermi
           {onPanelClose && (
             <button
               onClick={onPanelClose}
-              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-slate-500 transition-colors hover:text-slate-300 md:hidden"
+              className="flex min-h-[44px] items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-slate-500 transition-colors hover:text-slate-300 md:hidden"
             >
               <X size={12} /> 关闭
             </button>
           )}
           <button
             onClick={onClear}
-            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-slate-500 transition-colors hover:bg-red-900/20 hover:text-red-400"
+            className="flex min-h-[44px] items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-slate-500 transition-colors hover:bg-red-900/20 hover:text-red-400"
           >
             <Trash2 size={11} /> 清空
           </button>

@@ -165,12 +165,12 @@ export default function ResizablePanel({
         onMouseDown={handleMouseDown}
         onTouchStart={handleTouchStart}
       >
-        {/* 视觉指示点 */}
+        {/* 视觉指示点 - 增大触摸目标 */}
         <div
           className={`absolute ${
             isHorizontal
-              ? 'left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-8 w-0.5 rounded-full'
-              : 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-0.5 rounded-full'
+              ? 'left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-10 w-4 rounded-full'
+              : 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-4 rounded-full'
           } bg-slate-600/50 group-hover:bg-smartbox-400/50 transition-colors`}
         />
       </div>
