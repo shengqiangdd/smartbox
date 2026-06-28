@@ -338,17 +338,31 @@ export default function MonitorPage() {
   const [healthError, setHealthError] = useState(false)
   const alertHistory = useAlertStore((s) => s.history)
 
-  // 扫描主机（仅显示活跃 session，已保存但未连接的不列入）
+  // 扫描主机（已保存的连接 + 活跃 session）
   const scanHosts = useCallback(() => {
-    const list = sessions.map((sess) => ({
-      id: sess.id,
-      name: sess.connectionName || sess.host || sess.id.slice(0, 8),
-    }))
+    const seen = new Set<string>()
+    const list: { id: string; name: string }[] = []
+    // 活跃 session 优先
+    for (const sess of sessions) {
+      const name = sess.connectionName || sess.host || sess.id.slice(0, 8)
+      if (!seen.has(sess.id)) {
+        list.push({ id: sess.id, name })
+        seen.add(sess.id)
+        seen.add(sess.host || '')
+      }
+    }
+    // 已保存但未连接的连接
+    for (const conn of connections) {
+      if (!seen.has(conn.id) && !seen.has(conn.host || '')) {
+        list.push({ id: conn.id, name: conn.name })
+        seen.add(conn.id)
+      }
+    }
     setHosts(list)
     if (list.length > 0 && selected.length === 0) {
-      setSelected(list.map((h) => h.id))
+      setSelected([list[0].id])
     }
-  }, [sessions, selected.length])
+  }, [connections, sessions, selected.length])
 
   // 采集单台主机数据
   const collectHostStats = useCallback(async (hostId: string): Promise<HostStats | null> => {
