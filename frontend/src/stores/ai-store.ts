@@ -117,6 +117,15 @@ export const useAiStore = create<AiState>()(
       partialize: (state) => ({
         config: state.config,
       }),
+      // 修复 persist merge，确保 config 正确恢复
+      merge: (persisted: unknown, current: AiState) => {
+        const raw = (persisted || {}) as Record<string, unknown>
+        const state = (raw.state || raw) as Record<string, unknown>
+        return {
+          ...current,
+          config: { ...current.config, ...(state.config || {}) },
+        }
+      },
     },
   ),
 )

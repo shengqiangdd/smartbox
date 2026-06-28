@@ -121,7 +121,7 @@ export default function CommandsList({
                               <span className="rounded bg-slate-800 px-1 py-0.5 text-[9px] text-slate-500">内置</span>
                             )}
                           </div>
-                          <code className="mt-0.5 block truncate text-[11px] text-slate-500 font-mono">{cmd.command}</code>
+                          <code className="mt-0.5 block w-full truncate text-[11px] text-slate-500 font-mono">{cmd.command}</code>
                           {cmd.description && (
                             <p className="mt-0.5 text-[10px] text-slate-600">{cmd.description}</p>
                           )}

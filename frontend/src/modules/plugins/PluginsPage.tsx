@@ -22,6 +22,8 @@ export default function PluginsPage() {
   const sandboxReadyRef = useRef<Record<string, boolean>>({})
   const sandboxKeysRef = useRef<Record<string, number>>({})
   const loadedRef = useRef(false)
+  // 用 ref 存储 catalog，避免 useCallback 闭包过期问题
+  const catalogRef = useRef<PluginCatalogItem[]>([])
 
   // 用 state 触发 UI 更新，但仅在首次加载和刷新时改变
   const [renderTick, setRenderTick] = useState(0)
@@ -39,6 +41,7 @@ export default function PluginsPage() {
     try {
       const plugins = await fetchPlugins()
       setCatalog(plugins)
+      catalogRef.current = plugins  // 同步更新 ref 供 handleSandboxReady 使用
 
       // 下载所有插件 JS 代码
       const codes: Record<string, string> = {}
@@ -137,7 +140,7 @@ export default function PluginsPage() {
     sandboxReadyRef.current = { ...sandboxReadyRef.current, [pluginId]: true }
     setRenderTick((t) => t + 1)
     // 注册到 sandbox manager，使 pluginSandboxManager.executeCommand() 可工作
-    const plugin = catalog.find((p) => p.id === pluginId)
+    const plugin = catalogRef.current.find((p) => p.id === pluginId)
     if (plugin) {
       pluginSandboxManager.register(pluginId, {
         id: plugin.id,
@@ -162,7 +165,7 @@ export default function PluginsPage() {
         })),
       }, handle)
     }
-  }, [catalog])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const sandboxCodes = sandboxCodesRef.current
   const sandboxReady = sandboxReadyRef.current

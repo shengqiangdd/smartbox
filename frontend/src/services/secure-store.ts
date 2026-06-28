@@ -19,7 +19,7 @@
  * - 导入导出时仍可用用户主密码额外保护
  */
 
-import { encrypt, decrypt, generateKey } from './crypto'
+import { encrypt, decrypt, generateKey, isCryptoAvailable } from './crypto'
 
 // ─── 密钥管理 ───
 
@@ -86,6 +86,8 @@ export function isEncrypted(value: string): boolean {
  */
 export async function encryptField(value: string | undefined): Promise<string | undefined> {
   if (!value) return value
+  // HTTP 下 crypto.subtle 不可用，直接返回明文
+  if (!isCryptoAvailable()) return value
   const key = getDeviceKey()
   const encrypted = await encrypt(value, key)
   return ENCRYPTED_PREFIX + encrypted
