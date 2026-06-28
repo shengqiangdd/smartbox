@@ -40,9 +40,9 @@ jobs:
 
       - name: Auto test
         run: |
-          cd frontend && npx vite preview --port 3100 &
-          sleep 3
-          cd .. && bash scripts/auto-test.sh 3100
+          nohup npx vite preview --port 3100 --root frontend &
+          for i in $(seq 1 10); do curl -sf -o /dev/null http://localhost:3100 && break; sleep 1; done
+          bash scripts/auto-test.sh 3100
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
