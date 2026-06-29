@@ -43,8 +43,14 @@ export default function DockerCompose({ connectionId }: Props) {
   const [expandedPath, setExpandedPath] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [manualPath, setManualPath] = useState('')
 
   const discoverProjects = useCallback(async () => {
+    // 如果有手动路径，加载它
+    if (manualPath.trim()) {
+      await handleManualLoad()
+      return
+    }
     setLoading(true)
     try {
       // 自动发现 compose 文件
@@ -77,7 +83,33 @@ export default function DockerCompose({ connectionId }: Props) {
     } finally {
       setLoading(false)
     }
-  }, [connectionId])
+  }, [connectionId, manualPath, handleManualLoad])
+
+  // 手动加载 compose 项目
+  const handleManualLoad = useCallback(async () => {
+    if (!manualPath.trim()) return
+    setLoading(true)
+    try {
+      const res = await fetch('/api/docker/compose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectionId, filePath: manualPath.trim() }),
+      })
+      const json = await res.json()
+      if (!json.success) {
+        notify(json.error || '加载失败', 'error')
+        return
+      }
+      const path = manualPath.trim()
+      const parts = path.replace(/\/+$/, '').split('/')
+      const projectName = parts.slice(0, -1).filter(Boolean).pop() || path.replace(/\.(yml|yaml)$/, '')
+      setProjects([{ path, name: projectName, services: [] }])
+    } catch (err: any) {
+      notify(err.message || '请求失败', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }, [connectionId, manualPath])
 
   // 展开项目时获取 services 状态
   const fetchServices = useCallback(async (path: string) => {
@@ -194,6 +226,28 @@ export default function DockerCompose({ connectionId }: Props) {
         >
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           扫描
+        </button>
+      </div>
+
+      {/* 手动输入 compose 路径 */}
+      <div className="mb-3 flex items-center gap-2">
+        <div className="relative flex-1">
+          <input
+            className="input w-full pl-8 text-xs"
+            placeholder="手动输入 compose 文件路径（如 /opt/docker-compose.yml）"
+            value={manualPath}
+            onChange={(e) => setManualPath(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleManualLoad()}
+          />
+          <FileText size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+        </div>
+        <button
+          onClick={handleManualLoad}
+          disabled={!manualPath.trim() || loading}
+          className="btn-primary flex items-center gap-1 px-2 py-1.5 text-xs disabled:opacity-50"
+        >
+          <Play size={12} />
+          加载
         </button>
       </div>
 
