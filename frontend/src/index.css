@@ -145,7 +145,7 @@ html:not(.dark) {
 /* ============================================
    移动端布局修复
    ============================================ */
-/* 触摸滚动容器 */
+/* 触摸滚动容器（iOS + Android 通用） */
 .mobile-scroll {
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch !important;
@@ -155,11 +155,9 @@ html:not(.dark) {
   min-height: 0 !important;
 }
 
-/* iOS Safari flex 子元素高度修复 */
-@supports (-webkit-touch-callout: none) {
-  .flex-col {
-    min-height: 0;
-  }
+/* 修复 flex 容器在移动端（iOS Safari + 部分 Android WebView）子元素不收缩的溢出问题 */
+.mobile-safe-flex {
+  min-height: 0;
 }
 
 /* 底部导航安全区域 */
@@ -231,7 +229,7 @@ html:not(.dark) {
 /* ============================================
    移动端布局修复
    ============================================ */
-/* 触摸滚动容器 */
+/* 触摸滚动容器（iOS + Android 通用） */
 .mobile-scroll {
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch !important;
@@ -241,11 +239,9 @@ html:not(.dark) {
   min-height: 0 !important;
 }
 
-/* iOS Safari flex 子元素高度修复 */
-@supports (-webkit-touch-callout: none) {
-  .flex-col {
-    min-height: 0;
-  }
+/* 修复 flex 容器在移动端（iOS Safari + 部分 Android WebView）子元素不收缩的溢出问题 */
+.mobile-safe-flex {
+  min-height: 0;
 }
 
 /* 底部导航安全区域 */
@@ -321,7 +317,7 @@ html:not(.dark) {
 /* ============================================
    移动端布局修复
    ============================================ */
-/* 触摸滚动容器 */
+/* 触摸滚动容器（iOS + Android 通用） */
 .mobile-scroll {
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch !important;
@@ -331,11 +327,9 @@ html:not(.dark) {
   min-height: 0 !important;
 }
 
-/* iOS Safari flex 子元素高度修复 */
-@supports (-webkit-touch-callout: none) {
-  .flex-col {
-    min-height: 0;
-  }
+/* 修复 flex 容器在移动端（iOS Safari + 部分 Android WebView）子元素不收缩的溢出问题 */
+.mobile-safe-flex {
+  min-height: 0;
 }
 
 /* 底部导航安全区域 */
@@ -358,7 +352,7 @@ html:not(.dark) {
 /* ============================================
    移动端布局修复
    ============================================ */
-/* 触摸滚动容器 */
+/* 触摸滚动容器（iOS + Android 通用） */
 .mobile-scroll {
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch !important;
@@ -368,11 +362,9 @@ html:not(.dark) {
   min-height: 0 !important;
 }
 
-/* iOS Safari flex 子元素高度修复 */
-@supports (-webkit-touch-callout: none) {
-  .flex-col {
-    min-height: 0;
-  }
+/* 修复 flex 容器在移动端（iOS Safari + 部分 Android WebView）子元素不收缩的溢出问题 */
+.mobile-safe-flex {
+  min-height: 0;
 }
 
 /* 底部导航安全区域 */
@@ -419,7 +411,7 @@ html:not(.dark) {
 /* ============================================
    移动端布局修复
    ============================================ */
-/* 触摸滚动容器 */
+/* 触摸滚动容器（iOS + Android 通用） */
 .mobile-scroll {
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch !important;
@@ -429,11 +421,9 @@ html:not(.dark) {
   min-height: 0 !important;
 }
 
-/* iOS Safari flex 子元素高度修复 */
-@supports (-webkit-touch-callout: none) {
-  .flex-col {
-    min-height: 0;
-  }
+/* 修复 flex 容器在移动端（iOS Safari + 部分 Android WebView）子元素不收缩的溢出问题 */
+.mobile-safe-flex {
+  min-height: 0;
 }
 
 /* 底部导航安全区域 */
@@ -471,7 +461,7 @@ html:not(.dark) {
 /* ============================================
    移动端布局修复
    ============================================ */
-/* 触摸滚动容器 */
+/* 触摸滚动容器（iOS + Android 通用） */
 .mobile-scroll {
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch !important;
@@ -481,11 +471,9 @@ html:not(.dark) {
   min-height: 0 !important;
 }
 
-/* iOS Safari flex 子元素高度修复 */
-@supports (-webkit-touch-callout: none) {
-  .flex-col {
-    min-height: 0;
-  }
+/* 修复 flex 容器在移动端（iOS Safari + 部分 Android WebView）子元素不收缩的溢出问题 */
+.mobile-safe-flex {
+  min-height: 0;
 }
 
 /* 底部导航安全区域 */
@@ -520,7 +508,7 @@ html:not(.dark) {
 /* ============================================
    移动端布局修复
    ============================================ */
-/* 触摸滚动容器 */
+/* 触摸滚动容器（iOS + Android 通用） */
 .mobile-scroll {
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch !important;
@@ -530,11 +518,9 @@ html:not(.dark) {
   min-height: 0 !important;
 }
 
-/* iOS Safari flex 子元素高度修复 */
-@supports (-webkit-touch-callout: none) {
-  .flex-col {
-    min-height: 0;
-  }
+/* 修复 flex 容器在移动端（iOS Safari + 部分 Android WebView）子元素不收缩的溢出问题 */
+.mobile-safe-flex {
+  min-height: 0;
 }
 
 /* 底部导航安全区域 */
@@ -761,7 +747,7 @@ html:not(.dark) .markdown-preview pre.cm-code-block code {
 /* ============================================
    移动端布局修复
    ============================================ */
-/* 触摸滚动容器 */
+/* 触摸滚动容器（iOS + Android 通用） */
 .mobile-scroll {
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch !important;
@@ -771,11 +757,9 @@ html:not(.dark) .markdown-preview pre.cm-code-block code {
   min-height: 0 !important;
 }
 
-/* iOS Safari flex 子元素高度修复 */
-@supports (-webkit-touch-callout: none) {
-  .flex-col {
-    min-height: 0;
-  }
+/* 修复 flex 容器在移动端（iOS Safari + 部分 Android WebView）子元素不收缩的溢出问题 */
+.mobile-safe-flex {
+  min-height: 0;
 }
 
 /* 底部导航安全区域 */

@@ -39,7 +39,7 @@ export default function MainContent() {
       {NAVS.map((nav) => (
         <div
           key={nav}
-          className="flex h-full w-full flex-1 flex-col overflow-hidden"
+          className="flex h-full w-full flex-1 flex-col overflow-hidden min-h-0"
           style={{ display: nav === activeNav ? 'flex' : 'none' }}
         >
           <Suspense fallback={<Loading />}>
