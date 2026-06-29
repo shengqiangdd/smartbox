@@ -185,6 +185,14 @@ app.get('/api/ai/config', (_req, res) => {
  res.json({ apiKey })
 })
 
+// ── 获取 SSH 测试环境变量（开发模式） ──
+app.get('/api/ssh/test-config', (_req, res) => {
+ const host = process.env.ssh_test_host || ''
+ const user = process.env.ssh_test_user || ''
+ const password = process.env.ssh_test_password || ''
+ res.json({ host, user, password })
+})
+
 // 获取插件列表
 app.get('/api/plugins', (req, res) => {
  try {
