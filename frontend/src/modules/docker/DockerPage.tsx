@@ -149,7 +149,8 @@ export default function DockerPage() {
                   if (host.connected) {
                     setSelectedHost(host.id)
                   } else {
-                    setActiveNav('ssh')
+                    // 不跳转，保留在当前页面，让用户点击快速连接
+                    setSelectedHost(host.id)
                   }
                 }}
                 className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-xs transition-colors ${
