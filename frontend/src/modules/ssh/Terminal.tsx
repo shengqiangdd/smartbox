@@ -4,7 +4,7 @@ import { FitAddon } from 'xterm-addon-fit'
 import { SearchAddon } from 'xterm-addon-search'
 import 'xterm/css/xterm.css'
 import { getWsClient, getWsClientSync } from '../../services/websocket'
-import { Search, X, ChevronUp, ChevronDown } from 'lucide-react'
+import { Search, X, ChevronUp, ChevronDown, Terminal, Keyboard } from 'lucide-react'
 
 /** 分屏面板配置 */
 export interface SplitPanel {
@@ -67,6 +67,9 @@ export default function TerminalView({ connectionId, sessionId, className = '', 
  const genRef = useRef(0)
  // 用 ref 持有 wsClient，避免 effect 依赖数组问题
  const wsClientRef = useRef(getWsClientSync())
+
+ // ─── 移动端快捷键面板 ───
+ const [showShortcuts, setShowShortcuts] = useState(false)
 
  useEffect(() => {
  if (!containerRef.current) return
@@ -351,8 +354,49 @@ export default function TerminalView({ connectionId, sessionId, className = '', 
  )}
  <div
  ref={containerRef}
- className="flex-1 overflow-hidden bg-slate-950 px-1"
+ className="mobile-scroll flex-1 overflow-hidden bg-slate-950 px-1"
  />
+
+ {/* 移动端快捷键浮动按钮 */}
+ <button
+  onClick={() => setShowShortcuts((v) => !v)}
+  className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800/80 text-slate-400 backdrop-blur-sm transition-colors hover:bg-slate-700/80 hover:text-slate-200 md:hidden"
+  title="快捷键"
+ >
+  <Keyboard size={16} />
+ </button>
+
+ {/* 移动端快捷键面板 */}
+ {showShortcuts && (
+  <div className="absolute inset-x-0 bottom-0 z-30 rounded-t-xl border-t border-slate-700/50 bg-slate-900/95 p-3 backdrop-blur-lg md:hidden" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+  <div className="flex items-center justify-between border-b border-slate-700/30 pb-2">
+   <span className="text-xs font-medium text-slate-300">快捷键</span>
+   <button onClick={() => setShowShortcuts(false)} className="btn-icon text-slate-500 hover:text-slate-300">
+    <X size={14} />
+   </button>
+  </div>
+  <div className="mt-2 grid grid-cols-2 gap-1.5 text-[11px]">
+   {[
+    { key: 'Ctrl+Shift+F', label: '搜索' },
+    { key: 'Esc', label: '关闭搜索' },
+    { key: '↑/↓', label: '滚动历史' },
+    { key: '←/→', label: '光标移动' },
+    { key: 'Home/End', label: '行首/行尾' },
+    { key: 'PgUp/PgDn', label: '翻页' },
+    { key: 'Tab', label: '自动补全' },
+    { key: 'Ctrl+C', label: '中断' },
+   ].map((s) => (
+    <div key={s.key} className="flex items-center justify-between rounded bg-slate-800/60 px-2 py-1">
+     <kbd className="font-mono text-slate-400">{s.key}</kbd>
+     <span className="text-slate-500">{s.label}</span>
+    </div>
+   ))}
+  </div>
+  <div className="mt-2 border-t border-slate-700/30 pt-2">
+   <p className="text-[10px] text-slate-600">提示：双指上下滑动可滚动终端内容</p>
+  </div>
+ </div>
+ )}
  </div>
  )
 }
