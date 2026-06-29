@@ -79,9 +79,21 @@ export default function ConnectionList({ onConnect }: Props) {
   const [quickOpen, setQuickOpen] = useState(false)
   const [quickHost, setQuickHost] = useState('')
   const [quickPort, setQuickPort] = useState('22')
-  const [quickUser, setQuickUser] = useState('root')
+  const [quickUser, setQuickUser] = useState('')
   const [quickPassword, setQuickPassword] = useState('')
   const [quickShowPwd, setQuickShowPwd] = useState(false)
+
+  // ── 开发模式：从服务端获取 SSH 测试环境变量 ──
+  useEffect(() => {
+    fetch('/api/ssh/test-config')
+      .then(r => r.json())
+      .then(data => {
+        if (data.host) setQuickHost(data.host)
+        if (data.user) setQuickUser(data.user)
+        if (data.password) setQuickPassword(data.password)
+      })
+      .catch(() => {})
+  }, [])
 
   const doQuickConnect = () => {
     if (!quickHost.trim() || !quickUser.trim()) return
