@@ -354,7 +354,8 @@ export default function TerminalView({ connectionId, sessionId, className = '', 
  )}
  <div
  ref={containerRef}
- className="mobile-scroll flex-1 overflow-hidden bg-slate-950 px-1"
+ className="flex-1 overflow-hidden bg-slate-950 px-1"
+ style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
  />
 
  {/* 移动端快捷键浮动按钮 */}
