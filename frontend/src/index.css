@@ -143,6 +143,35 @@ html:not(.dark) {
 }
 
 /* ============================================
+   移动端布局修复
+   ============================================ */
+/* 触摸滚动容器 */
+.mobile-scroll {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  overscroll-behavior: contain !important;
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+}
+
+/* iOS Safari flex 子元素高度修复 */
+@supports (-webkit-touch-callout: none) {
+  .flex-col {
+    min-height: 0;
+  }
+}
+
+/* 底部导航安全区域 */
+.pb-nav {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 48px);
+}
+.with-bottom-nav {
+  height: calc(100% - 48px);
+  height: calc(100dvh - 48px);
+}
+
+/* ============================================
    浅色主题覆盖层 — 将硬编码深色类映射为 CSS 变量
    ============================================ */
 html:not(.dark) {
@@ -197,6 +226,35 @@ html:not(.dark) {
   .backdrop-blur-sm {
     background-color: color-mix(in srgb, var(--bg-elevated) 60%, transparent);
   }
+}
+
+/* ============================================
+   移动端布局修复
+   ============================================ */
+/* 触摸滚动容器 */
+.mobile-scroll {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  overscroll-behavior: contain !important;
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+}
+
+/* iOS Safari flex 子元素高度修复 */
+@supports (-webkit-touch-callout: none) {
+  .flex-col {
+    min-height: 0;
+  }
+}
+
+/* 底部导航安全区域 */
+.pb-nav {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 48px);
+}
+.with-bottom-nav {
+  height: calc(100% - 48px);
+  height: calc(100dvh - 48px);
 }
 
 /* ============================================
@@ -260,12 +318,70 @@ html:not(.dark) {
   }
 }
 
+/* ============================================
+   移动端布局修复
+   ============================================ */
+/* 触摸滚动容器 */
+.mobile-scroll {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  overscroll-behavior: contain !important;
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+}
+
+/* iOS Safari flex 子元素高度修复 */
+@supports (-webkit-touch-callout: none) {
+  .flex-col {
+    min-height: 0;
+  }
+}
+
+/* 底部导航安全区域 */
+.pb-nav {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 48px);
+}
+.with-bottom-nav {
+  height: calc(100% - 48px);
+  height: calc(100dvh - 48px);
+}
+
 @utility btn-ghost {
   color: var(--text-muted);
   &:hover {
     background-color: var(--bg-hover) !important;
     color: var(--text-secondary) !important;
   }
+}
+
+/* ============================================
+   移动端布局修复
+   ============================================ */
+/* 触摸滚动容器 */
+.mobile-scroll {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  overscroll-behavior: contain !important;
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+}
+
+/* iOS Safari flex 子元素高度修复 */
+@supports (-webkit-touch-callout: none) {
+  .flex-col {
+    min-height: 0;
+  }
+}
+
+/* 底部导航安全区域 */
+.pb-nav {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 48px);
+}
+.with-bottom-nav {
+  height: calc(100% - 48px);
+  height: calc(100dvh - 48px);
 }
 
 @utility btn-icon {
@@ -300,6 +416,35 @@ html:not(.dark) {
   }
 }
 
+/* ============================================
+   移动端布局修复
+   ============================================ */
+/* 触摸滚动容器 */
+.mobile-scroll {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  overscroll-behavior: contain !important;
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+}
+
+/* iOS Safari flex 子元素高度修复 */
+@supports (-webkit-touch-callout: none) {
+  .flex-col {
+    min-height: 0;
+  }
+}
+
+/* 底部导航安全区域 */
+.pb-nav {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 48px);
+}
+.with-bottom-nav {
+  height: calc(100% - 48px);
+  height: calc(100dvh - 48px);
+}
+
 /* 别名：项目中广泛使用 className="input"，与 input-field 共享同一套样式 */
 @utility input {
   width: 100%;
@@ -323,6 +468,35 @@ html:not(.dark) {
   }
 }
 
+/* ============================================
+   移动端布局修复
+   ============================================ */
+/* 触摸滚动容器 */
+.mobile-scroll {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  overscroll-behavior: contain !important;
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+}
+
+/* iOS Safari flex 子元素高度修复 */
+@supports (-webkit-touch-callout: none) {
+  .flex-col {
+    min-height: 0;
+  }
+}
+
+/* 底部导航安全区域 */
+.pb-nav {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 48px);
+}
+.with-bottom-nav {
+  height: calc(100% - 48px);
+  height: calc(100dvh - 48px);
+}
+
 @utility sidebar-item {
   display: flex;
   cursor: pointer;
@@ -341,6 +515,35 @@ html:not(.dark) {
     background-color: var(--bg-hover);
     color: #38bdf8;
   }
+}
+
+/* ============================================
+   移动端布局修复
+   ============================================ */
+/* 触摸滚动容器 */
+.mobile-scroll {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  overscroll-behavior: contain !important;
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+}
+
+/* iOS Safari flex 子元素高度修复 */
+@supports (-webkit-touch-callout: none) {
+  .flex-col {
+    min-height: 0;
+  }
+}
+
+/* 底部导航安全区域 */
+.pb-nav {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 48px);
+}
+.with-bottom-nav {
+  height: calc(100% - 48px);
+  height: calc(100dvh - 48px);
 }
 
 @utility badge {
@@ -553,4 +756,33 @@ html:not(.dark) .markdown-preview pre.cm-code-block code {
     align-items: center;
     justify-content: center;
   }
+}
+
+/* ============================================
+   移动端布局修复
+   ============================================ */
+/* 触摸滚动容器 */
+.mobile-scroll {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  overscroll-behavior: contain !important;
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+}
+
+/* iOS Safari flex 子元素高度修复 */
+@supports (-webkit-touch-callout: none) {
+  .flex-col {
+    min-height: 0;
+  }
+}
+
+/* 底部导航安全区域 */
+.pb-nav {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 48px);
+}
+.with-bottom-nav {
+  height: calc(100% - 48px);
+  height: calc(100dvh - 48px);
 }

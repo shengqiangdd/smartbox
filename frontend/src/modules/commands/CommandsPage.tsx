@@ -31,7 +31,7 @@ export default function CommandsPage() {
     removeGroup,
   } = useCommands()
 
-  const [outputPanelOpen, setOutputPanelOpen] = useState(true)
+  const [outputPanelOpen, setOutputPanelOpen] = useState(window.innerWidth >= 768)
   const [showForm, setShowForm] = useState(false)
   const [editCmd, setEditCmd] = useState<QuickCommand | null>(null)
   const [showGroupManage, setShowGroupManage] = useState(false)

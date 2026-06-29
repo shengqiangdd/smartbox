@@ -6,6 +6,7 @@ node_modules/
 dist/
 build/
 out/
+frontend/dist/
 frontend/public/assets/
 frontend/public/index.html
 frontend/public/manifest.webmanifest

@@ -320,10 +320,16 @@ export default function PluginsPage() {
                               onClick={() => {
                                 if (enabled) {
                                   pluginSandboxManager.executeCommand(plugin.id, cmd.id)
-                                  // 触发全局通知
+                                  // 触发全局通知 - 引导用户查看沙箱输出
                                   window.dispatchEvent(new CustomEvent('smartbox-notification', {
-                                    detail: { message: `已执行: ${plugin.name} → ${cmd.label || cmd.id}`, type: 'info' }
+                                    detail: { message: `已执行: ${plugin.name} → ${cmd.label || cmd.id}（查看下方沙箱输出）`, type: 'info', duration: 4000 }
                                   }))
+                                  // 移动端自动滚动到沙箱区域
+                                  if (window.innerWidth < 640) {
+                                    setTimeout(() => {
+                                      document.querySelector('[data-sandbox-area]')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                                    }, 200)
+                                  }
                                 }
                               }}
                               disabled={!enabled}
@@ -361,7 +367,7 @@ export default function PluginsPage() {
           </div>
 
           {/* 右侧：沙箱区域 */}
-          <div className="flex-1 overflow-hidden rounded-lg border border-slate-700/30 bg-slate-900/30 flex flex-col">
+          <div data-sandbox-area className="flex-1 overflow-hidden rounded-lg border border-slate-700/30 bg-slate-900/30 flex flex-col">
             <div className="border-b border-slate-700/30 px-4 py-2 flex items-center justify-between shrink-0">
               <h3 className="text-xs font-medium text-slate-400">沙箱运行状态</h3>
               <span className="text-[10px] text-slate-600">
