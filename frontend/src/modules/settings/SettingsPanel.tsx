@@ -21,9 +21,11 @@ import {
   AlertTriangle,
   RefreshCw,
 } from 'lucide-react'
-import { useAppStore } from '../../stores/app-store'
-import { useAiStore } from '../../stores/ai-store'
-import { useSshStore } from '../../stores/ssh-store'
+import { useAppStore, refreshAppStore } from '../../stores/app-store'
+import { useAiStore, refreshAiStore } from '../../stores/ai-store'
+import { useSshStore, refreshSshStore } from '../../stores/ssh-store'
+import { useAlertStore, refreshAlertStore } from '../../stores/alert-store'
+import { usePluginStore, refreshPluginStore } from '../../stores/plugin-store'
 import { AI_PROVIDERS } from '../../types/ai'
 import type { AiProvider } from '../../types/ai'
 import {
@@ -179,9 +181,11 @@ export default function SettingsPanel() {
         setImportPassword('')
         setImportError('')
         setImportSuccess(true)
-        setTimeout(() => setImportSuccess(false), 3000)
-        // 导入成功后刷新页面，确保所有 stores 重新从 localStorage 恢复
-        setTimeout(() => window.location.reload(), 1000)
+        // 导入成功后通知各 store 重新从 localStorage 读取
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('smartbox-config-imported'))
+          window.location.reload()
+        }, 500)
       })
       .catch((err: any) => {
         setImportError(err.message || '导入失败')

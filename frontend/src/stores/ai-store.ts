@@ -129,3 +129,16 @@ export const useAiStore = create<AiState>()(
     },
   ),
 )
+
+/** 触发 store 重新从 localStorage 读取 */
+export const refreshAiStore = () => {
+  const raw = localStorage.getItem('smartbox-ai')
+  if (!raw) return
+  try {
+    const parsed = JSON.parse(raw)
+    const state = parsed.state || parsed
+    useAiStore.setState({
+      config: { ...useAiStore.getState().config, ...(state.config || {}) },
+    })
+  } catch { /* ignore */ }
+}

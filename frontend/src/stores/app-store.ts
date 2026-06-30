@@ -129,3 +129,14 @@ export const useAppStore = create<AppState>()(
     },
   ),
 )
+
+/** 触发 store 重新从 localStorage 读取 */
+export const refreshAppStore = () => {
+  const raw = localStorage.getItem('smartbox-app')
+  if (!raw) return
+  try {
+    const parsed = JSON.parse(raw)
+    const state = parsed.state || parsed
+    useAppStore.setState(state)
+  } catch { /* ignore */ }
+}

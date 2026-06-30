@@ -224,7 +224,7 @@ export default function PluginSandbox({
       if (msg.type === 'executeCommand') {
         var handler = __commandHandlers__[msg.commandId];
         if (handler) {
-          try { handler(); } catch(e) { console.error('[Plugin] Command error:', e); }
+          try { handler(msg.args || []); } catch(e) { console.error('[Plugin] Command error:', e); }
         }
       } else if (msg.type === 'editorContentUpdate') {
         // 主应用推送编辑器内容更新

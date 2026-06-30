@@ -83,8 +83,6 @@ export const useSshStore = create<SshState>()(
         connections: state.connections,
         selectedConnectionId: state.selectedConnectionId,
       }),
-      // ── 透明加密：存盘前加密敏感字段 ──
-      // 使用 merge/serialize/deserialize 自定义持久化逻辑
       merge: (persisted: unknown, current: SshState) => {
         const raw = persisted as {
           connections?: SshConnection[]
@@ -94,7 +92,6 @@ export const useSshStore = create<SshState>()(
             selectedConnectionId?: string | null
           }
         }
-        // zustand/persist v4 存储格式可能是 { state: ... } 或直接对象
         const state = raw.state || raw
         const connections = (state.connections || []) as SshConnection[]
         return {
@@ -106,6 +103,21 @@ export const useSshStore = create<SshState>()(
     },
   ),
 )
+
+/** 触发 store 重新从 localStorage 读取 */
+export const refreshSshStore = () => {
+  const raw = localStorage.getItem('smartbox-ssh')
+  if (!raw) return
+  try {
+    const parsed = JSON.parse(raw)
+    const state = parsed.state || parsed
+    const connections = (state.connections || []) as SshConnection[]
+    useSshStore.setState({
+      connections,
+      selectedConnectionId: state.selectedConnectionId ?? null,
+    })
+  } catch { /* ignore */ }
+}
 
 /**
  * 初始化时解密所有连接的敏感字段

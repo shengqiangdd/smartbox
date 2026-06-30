@@ -33,7 +33,7 @@ export default function VirtualList<T>({
   // 监听滚动和容器尺寸变化
   useEffect(() => {
     const el = containerRef.current
-    if (!el || !useVirtual) return
+    if (!el) return
 
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -53,15 +53,14 @@ export default function VirtualList<T>({
       observer.disconnect()
       el.removeEventListener('scroll', handleScroll)
     }
-  }, [useVirtual])
+  }, [])
 
   // 计算可见范围
   let visibleItems: { item: T; index: number }[] = []
-  let totalHeight = 0
+  let totalHeight = items.length * itemHeight + paddingBottom
   let paddingTop = 0
 
   if (useVirtual) {
-    totalHeight = items.length * itemHeight + paddingBottom
     const startIndex = Math.max(0, Math.floor(scrollTop / itemHeight))
     const endIndex = Math.min(items.length, Math.ceil((scrollTop + containerHeight) / itemHeight))
 
@@ -79,7 +78,6 @@ export default function VirtualList<T>({
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     const el = e.currentTarget
-    if (!useVirtual) return
     // Home / End 键支持
     if (e.key === 'Home') {
       e.preventDefault()
@@ -88,13 +86,20 @@ export default function VirtualList<T>({
       e.preventDefault()
       el.scrollTop = el.scrollHeight
     }
-  }, [useVirtual])
+  }, [])
 
   if (!useVirtual) {
     return (
-      <div ref={containerRef} className={`overflow-y-auto ${className}`}>
+      <div
+        ref={containerRef}
+        className={`overflow-y-auto ${className}`}
+        onKeyDown={handleKeyDown}
+        tabIndex={-1}
+      >
         {items.map((item, i) => (
-          <div key={getKey?.(item) ?? i}>{renderItem(item, i)}</div>
+          <div key={getKey?.(item) ?? i} style={{ minHeight: itemHeight }}>
+            {renderItem(item, i)}
+          </div>
         ))}
       </div>
     )

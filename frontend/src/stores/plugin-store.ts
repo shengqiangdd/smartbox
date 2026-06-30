@@ -125,3 +125,16 @@ export const usePluginStore = create<PluginState>()(
     },
   ),
 )
+
+/** 触发 store 重新从 localStorage 读取 */
+export const refreshPluginStore = () => {
+  const raw = localStorage.getItem('smartbox-plugins')
+  if (!raw) return
+  try {
+    const parsed = JSON.parse(raw)
+    const state = parsed.state || parsed
+    usePluginStore.setState({
+      plugins: state.plugins || usePluginStore.getState().plugins,
+    })
+  } catch { /* ignore */ }
+}

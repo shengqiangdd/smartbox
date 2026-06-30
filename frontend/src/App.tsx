@@ -4,7 +4,11 @@ import Layout from './components/layout/Layout'
 import CommandPalette, { registerCommand } from './components/CommandPalette'
 import ShortcutHelpModal from './components/ShortcutHelpModal'
 import Toast from './components/Toast'
-import { useAppStore } from './stores/app-store'
+import { useAppStore, refreshAppStore } from './stores/app-store'
+import { refreshAiStore } from './stores/ai-store'
+import { refreshSshStore } from './stores/ssh-store'
+import { refreshAlertStore } from './stores/alert-store'
+import { refreshPluginStore } from './stores/plugin-store'
 import { initGlobalAPI } from './global-api'
 
 // 初始化插件全局 API
@@ -43,6 +47,19 @@ function AppContent() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  // 监听导入配置事件，刷新所有 store
+  useEffect(() => {
+    const handler = () => {
+      refreshAppStore()
+      refreshAiStore()
+      refreshSshStore()
+      refreshAlertStore()
+      refreshPluginStore()
+    }
+    window.addEventListener('smartbox-config-imported', handler)
+    return () => window.removeEventListener('smartbox-config-imported', handler)
   }, [])
 
   useEffect(() => {

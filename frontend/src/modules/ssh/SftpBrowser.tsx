@@ -1168,6 +1168,7 @@ ${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n...还有 ${errors.leng
             className="h-full"
             virtualizeThreshold={100}
             getKey={(item) => item.path}
+            paddingBottom={0}
             renderItem={(item) =>
               item._isDir ? (
                 <div
