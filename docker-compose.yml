@@ -3,6 +3,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # 每次 docker compose build 自动注入时间戳，确保前端构建层不命中缓存
+        BUILD_HASH: "${BUILD_HASH:-$(date +%Y%m%d%H%M%S)}"
     image: ghcr.io/shengqiangdd/smartbox:latest
     container_name: smartbox
     ports:

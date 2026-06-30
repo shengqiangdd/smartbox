@@ -4,7 +4,6 @@
 FROM node:22-alpine AS builder
 
 ARG BUILD_HASH
-RUN test -n "$BUILD_HASH" || echo "WARNING: BUILD_HASH not set, cache may not bust properly"
 
 WORKDIR /app
 
