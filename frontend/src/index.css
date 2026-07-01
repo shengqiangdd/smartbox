@@ -76,15 +76,6 @@ html:not(.dark) {
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* 安全区域适配（iPhone 刘海屏等） */
-  .pb-safe {
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-  }
-
-  .pt-safe {
-    padding-top: env(safe-area-inset-top, 0px);
-  }
-
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -103,14 +94,14 @@ html:not(.dark) {
     background-color: var(--text-muted);
   }
 
-  /* 移动端输入框修正 */
+  /* 移动端输入框修正 — iOS 防止自动缩放 */
   input, textarea, select {
-    font-size: 16px; /* iOS 防止自动缩放 */
+    font-size: 16px;
     -webkit-appearance: none;
     appearance: none;
   }
 
-  /* 隐藏底部导航滚动条 */
+  /* 隐藏滚动条 */
   .no-scrollbar::-webkit-scrollbar { display: none; }
   .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
@@ -119,54 +110,23 @@ html:not(.dark) {
     -webkit-touch-callout: none;
   }
 
-  /* 仅在可交互元素上禁用高亮，让滚动流畅 */
   * {
     -webkit-tap-highlight-color: transparent;
   }
 
-  /* iOS 元素修正——确保点击区域正确 */
   button, a, [role="button"], .btn, .sidebar-item, input, textarea, select {
     touch-action: manipulation;
     cursor: pointer;
   }
 
-  /* input/textarea 允许文本选择（粘帖复制需要） */
   input, textarea {
     -webkit-user-select: text;
     user-select: text;
   }
 
-  /* 滚动容器 - iOS 弹性滚动 */
   .overflow-auto, .overflow-y-auto, .overflow-x-auto {
     -webkit-overflow-scrolling: touch;
   }
-}
-
-/* ============================================
-   移动端布局修复
-   ============================================ */
-/* 触摸滚动容器（iOS + Android 通用） */
-.mobile-scroll {
-  overflow-y: auto !important;
-  -webkit-overflow-scrolling: touch !important;
-  touch-action: pan-y !important;
-  overscroll-behavior: contain !important;
-  flex: 1 1 0% !important;
-  min-height: 0 !important;
-}
-
-/* 修复 flex 容器在移动端（iOS Safari + 部分 Android WebView）子元素不收缩的溢出问题 */
-.mobile-safe-flex {
-  min-height: 0;
-}
-
-/* 底部导航安全区域 */
-.pb-nav {
-  padding-bottom: max(env(safe-area-inset-bottom, 0px), 48px);
-}
-.with-bottom-nav {
-  height: calc(100% - 48px);
-  height: calc(100dvh - 48px);
 }
 
 /* ============================================
@@ -183,8 +143,6 @@ html:not(.dark) {
   :where(.bg-slate-800\/95) { background-color: color-mix(in srgb, var(--bg-card) 95%, transparent) !important; }
   :where(.bg-slate-800\/50) { background-color: color-mix(in srgb, var(--bg-card) 50%, transparent) !important; }
   :where(.bg-slate-800\/30) { background-color: color-mix(in srgb, var(--bg-card) 30%, transparent) !important; }
-
-  /* hover 背景 */
   :where(.hover\:bg-slate-800):hover { background-color: var(--bg-hover) !important; }
   :where(.hover\:bg-slate-800\/50):hover { background-color: color-mix(in srgb, var(--bg-hover) 50%, transparent) !important; }
   :where(.hover\:bg-slate-700):hover { background-color: var(--bg-hover) !important; }
@@ -206,8 +164,6 @@ html:not(.dark) {
   :where(.border-slate-700\/60) { border-color: var(--border-color) !important; }
   :where(.border-slate-600\/50) { border-color: var(--border-color) !important; }
   .border-slate-600 { border-color: var(--border-color-strong) !important; }
-
-  /* placeholder */
   :where(.placeholder-slate-500)::placeholder { color: var(--text-dim) !important; }
 
   /* kbd 背景 */
@@ -215,47 +171,17 @@ html:not(.dark) {
     background-color: var(--bg-card);
   }
 
-  /* 阴影在浅色下更透明 */
   :where(.shadow-2xl.shadow-black\/50) {
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
   }
 
-  /* backdrop 语义微调 */
   .backdrop-blur-sm {
     background-color: color-mix(in srgb, var(--bg-elevated) 60%, transparent);
   }
 }
 
 /* ============================================
-   移动端布局修复
-   ============================================ */
-/* 触摸滚动容器（iOS + Android 通用） */
-.mobile-scroll {
-  overflow-y: auto !important;
-  -webkit-overflow-scrolling: touch !important;
-  touch-action: pan-y !important;
-  overscroll-behavior: contain !important;
-  flex: 1 1 0% !important;
-  min-height: 0 !important;
-}
-
-/* 修复 flex 容器在移动端（iOS Safari + 部分 Android WebView）子元素不收缩的溢出问题 */
-.mobile-safe-flex {
-  min-height: 0;
-}
-
-/* 底部导航安全区域 */
-.pb-nav {
-  padding-bottom: max(env(safe-area-inset-bottom, 0px), 48px);
-}
-.with-bottom-nav {
-  height: calc(100% - 48px);
-  height: calc(100dvh - 48px);
-}
-
-/* ============================================
    Tailwind v4 自定义工具类
-   使用 @utility 替代 v3 的 @apply + 组件类
    ============================================ */
 @utility panel {
   display: flex;
@@ -306,39 +232,8 @@ html:not(.dark) {
 @utility btn-primary {
   background-color: #0284c7;
   color: white;
-  &:hover {
-    background-color: #0ea5e9;
-  }
-  &:active {
-    background-color: #0369a1;
-  }
-}
-
-/* ============================================
-   移动端布局修复
-   ============================================ */
-/* 触摸滚动容器（iOS + Android 通用） */
-.mobile-scroll {
-  overflow-y: auto !important;
-  -webkit-overflow-scrolling: touch !important;
-  touch-action: pan-y !important;
-  overscroll-behavior: contain !important;
-  flex: 1 1 0% !important;
-  min-height: 0 !important;
-}
-
-/* 修复 flex 容器在移动端（iOS Safari + 部分 Android WebView）子元素不收缩的溢出问题 */
-.mobile-safe-flex {
-  min-height: 0;
-}
-
-/* 底部导航安全区域 */
-.pb-nav {
-  padding-bottom: max(env(safe-area-inset-bottom, 0px), 48px);
-}
-.with-bottom-nav {
-  height: calc(100% - 48px);
-  height: calc(100dvh - 48px);
+  &:hover { background-color: #0ea5e9; }
+  &:active { background-color: #0369a1; }
 }
 
 @utility btn-ghost {
@@ -347,33 +242,6 @@ html:not(.dark) {
     background-color: var(--bg-hover) !important;
     color: var(--text-secondary) !important;
   }
-}
-
-/* ============================================
-   移动端布局修复
-   ============================================ */
-/* 触摸滚动容器（iOS + Android 通用） */
-.mobile-scroll {
-  overflow-y: auto !important;
-  -webkit-overflow-scrolling: touch !important;
-  touch-action: pan-y !important;
-  overscroll-behavior: contain !important;
-  flex: 1 1 0% !important;
-  min-height: 0 !important;
-}
-
-/* 修复 flex 容器在移动端（iOS Safari + 部分 Android WebView）子元素不收缩的溢出问题 */
-.mobile-safe-flex {
-  min-height: 0;
-}
-
-/* 底部导航安全区域 */
-.pb-nav {
-  padding-bottom: max(env(safe-area-inset-bottom, 0px), 48px);
-}
-.with-bottom-nav {
-  height: calc(100% - 48px);
-  height: calc(100dvh - 48px);
 }
 
 @utility btn-icon {
@@ -399,43 +267,11 @@ html:not(.dark) {
   outline: none;
   transition: all 150ms;
   box-sizing: border-box;
-  &:focus {
-    border-color: #0284c7;
-    box-shadow: 0 0 0 1px rgba(2, 132, 199, 0.3);
-  }
-  &::placeholder {
-    color: var(--text-dim);
-  }
+  &:focus { border-color: #0284c7; box-shadow: 0 0 0 1px rgba(2, 132, 199, 0.3); }
+  &::placeholder { color: var(--text-dim); }
 }
 
-/* ============================================
-   移动端布局修复
-   ============================================ */
-/* 触摸滚动容器（iOS + Android 通用） */
-.mobile-scroll {
-  overflow-y: auto !important;
-  -webkit-overflow-scrolling: touch !important;
-  touch-action: pan-y !important;
-  overscroll-behavior: contain !important;
-  flex: 1 1 0% !important;
-  min-height: 0 !important;
-}
-
-/* 修复 flex 容器在移动端（iOS Safari + 部分 Android WebView）子元素不收缩的溢出问题 */
-.mobile-safe-flex {
-  min-height: 0;
-}
-
-/* 底部导航安全区域 */
-.pb-nav {
-  padding-bottom: max(env(safe-area-inset-bottom, 0px), 48px);
-}
-.with-bottom-nav {
-  height: calc(100% - 48px);
-  height: calc(100dvh - 48px);
-}
-
-/* 别名：项目中广泛使用 className="input"，与 input-field 共享同一套样式 */
+/* 别名：项目中广泛使用 className="input" */
 @utility input {
   width: 100%;
   max-width: 100%;
@@ -449,40 +285,8 @@ html:not(.dark) {
   outline: none;
   transition: all 150ms;
   box-sizing: border-box;
-  &:focus {
-    border-color: #0284c7;
-    box-shadow: 0 0 0 1px rgba(2, 132, 199, 0.3);
-  }
-  &::placeholder {
-    color: var(--text-dim);
-  }
-}
-
-/* ============================================
-   移动端布局修复
-   ============================================ */
-/* 触摸滚动容器（iOS + Android 通用） */
-.mobile-scroll {
-  overflow-y: auto !important;
-  -webkit-overflow-scrolling: touch !important;
-  touch-action: pan-y !important;
-  overscroll-behavior: contain !important;
-  flex: 1 1 0% !important;
-  min-height: 0 !important;
-}
-
-/* 修复 flex 容器在移动端（iOS Safari + 部分 Android WebView）子元素不收缩的溢出问题 */
-.mobile-safe-flex {
-  min-height: 0;
-}
-
-/* 底部导航安全区域 */
-.pb-nav {
-  padding-bottom: max(env(safe-area-inset-bottom, 0px), 48px);
-}
-.with-bottom-nav {
-  height: calc(100% - 48px);
-  height: calc(100dvh - 48px);
+  &:focus { border-color: #0284c7; box-shadow: 0 0 0 1px rgba(2, 132, 199, 0.3); }
+  &::placeholder { color: var(--text-dim); }
 }
 
 @utility sidebar-item {
@@ -499,37 +303,7 @@ html:not(.dark) {
     background-color: var(--bg-hover) !important;
     color: var(--text-secondary) !important;
   }
-  &.active {
-    background-color: var(--bg-hover);
-    color: #38bdf8;
-  }
-}
-
-/* ============================================
-   移动端布局修复
-   ============================================ */
-/* 触摸滚动容器（iOS + Android 通用） */
-.mobile-scroll {
-  overflow-y: auto !important;
-  -webkit-overflow-scrolling: touch !important;
-  touch-action: pan-y !important;
-  overscroll-behavior: contain !important;
-  flex: 1 1 0% !important;
-  min-height: 0 !important;
-}
-
-/* 修复 flex 容器在移动端（iOS Safari + 部分 Android WebView）子元素不收缩的溢出问题 */
-.mobile-safe-flex {
-  min-height: 0;
-}
-
-/* 底部导航安全区域 */
-.pb-nav {
-  padding-bottom: max(env(safe-area-inset-bottom, 0px), 48px);
-}
-.with-bottom-nav {
-  height: calc(100% - 48px);
-  height: calc(100dvh - 48px);
+  &.active { background-color: var(--bg-hover); color: #38bdf8; }
 }
 
 @utility badge {
@@ -549,6 +323,33 @@ html:not(.dark) {
 @utility badge-red {
   background-color: rgba(239, 68, 68, 0.1);
   color: #f87171;
+}
+
+/* ============================================
+   移动端布局修复（只定义一次）
+   ============================================ */
+/* 触摸滚动容器（iOS + Android 通用） */
+.mobile-scroll {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  overscroll-behavior: contain !important;
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+}
+
+/* 修复 flex 容器在移动端子元素溢出问题 */
+.mobile-safe-flex {
+  min-height: 0;
+}
+
+/* 底部导航安全区域 */
+.pb-nav {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 48px);
+}
+.with-bottom-nav {
+  height: calc(100% - 48px);
+  height: calc(100dvh - 48px);
 }
 
 /* ============================================
@@ -582,41 +383,13 @@ html:not(.dark) {
 .markdown-preview h5 { font-size: 0.875rem; }
 .markdown-preview h6 { font-size: 0.8125rem; color: var(--text-dim); }
 
-.markdown-preview p {
-  margin: 0.75em 0;
-}
-
-.markdown-preview a {
-  color: #38bdf8;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-.markdown-preview a:hover {
-  color: #7dd3fc;
-}
-
-.markdown-preview img {
-  max-width: 100%;
-  border-radius: 0.5rem;
-  margin: 1em 0;
-}
-
-.markdown-preview strong {
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
-.markdown-preview em {
-  font-style: italic;
-}
-
-.markdown-preview del {
-  color: var(--text-dim);
-}
-
-.markdown-preview ins {
-  text-decoration: none;
-}
+.markdown-preview p { margin: 0.75em 0; }
+.markdown-preview a { color: #38bdf8; text-decoration: underline; text-underline-offset: 2px; }
+.markdown-preview a:hover { color: #7dd3fc; }
+.markdown-preview img { max-width: 100%; border-radius: 0.5rem; margin: 1em 0; }
+.markdown-preview strong { color: var(--text-primary); font-weight: 600; }
+.markdown-preview em { font-style: italic; }
+.markdown-preview del { color: var(--text-dim); }
 
 .markdown-preview code.cm-inline-code {
   background-color: rgba(30, 41, 59, 0.8);
@@ -665,9 +438,7 @@ html:not(.dark) .markdown-preview pre.cm-code-block code {
   border-radius: 0 0.375rem 0.375rem 0;
 }
 
-.markdown-preview blockquote.cm-blockquote p {
-  margin: 0.25em 0;
-}
+.markdown-preview blockquote.cm-blockquote p { margin: 0.25em 0; }
 
 .markdown-preview table.cm-table {
   border-collapse: collapse;
@@ -693,21 +464,13 @@ html:not(.dark) .markdown-preview pre.cm-code-block code {
   background-color: color-mix(in srgb, var(--bg-card) 20%, transparent);
 }
 
-.markdown-preview ul,
-.markdown-preview ol {
+.markdown-preview ul, .markdown-preview ol {
   margin: 0.5em 0;
   padding-left: 1.5em;
 }
 
-.markdown-preview li.cm-li {
-  margin: 0.25em 0;
-}
-
-.markdown-preview hr.cm-hr {
-  border: none;
-  border-top: 1px solid var(--border-color);
-  margin: 1.5em 0;
-}
+.markdown-preview li.cm-li { margin: 0.25em 0; }
+.markdown-preview hr.cm-hr { border: none; border-top: 1px solid var(--border-color); margin: 1.5em 0; }
 
 .markdown-preview label.cm-task {
   display: flex;
@@ -742,31 +505,4 @@ html:not(.dark) .markdown-preview pre.cm-code-block code {
     align-items: center;
     justify-content: center;
   }
-}
-
-/* ============================================
-   移动端布局修复
-   ============================================ */
-/* 触摸滚动容器（iOS + Android 通用） */
-.mobile-scroll {
-  overflow-y: auto !important;
-  -webkit-overflow-scrolling: touch !important;
-  touch-action: pan-y !important;
-  overscroll-behavior: contain !important;
-  flex: 1 1 0% !important;
-  min-height: 0 !important;
-}
-
-/* 修复 flex 容器在移动端（iOS Safari + 部分 Android WebView）子元素不收缩的溢出问题 */
-.mobile-safe-flex {
-  min-height: 0;
-}
-
-/* 底部导航安全区域 */
-.pb-nav {
-  padding-bottom: max(env(safe-area-inset-bottom, 0px), 48px);
-}
-.with-bottom-nav {
-  height: calc(100% - 48px);
-  height: calc(100dvh - 48px);
 }

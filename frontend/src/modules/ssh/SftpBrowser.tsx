@@ -468,11 +468,11 @@ export default function SftpBrowser({
       retryCountRef.current = 0
       const timer = setTimeout(() => listDir('/', true), 300)
       return () => clearTimeout(timer)
-    } else {
-      setEntries([])
-      setCurrentPath('/')
-      setSftpReady(false)
     }
+    setEntries([])
+    setCurrentPath('/')
+    setSftpReady(false)
+    return
   }, [sessionId])
 
   // sftp-ready 后自动刷新

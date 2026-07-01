@@ -324,6 +324,7 @@ export default function FileManager() {
 
       connectingRef.current = false
       setConnecting(false)
+      return
     },
     [connections, sessions, addSession, removeSession, wsClient, setFmState],
   )

@@ -26,10 +26,10 @@ export function ConfirmModal({
   useEffect(() => {
     if (open) {
       setVisible(true)
-    } else {
-      const timer = setTimeout(() => setVisible(false), 200)
-      return () => clearTimeout(timer)
+      return
     }
+    const timer = setTimeout(() => setVisible(false), 200)
+    return () => clearTimeout(timer)
   }, [open])
 
   if (!visible && !open) return null
@@ -90,10 +90,10 @@ export function AlertModal({ open, title, message, onClose }: AlertModalProps) {
   useEffect(() => {
     if (open) {
       setVisible(true)
-    } else {
-      const timer = setTimeout(() => setVisible(false), 200)
-      return () => clearTimeout(timer)
+      return
     }
+    const timer = setTimeout(() => setVisible(false), 200)
+    return () => clearTimeout(timer)
   }, [open])
 
   if (!visible && !open) return null

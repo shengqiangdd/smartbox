@@ -274,6 +274,7 @@ export default function PluginSandbox({
       setLoading(false)
       onError?.(msg)
     }
+    return
   }, [manifest.id, pluginCode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 消息监听（只在挂载时注册一次） ──
