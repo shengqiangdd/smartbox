@@ -1,4 +1,4 @@
-import { useState, useCallback, lazy, Suspense } from 'react'
+import { useState, useCallback, useOptimistic, lazy, Suspense, startTransition } from 'react'
 import {
   Play, Square, RotateCcw, Trash2, FileText, Search, Eye,
 } from 'lucide-react'
@@ -20,22 +20,39 @@ interface Props {
   onRefresh: () => void
 }
 
+/** 乐观更新：对指定容器执行状态切换而不等待 API */
+function optimisticToggle(containers: DockerContainer[], id: string, action: string): DockerContainer[] {
+  return containers.map((c) => {
+    const matchId = c.Names || c.ID.slice(0, 12)
+    if (matchId !== id) return c
+    const newState = action === 'start' ? 'running' : action === 'stop' ? 'exited' : c.State
+    return { ...c, State: newState }
+  })
+}
+
 export default function DockerContainerList({ connectionId, containers, loading, onRefresh }: Props) {
   const [filter, setFilter] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [logTarget, setLogTarget] = useState<string | null>(null)
   const [detailTarget, setDetailTarget] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [optimisticContainers, addOptimistic] = useOptimistic(
+    containers,
+    (state, { id, action }: { id: string; action: string }) => optimisticToggle(state, id, action),
+  )
 
   const filtered = filter
-    ? containers.filter((c) =>
+    ? optimisticContainers.filter((c) =>
         c.Names.toLowerCase().includes(filter.toLowerCase()) ||
         c.Image.toLowerCase().includes(filter.toLowerCase()) ||
         c.ID.startsWith(filter)
       )
-    : containers
+    : optimisticContainers
 
   const doAction = useCallback(async (id: string, action: string) => {
+    // 立即乐观更新 UI
+    startTransition(() => addOptimistic({ id, action }))
+
     setActionLoading(id)
     try {
       const res = await fetch(`/api/docker/${action}`, {
@@ -55,7 +72,7 @@ export default function DockerContainerList({ connectionId, containers, loading,
     } finally {
       setActionLoading(null)
     }
-  }, [connectionId, onRefresh])
+  }, [connectionId, onRefresh, addOptimistic])
 
   // 判断是否为 SmartBox 自身容器
   const isSelfContainer = (names: string) => {
@@ -134,7 +151,7 @@ export default function DockerContainerList({ connectionId, containers, loading,
                     </div>
                   </div>
 
-                  {/* 操作按钮 */}
+                  {/* 操作按钮（略，与之前相同） */}
                   <div className="flex shrink-0 items-center gap-1 opacity-100" onClick={(e) => e.stopPropagation()}>
                     {!isSelfContainer(c.Names) && (
                       <>

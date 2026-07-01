@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
-import { Routes, Route } from 'react-router-dom'
+import { useEffect, useState, useRef } from 'react'
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import Layout from './components/layout/Layout'
 import CommandPalette, { registerCommand } from './components/CommandPalette'
 import ShortcutHelpModal from './components/ShortcutHelpModal'
 import Toast from './components/Toast'
-import { useAppStore, refreshAppStore } from './stores/app-store'
+import { useAppStore, refreshAppStore, type NavId } from './stores/app-store'
 import { refreshAiStore } from './stores/ai-store'
 import { refreshSshStore } from './stores/ssh-store'
 import { refreshAlertStore } from './stores/alert-store'
@@ -14,9 +14,54 @@ import { initGlobalAPI } from './global-api'
 // 初始化插件全局 API
 initGlobalAPI()
 
+/** NavId → URL path 映射 */
+const NAV_PATH: Record<NavId, string> = {
+  ssh: '/ssh',
+  commands: '/commands',
+  docker: '/docker',
+  monitor: '/monitor',
+  files: '/files',
+  logs: '/logs',
+  plugins: '/plugins',
+  settings: '/settings',
+}
+
+const PATH_TO_NAV = Object.fromEntries(
+  Object.entries(NAV_PATH).map(([k, v]) => [v, k as NavId]),
+)
+
 function AppContent() {
   const theme = useAppStore((s) => s.theme)
+  const activeNav = useAppStore((s) => s.activeNav)
+  const setActiveNav = useAppStore((s) => s.setActiveNav)
+  const navigate = useNavigate()
+  const location = useLocation()
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false)
+
+  // URL ↔ Nav 双向同步
+  useEffect(() => {
+    const navFromPath = PATH_TO_NAV[location.pathname]
+    if (navFromPath && navFromPath !== activeNav) {
+      setActiveNav(navFromPath)
+    }
+  }, [location.pathname])
+
+  // activeNav → URL 推送（初始不推）
+  const initializedRef = useRef(false)
+  useEffect(() => {
+    if (!initializedRef.current) {
+      // 首次加载：如果当前 path 不是有效 nav，推到当前 nav
+      initializedRef.current = true
+      if (!PATH_TO_NAV[location.pathname]) {
+        navigate(NAV_PATH[activeNav], { replace: true })
+      }
+      return
+    }
+    const expectedPath = NAV_PATH[activeNav]
+    if (location.pathname !== expectedPath) {
+      navigate(expectedPath, { replace: true })
+    }
+  }, [activeNav])
 
   // 注册快捷键列表命令到命令面板
   useEffect(() => {
@@ -62,6 +107,7 @@ function AppContent() {
     return () => window.removeEventListener('smartbox-config-imported', handler)
   }, [])
 
+  // 主题同步
   useEffect(() => {
     const root = document.documentElement
     if (theme === 'dark') {
