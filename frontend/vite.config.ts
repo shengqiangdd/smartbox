@@ -74,7 +74,13 @@ export default defineConfig({
     chunkSizeWarningLimit: 1000,
   },
   plugins: [
-    react(),
+    react({
+      babel: {
+        plugins: [
+          ['babel-plugin-react-compiler', { target: '19' }],
+        ],
+      },
+    }),
     tailwindcss(),
 
     // HTML 注入：版本号 + 构建时间
