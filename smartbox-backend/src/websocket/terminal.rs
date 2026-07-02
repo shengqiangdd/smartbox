@@ -90,6 +90,10 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>) {
                                 let _ = socket.send(Message::Text(txt(ack.to_string()))).await;
                             }
                         }
+                        "docker_shell" => {
+                            handle_docker_shell(&mut socket, &state, &parsed).await;
+                            info!("Docker shell session ended, back to main loop");
+                        }
                         _ => {
                             warn!("Unknown message type: {}", msg_type);
                             let err = serde_json::json!({
@@ -253,11 +257,11 @@ async fn handle_terminal_connect(
                             break;
                         }
                     }
-                    Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) | None => {
+                    Some(russh::ChannelMsg::Eof) | Some(russh::ChannelMsg::Close) | None => {
                         info!("SSH channel closed (connection: {})", connection_id);
                         break;
                     }
-                    Some(ChannelMsg::ExitStatus { exit_status }) => {
+                    Some(russh::ChannelMsg::ExitStatus { exit_status }) => {
                         info!("SSH shell exited with status: {}", exit_status);
                         break;
                     }
@@ -845,4 +849,216 @@ async fn handle_logtail_start(
     });
     let _ = socket.send(Message::Text(txt(stopped.to_string()))).await;
     info!("Log tail ended: {}", key);
+}
+
+// ========== Docker Shell (docker exec -it via SSH) ==========
+
+/// Handle "docker_shell" message — SSH docker exec -it into a container and enter I/O loop.
+async fn handle_docker_shell(
+    socket: &mut WebSocket,
+    state: &Arc<AppState>,
+    msg: &serde_json::Value,
+) {
+    let connection_id = msg
+        .get("connectionId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let request_id = msg
+        .get("requestId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let container_id = msg
+        .get("containerId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let shell = msg
+        .get("shell")
+        .and_then(|v| v.as_str())
+        .unwrap_or("/bin/bash")
+        .to_string();
+    let cols = msg.get("cols").and_then(|v| v.as_u64()).unwrap_or(120) as u32;
+    let rows = msg.get("rows").and_then(|v| v.as_u64()).unwrap_or(40) as u32;
+
+    // Validate container ID (alphanumeric, hyphens, underscores, max 64 chars)
+    if container_id.is_empty()
+        || container_id.len() > 64
+        || !container_id
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
+        let err = serde_json::json!({
+            "type": "error",
+            "requestId": request_id,
+            "message": "Invalid container ID"
+        });
+        let _ = socket.send(Message::Text(txt(err.to_string()))).await;
+        return;
+    }
+
+    // Validate shell path (starts with /, alphanumeric, dots, hyphens, underscores)
+    if !shell.starts_with('/')
+        || !shell
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '/' || c == '.' || c == '-' || c == '_')
+    {
+        let err = serde_json::json!({
+            "type": "error",
+            "requestId": request_id,
+            "message": "Invalid shell path"
+        });
+        let _ = socket.send(Message::Text(txt(err.to_string()))).await;
+        return;
+    }
+
+    // Look up SSH session
+    let session = {
+        let entry = state.connections.get(&connection_id);
+        entry.and_then(|c| c.session.clone())
+    };
+
+    let session = match session {
+        Some(s) => s,
+        None => {
+            let err = serde_json::json!({
+                "type": "error",
+                "requestId": request_id,
+                "message": "SSH session not found or not connected"
+            });
+            let _ = socket.send(Message::Text(txt(err.to_string()))).await;
+            return;
+        }
+    };
+
+    // Build docker exec command
+    let esc_id = container_id.replace('\'', "'\\''");
+    let esc_shell = shell.replace('\'', "'\\''");
+    let cmd = format!("docker exec -it '{}' '{}'", esc_id, esc_shell);
+
+    // Open SSH exec channel with PTY for docker exec
+    let mut channel = match session.stream_exec(&cmd, cols, rows).await {
+        Ok(ch) => ch,
+        Err(e) => {
+            let err = serde_json::json!({
+                "type": "error",
+                "requestId": request_id,
+                "message": format!("Docker exec failed: {}", e)
+            });
+            let _ = socket.send(Message::Text(txt(err.to_string()))).await;
+            return;
+        }
+    };
+
+    // Send ready acknowledgment
+    let ack = serde_json::json!({
+        "type": "docker_shell_ready",
+        "connectionId": connection_id,
+        "requestId": request_id,
+        "containerId": container_id,
+        "shell": shell,
+    });
+    if socket
+        .send(Message::Text(txt(ack.to_string())))
+        .await
+        .is_err()
+    {
+        return;
+    }
+
+    info!("Docker shell connected: {} -> {} ({})", connection_id, container_id, shell);
+
+    // ─── Docker Shell I/O Loop ───
+    loop {
+        tokio::select! {
+            // Incoming from WebSocket (user input / resize)
+            ws_msg = socket.recv() => {
+                match ws_msg {
+                    Some(Ok(Message::Text(text))) => {
+                        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&text) {
+                            let msg_type = parsed
+                                .get("type")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+                            match msg_type {
+                                "docker_shell_data" => {
+                                    if let Some(data) = parsed.get("data").and_then(|v| v.as_str()) {
+                                        let decoded = base64::engine::general_purpose::STANDARD
+                                            .decode(data)
+                                            .unwrap_or_else(|_| data.as_bytes().to_vec());
+                                        if channel.data(decoded.as_slice()).await.is_err() {
+                                            info!("Docker shell channel write error");
+                                            break;
+                                        }
+                                    }
+                                }
+                                "docker_shell_resize" => {
+                                    let new_cols = parsed.get("cols").and_then(|v| v.as_u64()).unwrap_or(120) as u32;
+                                    let new_rows = parsed.get("rows").and_then(|v| v.as_u64()).unwrap_or(40) as u32;
+                                    let _ = channel
+                                        .request_pty(false, "xterm-256color", new_cols, new_rows, 0, 0, &[])
+                                        .await;
+                                }
+                                "docker_shell_close" | "close" | "disconnect" => {
+                                    info!("Docker shell close requested");
+                                    break;
+                                }
+                                _ => {
+                                    // Ignore other message types (ping etc.)
+                                }
+                            }
+                        }
+                    }
+                    Some(Ok(Message::Close(_))) | None => {
+                        info!("Docker shell WebSocket closed by client");
+                        break;
+                    }
+                    Some(Ok(Message::Binary(_))) => {}
+                    Some(Err(e)) => {
+                        warn!("Docker shell WS error: {:?}", e);
+                        break;
+                    }
+                    _ => break,
+                }
+            }
+
+            // Outgoing to WebSocket (docker exec output via channel.wait())
+            msg = channel.wait() => {
+                match msg {
+                    Some(russh::ChannelMsg::Data { ref data }) => {
+                        let encoded = base64::engine::general_purpose::STANDARD.encode(data);
+                        let output = serde_json::json!({
+                            "type": "docker_shell_output",
+                            "connectionId": connection_id,
+                            "containerId": container_id,
+                            "data": encoded,
+                        });
+                        if socket.send(Message::Text(txt(output.to_string()))).await.is_err() {
+                            break;
+                        }
+                    }
+                    Some(russh::ChannelMsg::Eof) | Some(russh::ChannelMsg::Close) | None => {
+                        info!("Docker shell channel closed (container: {})", container_id);
+                        break;
+                    }
+                    Some(russh::ChannelMsg::ExitStatus { exit_status }) => {
+                        info!("Docker shell exited with status: {}", exit_status);
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    // Send closed notification
+    let closed = serde_json::json!({
+        "type": "docker_shell_closed",
+        "connectionId": connection_id,
+        "requestId": request_id,
+        "containerId": container_id,
+    });
+    let _ = socket.send(Message::Text(txt(closed.to_string()))).await;
+    info!("Docker shell ended: {} -> {}", connection_id, container_id);
 }
