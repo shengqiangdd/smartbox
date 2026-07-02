@@ -14,3 +14,13 @@ Object.defineProperty(globalThis, 'localStorage', {
   writable: true,
   configurable: true,
 })
+
+// Mock URL.createObjectURL and revokeObjectURL for jsdom
+if (typeof URL.createObjectURL === 'undefined') {
+  let blobId = 0
+  URL.createObjectURL = (_blob: Blob) => `blob:mock-${++blobId}`
+}
+if (typeof URL.revokeObjectURL === 'undefined') {
+  URL.revokeObjectURL = (_url: string) => { /* no-op in jsdom */ }
+}
+

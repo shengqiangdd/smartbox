@@ -257,11 +257,11 @@ async fn handle_terminal_connect(
                             break;
                         }
                     }
-                    Some(russh::ChannelMsg::Eof) | Some(russh::ChannelMsg::Close) | None => {
+                    Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) | None => {
                         info!("SSH channel closed (connection: {})", connection_id);
                         break;
                     }
-                    Some(russh::ChannelMsg::ExitStatus { exit_status }) => {
+                    Some(ChannelMsg::ExitStatus { exit_status }) => {
                         info!("SSH shell exited with status: {}", exit_status);
                         break;
                     }
@@ -969,6 +969,8 @@ async fn handle_docker_shell(
 
     info!("Docker shell connected: {} -> {} ({})", connection_id, container_id, shell);
 
+    let mut exit_code: Option<u32> = None;
+
     // ─── Docker Shell I/O Loop ───
     loop {
         tokio::select! {
@@ -1044,6 +1046,7 @@ async fn handle_docker_shell(
                     }
                     Some(russh::ChannelMsg::ExitStatus { exit_status }) => {
                         info!("Docker shell exited with status: {}", exit_status);
+                        exit_code = Some(exit_status);
                         break;
                     }
                     _ => {}
@@ -1053,12 +1056,18 @@ async fn handle_docker_shell(
     }
 
     // Send closed notification
-    let closed = serde_json::json!({
+    let mut closed = serde_json::json!({
         "type": "docker_shell_closed",
         "connectionId": connection_id,
         "requestId": request_id,
         "containerId": container_id,
     });
+    if let Some(code) = exit_code {
+        closed.as_object_mut().unwrap().insert(
+            "exitCode".to_string(),
+            serde_json::json!(code),
+        );
+    }
     let _ = socket.send(Message::Text(txt(closed.to_string()))).await;
     info!("Docker shell ended: {} -> {}", connection_id, container_id);
 }
