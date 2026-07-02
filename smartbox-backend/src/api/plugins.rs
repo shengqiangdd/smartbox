@@ -101,6 +101,12 @@ pub async fn install_plugin(
     // Invalidate marketplace cache
     *state.marketplace_cache.write() = None;
 
+    state.add_audit_log("plugin_install", serde_json::json!({
+        "pluginId": plugin_id,
+        "manifestUrl": manifest_url,
+        "pluginUrl": plugin_url
+    }), "api");
+
     Ok(ApiResponse::success(serde_json::json!({
         "success": true,
         "pluginId": plugin_id,
@@ -135,6 +141,10 @@ pub async fn uninstall_plugin(
     }
 
     std::fs::remove_dir_all(&target)?;
+
+    state.add_audit_log("plugin_uninstall", serde_json::json!({
+        "pluginId": plugin_id
+    }), "api");
 
     Ok(ApiResponse::success(serde_json::json!({
         "success": true,

@@ -173,6 +173,9 @@ pub async fn start_container(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ActionRequest>,
 ) -> ApiResponse<serde_json::Value> {
+    state.add_audit_log("docker_start", serde_json::json!({
+        "connectionId": req.connection_id, "containerId": req.id
+    }), "api");
     match docker_exec(&state, &req.connection_id, &["start", &req.id]).await {
         Ok(data) => ApiResponse::success(serde_json::json!({ "data": data })),
         Err(e) => ApiResponse::error(-1, &e),
@@ -184,6 +187,9 @@ pub async fn stop_container(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ActionRequest>,
 ) -> ApiResponse<serde_json::Value> {
+    state.add_audit_log("docker_stop", serde_json::json!({
+        "connectionId": req.connection_id, "containerId": req.id
+    }), "api");
     match docker_exec(&state, &req.connection_id, &["stop", &req.id]).await {
         Ok(data) => ApiResponse::success(serde_json::json!({ "data": data })),
         Err(e) => ApiResponse::error(-1, &e),
@@ -195,6 +201,9 @@ pub async fn restart_container(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ActionRequest>,
 ) -> ApiResponse<serde_json::Value> {
+    state.add_audit_log("docker_restart", serde_json::json!({
+        "connectionId": req.connection_id, "containerId": req.id
+    }), "api");
     match docker_exec(&state, &req.connection_id, &["restart", &req.id]).await {
         Ok(data) => ApiResponse::success(serde_json::json!({ "data": data })),
         Err(e) => ApiResponse::error(-1, &e),

@@ -66,13 +66,20 @@ pub async fn connect_ssh(
                 Ok(()) => {
                     let mut conn = crate::ssh::client::SshConnection::new(
                         connection_id.clone(),
-                        host,
+                        host.clone(),
                         port,
-                        username,
+                        username.clone(),
                         "password".into(),
                     );
                     conn.set_session(Arc::new(session));
                     state.connections.insert(connection_id.clone(), conn);
+                    state.add_audit_log("ssh_connect", serde_json::json!({
+                        "connectionId": connection_id,
+                        "host": host,
+                        "port": port,
+                        "username": username,
+                        "auth": "password"
+                    }), "api");
                     return ApiResponse::success(serde_json::json!({
                         "connectionId": connection_id,
                         "connected": true
@@ -92,13 +99,20 @@ pub async fn connect_ssh(
                 Ok(()) => {
                     let mut conn = crate::ssh::client::SshConnection::new(
                         connection_id.clone(),
-                        host,
+                        host.clone(),
                         port,
-                        username,
+                        username.clone(),
                         "publickey".into(),
                     );
                     conn.set_session(Arc::new(session));
                     state.connections.insert(connection_id.clone(), conn);
+                    state.add_audit_log("ssh_connect", serde_json::json!({
+                        "connectionId": connection_id,
+                        "host": host,
+                        "port": port,
+                        "username": username,
+                        "auth": "publickey"
+                    }), "api");
                     return ApiResponse::success(serde_json::json!({
                         "connectionId": connection_id,
                         "connected": true
@@ -132,6 +146,9 @@ pub async fn disconnect_ssh(
         if let Some(session) = conn.session {
             session.disconnect().await;
         }
+        state.add_audit_log("ssh_disconnect", serde_json::json!({
+            "connectionId": connection_id
+        }), "api");
         ApiResponse::success_msg("Disconnected")
     } else {
         ApiResponse::error(404, "Connection not found")
