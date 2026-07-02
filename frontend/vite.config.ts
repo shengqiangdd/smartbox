@@ -28,13 +28,9 @@ const cmLangsExtra = [
   '@codemirror/lang-cpp', '@codemirror/lang-go',
   '@codemirror/lang-java', '@codemirror/lang-less', '@codemirror/lang-liquid',
   '@codemirror/lang-php', '@codemirror/lang-rust', '@codemirror/lang-vue',
-  '@codemirror/lang-wast',
 ]
 
-// 是否启用 bundle 分析（仅 ANALYZE=true 时激活）
 const isAnalyze = process.env.ANALYZE === 'true'
-
-// 构建时间戳，用于 HTML 注入
 const buildTimestamp = Date.now()
 
 export default defineConfig({
@@ -47,17 +43,13 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          // xterm.js 终端（新旧包名都归入同一 vendor）
           if (isExternal(id, 'xterm') || isExternal(id, '@xterm')) return 'vendor-xterm'
-          // CodeMirror: 核心基础包单独打包
           for (const pkg of cmCore) {
             if (isExternal(id, pkg)) return 'vendor-cm-core'
           }
-          // CodeMirror: 常用语言包（先加载）
           for (const pkg of cmLangsCommon) {
             if (isExternal(id, pkg)) return 'vendor-cm-langs'
           }
-          // CodeMirror: 扩展语言包（低频按需）
           for (const pkg of cmLangsExtra) {
             if (isExternal(id, pkg)) return 'vendor-cm-langs-extra'
           }
@@ -68,22 +60,18 @@ export default defineConfig({
         },
       },
     },
-    // 报告 gzip 压缩后大小
     reportCompressedSize: true,
-    // 分块大小警告阈值（增大以适配 CodeMirror 等大库）
     chunkSizeWarningLimit: 1000,
   },
   plugins: [
-    react({
-      babel: {
-        plugins: [
-          ['babel-plugin-react-compiler', { target: '19' }],
-        ],
-      },
-    }),
+    // Note: React Compiler (babel-plugin-react-compiler) is installed but not
+    // configured here because @vitejs/plugin-react v6 + Vite 8's Oxc JSX
+    // transform injects $RefreshSig$ at Oxc level, and the Babel plugin
+    // running after Oxc breaks the React Refresh runtime in dev mode.
+    // To enable for production-only builds, create a vite.build.config.ts
+    // or use the CI pipeline with a custom build script.
+    react(),
     tailwindcss(),
-
-    // HTML 注入：版本号 + 构建时间
     createHtmlPlugin({
       inject: {
         data: {
@@ -92,8 +80,6 @@ export default defineConfig({
         },
       },
     }),
-
-    // gzip + brotli 压缩（生产环境）
     compression({
       algorithm: 'gzip',
       ext: '.gz',
@@ -106,8 +92,6 @@ export default defineConfig({
       threshold: 1024,
       deleteOriginFile: false,
     }),
-
-    // Bundle 分析（仅在 ANALYZE=true 时启用）
     ...(isAnalyze ? [bundleAnalyzer()] : []),
   ],
   resolve: {
