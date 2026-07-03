@@ -19,6 +19,27 @@ docker-compose up -d
 # 访问 http://localhost:3001
 ```
 
+### 数据持久化（SQLite）
+
+SmartBox 默认使用 SQLite 存储审计日志和告警数据。在 Docker 中运行时，建议挂载数据卷：
+
+```bash
+# 创建持久化目录
+mkdir -p /data/smartbox
+
+# 运行容器并挂载数据卷
+docker run -d \
+  -p 3001:3001 \
+  --name smartbox \
+  --restart unless-stopped \
+  -v /data/smartbox:/data \
+  -e DATABASE_URL=/data/smartbox.db \
+  ghcr.io/shengqiangdd/smartbox:latest
+
+# 停止后数据保留在 /data/smartbox/smartbox.db
+# 备份: cp /data/smartbox/smartbox.db backup-$(date +%Y%m%d).db
+```
+
 ### 构建并运行
 
 ```bash
@@ -161,6 +182,10 @@ server {
 | `PORT` | `3001` | 后端监听端口 |
 | `NODE_ENV` | `development` | 运行环境 |
 | `BRIDGE_PORT` | `3001` | Bridge 服务端口 |
+| `DATABASE_URL` | `无` (Docker 内默认 `/data/smartbox.db`) | SQLite 数据库路径 |
+| `LOG_LEVEL` | `info` | 日志级别 (trace/debug/info/warn/error) |
+| `JWT_SECRET` | 自动生成 | 用于 WebSocket 认证令牌签名 |
+| `OPENROUTER_API_KEY` | 无 | AI 功能 API Key |
 
 ---
 

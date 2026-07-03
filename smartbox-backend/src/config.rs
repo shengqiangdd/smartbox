@@ -46,7 +46,18 @@ impl AppConfig {
         let jwt_secret = std::env::var("JWT_SECRET")
             .unwrap_or_else(|_| uuid::Uuid::new_v4().to_string());
 
-        let database_url = std::env::var("DATABASE_URL").ok();
+        let database_url = std::env::var("DATABASE_URL")
+            .ok()
+            .or_else(|| {
+                // Default to /data/smartbox.db when running in Docker
+                let in_container = std::path::Path::new("/.dockerenv").exists()
+                    || std::env::var("DOCKER_CONTAINER").is_ok();
+                if in_container {
+                    Some("/data/smartbox.db".into())
+                } else {
+                    None
+                }
+            });
         let log_level = std::env::var("LOG_LEVEL").unwrap_or_else(|_| "info".into());
 
         Ok(Self {

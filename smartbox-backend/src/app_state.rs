@@ -5,11 +5,15 @@ use parking_lot::RwLock;
 use serde::Serialize;
 
 use crate::config::AppConfig;
+use crate::db::Database;
 use crate::ssh::SshConnection;
 
 /// Shared application state accessible from all handlers.
 pub struct AppState {
     pub config: AppConfig,
+
+    /// Optional SQLite database handle (None = memory-only mode).
+    pub db: Option<Database>,
 
     /// SSH connections: connection_id -> SshConnection
     pub connections: DashMap<String, SshConnection>,
@@ -20,7 +24,7 @@ pub struct AppState {
     /// Alerts store (in-memory, max 500)
     pub alerts: RwLock<Vec<AlertEntry>>,
 
-    /// Audit logs (in-memory ring buffer)
+    /// Audit logs (in-memory ring buffer, max 1000)
     pub audit_logs: RwLock<Vec<AuditEntry>>,
 
     /// WS token store for one-time tokens
@@ -62,15 +66,53 @@ pub struct WsTokenInfo {
 
 impl AppState {
     pub async fn new(config: AppConfig) -> anyhow::Result<Self> {
+        // Initialize SQLite database
+        let db = if let Some(db_path) = &config.database_url {
+            match Database::open(std::path::Path::new(db_path)).await {
+                Ok(d) => {
+                    tracing::info!("SQLite persistence enabled: {}", db_path);
+                    Some(d)
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to open SQLite database ({}), running in memory-only mode: {}",
+                        db_path,
+                        e
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        // Load recent data from database if available
+        let (audit_logs, alerts) = if let Some(ref database) = db {
+            let recent_logs = database
+                .load_recent_audit_logs(1000)
+                .await
+                .unwrap_or_default();
+            let recent_alerts = database.load_alerts(500).await.unwrap_or_default();
+            tracing::info!(
+                "Loaded {} audit logs and {} alerts from database",
+                recent_logs.len(),
+                recent_alerts.len()
+            );
+            (recent_logs, recent_alerts)
+        } else {
+            (vec![], vec![])
+        };
+
         Ok(Self {
             connections: DashMap::new(),
             docker_clients: DashMap::new(),
-            alerts: RwLock::new(Vec::with_capacity(500)),
-            audit_logs: RwLock::new(Vec::with_capacity(1000)),
+            alerts: RwLock::new(alerts),
+            audit_logs: RwLock::new(audit_logs),
             ws_tokens: DashMap::new(),
             marketplace_cache: RwLock::new(None),
             active_logtails: DashMap::new(),
             config,
+            db,
         })
     }
 
@@ -94,26 +136,62 @@ impl AppState {
         }
     }
 
-    /// Add audit log entry
+    /// Add audit log entry.
+    ///
+    /// Writes to the in-memory buffer synchronously, and also persists
+    /// to SQLite asynchronously if a database is configured.
     pub fn add_audit_log(&self, action: &str, detail: serde_json::Value, ip: &str) {
+        let timestamp = chrono::Utc::now().to_rfc3339();
+
+        // Memory write (instant, always works)
         let mut logs = self.audit_logs.write();
-        logs.push(AuditEntry {
-            timestamp: chrono::Utc::now().to_rfc3339(),
+        let entry = AuditEntry {
+            timestamp: timestamp.clone(),
             action: action.to_string(),
-            detail,
+            detail: detail.clone(),
             ip: ip.to_string(),
-        });
+        };
+        logs.push(entry);
         if logs.len() > 1000 {
             logs.remove(0);
         }
+        drop(logs);
+
+        // DB write (fire-and-forget async, non-blocking)
+        if let Some(ref db) = self.db {
+            let db = db.clone();
+            let act = action.to_string();
+            let addr = ip.to_string();
+            let detail_str = detail.to_string();
+            tokio::spawn(async move {
+                if let Err(e) = db.insert_audit_log(&timestamp, &act, &detail_str, &addr).await {
+                    tracing::warn!("Failed to persist audit log: {}", e);
+                }
+            });
+        }
     }
 
-    /// Add alert entry
+    /// Add alert entry.
+    ///
+    /// Writes to the in-memory buffer synchronously, and also persists
+    /// to SQLite asynchronously if a database is configured.
     pub fn add_alert(&self, alert: AlertEntry) {
+        // Memory write (instant, always works)
         let mut alerts = self.alerts.write();
-        alerts.push(alert);
+        alerts.push(alert.clone());
         if alerts.len() > 500 {
             alerts.remove(0);
+        }
+        drop(alerts);
+
+        // DB write (fire-and-forget async, non-blocking)
+        if let Some(ref db) = self.db {
+            let db = db.clone();
+            tokio::spawn(async move {
+                if let Err(e) = db.insert_alert(&alert).await {
+                    tracing::warn!("Failed to persist alert: {}", e);
+                }
+            });
         }
     }
 }
@@ -132,7 +210,7 @@ mod tests {
             cors_origins: vec!["*".into()],
             openrouter_api_key: None,
             jwt_secret: "test-jwt-secret".into(),
-            database_url: Some("sqlite::memory:".into()),
+            database_url: None, // memory-only mode for tests
             log_level: "warn".into(),
         }
     }
@@ -141,6 +219,7 @@ mod tests {
     fn test_new_state_creates_empty_fields() {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let state = rt.block_on(AppState::new(test_config())).unwrap();
+        assert!(state.db.is_none());
         assert!(state.connections.is_empty());
         assert!(state.docker_clients.is_empty());
         assert!(state.alerts.read().is_empty());
@@ -184,7 +263,7 @@ mod tests {
     }
 
     #[test]
-    fn test_add_audit_log() {
+    fn test_add_audit_log_in_memory() {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let state = rt.block_on(AppState::new(test_config())).unwrap();
 
