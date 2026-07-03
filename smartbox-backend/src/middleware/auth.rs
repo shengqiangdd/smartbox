@@ -8,6 +8,7 @@ use axum::{
 use std::sync::Arc;
 
 use crate::app_state::AppState;
+use crate::utils::jwt::JwtService;
 
 /// Validate a token against the in-memory WS token store.
 ///
