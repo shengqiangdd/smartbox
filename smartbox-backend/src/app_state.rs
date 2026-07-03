@@ -117,3 +117,130 @@ impl AppState {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::AppConfig;
+
+    fn test_config() -> AppConfig {
+        AppConfig {
+            host: "0.0.0.0".into(),
+            port: 3001,
+            frontend_dist: PathBuf::from("./frontend/dist"),
+            plugins_dir: PathBuf::from("/tmp/smartbox/plugins"),
+            cors_origins: vec!["*".into()],
+            openrouter_api_key: None,
+            jwt_secret: "test-jwt-secret".into(),
+            database_url: Some("sqlite::memory:".into()),
+            log_level: "warn".into(),
+        }
+    }
+
+    #[test]
+    fn test_new_state_creates_empty_fields() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let state = rt.block_on(AppState::new(test_config())).unwrap();
+        assert!(state.connections.is_empty());
+        assert!(state.docker_clients.is_empty());
+        assert!(state.alerts.read().is_empty());
+        assert!(state.audit_logs.read().is_empty());
+        assert!(state.ws_tokens.is_empty());
+        assert!(state.marketplace_cache.read().is_none());
+        assert!(state.active_logtails.is_empty());
+    }
+
+    #[test]
+    fn test_safe_plugin_path_accepts_valid() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let state = rt.block_on(AppState::new(test_config())).unwrap();
+        let path = state.safe_plugin_path("my-plugin_1.0");
+        assert!(path.is_some());
+        assert!(path.unwrap().ends_with("my-plugin_1.0"));
+    }
+
+    #[test]
+    fn test_safe_plugin_path_rejects_path_traversal() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let state = rt.block_on(AppState::new(test_config())).unwrap();
+        assert!(state.safe_plugin_path("../../../etc/passwd").is_none());
+        assert!(state.safe_plugin_path("../hack").is_none());
+        assert!(state.safe_plugin_path("plugin/../../etc").is_none());
+    }
+
+    #[test]
+    fn test_safe_plugin_path_rejects_empty() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let state = rt.block_on(AppState::new(test_config())).unwrap();
+        assert!(state.safe_plugin_path("").is_none());
+    }
+
+    #[test]
+    fn test_safe_plugin_path_rejects_special_chars() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let state = rt.block_on(AppState::new(test_config())).unwrap();
+        assert!(state.safe_plugin_path("plugin;rm -rf /").is_none());
+        assert!(state.safe_plugin_path("plugin|cat /etc/passwd").is_none());
+    }
+
+    #[test]
+    fn test_add_audit_log() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let state = rt.block_on(AppState::new(test_config())).unwrap();
+
+        state.add_audit_log("ssh_connect", serde_json::json!({"host": "192.168.1.1"}), "10.0.0.1");
+        let logs = state.audit_logs.read();
+        assert_eq!(logs.len(), 1);
+        assert_eq!(logs[0].action, "ssh_connect");
+    }
+
+    #[test]
+    fn test_audit_log_trims_excess() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let state = rt.block_on(AppState::new(test_config())).unwrap();
+
+        for i in 0..1100 {
+            state.add_audit_log("test_action", serde_json::json!({"i": i}), "127.0.0.1");
+        }
+
+        let logs = state.audit_logs.read();
+        assert!(logs.len() <= 1000);
+    }
+
+    #[test]
+    fn test_ws_token_store() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let state = rt.block_on(AppState::new(test_config())).unwrap();
+
+        state.ws_tokens.insert("abc".into(), WsTokenInfo {
+            token: "abc".into(),
+            ip: "10.0.0.1".into(),
+            expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
+        });
+
+        assert!(state.ws_tokens.contains_key("abc"));
+        assert!(!state.ws_tokens.contains_key("nonexistent"));
+    }
+
+    #[test]
+    fn test_add_alert_and_trim() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let state = rt.block_on(AppState::new(test_config())).unwrap();
+
+        for i in 0..600 {
+            state.add_alert(AlertEntry {
+                id: format!("alert-{}", i),
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                level: "info".into(),
+                host: "localhost".into(),
+                metric: "cpu".into(),
+                message: format!("alert {}", i),
+                value: i as f64,
+                threshold: 100.0,
+            });
+        }
+
+        let alerts = state.alerts.read();
+        assert!(alerts.len() <= 500);
+    }
+}

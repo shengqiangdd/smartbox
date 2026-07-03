@@ -91,3 +91,78 @@ pub async fn auth_middleware(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app_state::WsTokenInfo;
+    use crate::config::AppConfig;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    fn make_state() -> Arc<AppState> {
+        let config = AppConfig {
+            host: "0.0.0.0".into(),
+            port: 3001,
+            frontend_dist: PathBuf::from("./frontend/dist"),
+            plugins_dir: PathBuf::from("/tmp/plugins"),
+            cors_origins: vec!["*".into()],
+            openrouter_api_key: None,
+            jwt_secret: "test-jwt-secret".into(),
+            database_url: Some("sqlite::memory:".into()),
+            log_level: "warn".into(),
+        };
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(AppState::new(config)).unwrap().into()
+    }
+
+    #[test]
+    fn test_validate_token_valid() {
+        let state = make_state();
+        // Insert a valid token
+        state.ws_tokens.insert("valid-token-123".into(), WsTokenInfo {
+            token: "valid-token-123".into(),
+            ip: "127.0.0.1".into(),
+            expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
+        });
+
+        assert!(validate_token(&state, "valid-token-123"));
+        // Token should be consumed (one-time use)
+        assert!(!validate_token(&state, "valid-token-123"));
+    }
+
+    #[test]
+    fn test_validate_token_invalid() {
+        let state = make_state();
+        assert!(!validate_token(&state, "nonexistent-token"));
+    }
+
+    #[test]
+    fn test_validate_token_expired() {
+        let state = make_state();
+        state.ws_tokens.insert("expired-token".into(), WsTokenInfo {
+            token: "expired-token".into(),
+            ip: "127.0.0.1".into(),
+            expires_at: chrono::Utc::now() - chrono::Duration::seconds(1),
+        });
+
+        assert!(!validate_token(&state, "expired-token"));
+    }
+
+    #[test]
+    fn test_validate_token_one_time_use() {
+        let state = make_state();
+        state.ws_tokens.insert("one-time".into(), WsTokenInfo {
+            token: "one-time".into(),
+            ip: "10.0.0.1".into(),
+            expires_at: chrono::Utc::now() + chrono::Duration::hours(2),
+        });
+
+        // First call succeeds
+        assert!(validate_token(&state, "one-time"));
+        // Second call fails (consumed)
+        assert!(!validate_token(&state, "one-time"));
+        // Third call still fails
+        assert!(!validate_token(&state, "one-time"));
+    }
+}
