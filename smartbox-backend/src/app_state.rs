@@ -187,9 +187,30 @@ impl AppState {
         // DB write (fire-and-forget async, non-blocking)
         if let Some(ref db) = self.db {
             let db = db.clone();
+            let level = alert.level.clone();
+            let metric = alert.metric.clone();
+            let host = alert.host.clone();
+            let message = alert.message.clone();
             tokio::spawn(async move {
                 if let Err(e) = db.insert_alert(&alert).await {
                     tracing::warn!("Failed to persist alert: {}", e);
+                }
+
+                // Dispatch notifications for critical & warning alerts
+                if level == "critical" || level == "warning" {
+                    if let Ok(channels) = db.list_notification_channels().await {
+                        let alert_level = crate::notify::AlertLevel::parse_level(&level);
+                        for ch in channels {
+                            if !ch.enabled { continue; }
+                            let _ = crate::notify::dispatch_alert(
+                                &ch,
+                                &alert_level,
+                                &metric,
+                                &host,
+                                &message,
+                            ).await;
+                        }
+                    }
                 }
             });
         }

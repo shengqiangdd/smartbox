@@ -284,11 +284,12 @@ mod tests {
 
     #[test]
     fn test_attrs_to_entry_regular_file() {
-        let mut attrs = FileAttributes::default();
-        // Default attrs has DIR flag set - we need to override to be a regular file
-        attrs.permissions = Some(0o100644); // regular file, rw-r--r--
-        attrs.size = Some(1024);
-        attrs.mtime = Some(1705314600);
+        let attrs = FileAttributes {
+            permissions: Some(0o100644), // regular file, rw-r--r--
+            size: Some(1024),
+            mtime: Some(1705314600),
+            ..FileAttributes::default()
+        };
 
         let entry = attrs_to_entry("test.txt".into(), "/home/user", &attrs);
         assert_eq!(entry.name, "test.txt");
@@ -300,9 +301,10 @@ mod tests {
 
     #[test]
     fn test_attrs_to_entry_directory() {
-        let mut attrs = FileAttributes::default();
-        // Default already has DIR flag set (0o40777), just add size
-        attrs.size = Some(4096);
+        let attrs = FileAttributes {
+            size: Some(4096),
+            ..FileAttributes::default()
+        };
 
         let entry = attrs_to_entry("subdir".into(), "/home/user", &attrs);
         assert_eq!(entry.name, "subdir");
@@ -312,9 +314,11 @@ mod tests {
 
     #[test]
     fn test_attrs_to_entry_no_permissions() {
-        // Override to non-dir perms (no DIR flag)
-        let mut attrs = FileAttributes::default();
-        attrs.permissions = Some(0);
+        let attrs = FileAttributes {
+            permissions: Some(0),
+            size: Some(0),
+            ..FileAttributes::default()
+        };
 
         let entry = attrs_to_entry("unknown".into(), "/tmp", &attrs);
         assert!(!entry.is_dir);
