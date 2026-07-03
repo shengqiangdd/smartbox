@@ -74,7 +74,6 @@ RUN echo "" > src/ssh/mod.rs
 RUN echo "" > src/docker/mod.rs
 RUN echo "" > src/middleware/mod.rs
 RUN echo "" > src/db/mod.rs
-RUN echo "" > src/notify/mod.rs
 
 # Ensure Cargo.lock exists (for reproducible builds)
 RUN if [ ! -f Cargo.lock ]; then cargo generate-lockfile; fi
