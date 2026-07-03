@@ -38,11 +38,27 @@ pub async fn exec_command(
 
     // Execute command
     match session.exec(command).await {
-        Ok((stdout, stderr, exit_code)) => ApiResponse::success(serde_json::json!({
-            "stdout": stdout,
-            "stderr": stderr,
-            "exitCode": exit_code
-        })),
+        Ok((stdout, stderr, exit_code)) => {
+            // Audit log the command execution
+            let detail = serde_json::json!({
+                "action": "ssh_exec",
+                "host": conn.host,
+                "port": conn.port,
+                "username": conn.username,
+                "command": command,
+                "exit_code": exit_code,
+                "stdout_len": stdout.len(),
+                "stderr_len": stderr.len(),
+            });
+            let ip = "0.0.0.0".to_string();
+            state.add_audit_log("ssh_exec", detail, &ip);
+
+            ApiResponse::success(serde_json::json!({
+                "stdout": stdout,
+                "stderr": stderr,
+                "exitCode": exit_code
+            }))
+        },
         Err(e) => ApiResponse::error(500, &format!("SSH exec error: {}", e)),
     }
 }

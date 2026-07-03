@@ -115,9 +115,12 @@ async fn docker_exec(
     connection_id: &str,
     docker_args: &[&str],
 ) -> Result<String, String> {
-    let session = {
+    let (host, username, session) = {
         let entry = state.connections.get(connection_id);
-        entry.and_then(|c| c.session.clone())
+        match entry {
+            Some(c) => (c.host.clone(), c.username.clone(), c.session.clone()),
+            None => return Err("SSH session not found or not connected".to_string()),
+        }
     };
 
     let session = session.ok_or_else(|| "SSH session not found or not connected".to_string())?;
@@ -139,6 +142,25 @@ async fn docker_exec(
 
     if !stderr.is_empty() && stdout.is_empty() {
         return Err(stderr);
+    }
+
+    // Audit log mutating docker operations
+    let action_id = docker_args.first().copied().unwrap_or("");
+    let is_readonly = matches!(action_id, "ps" | "images" | "history" | "stats" | "inspect")
+        || (action_id == "compose" && docker_args.get(1).copied() == Some("ls"));
+    if !is_readonly {
+        let ip = "0.0.0.0".to_string();
+        state.add_audit_log(
+            &format!("docker_{}", action_id.replace('-', "_")),
+            serde_json::json!({
+                "connection_id": connection_id,
+                "host": host,
+                "username": username,
+                "args": docker_args,
+                "cmd": command,
+            }),
+            &ip,
+        );
     }
 
     Ok(stdout)
