@@ -118,7 +118,70 @@ pub async fn get_all_health(
         }
     }
 
+    // Auto-analyze health results and create alerts for anomalies
+    auto_alert_health_anomalies(&state, &results);
+
     Ok(ApiResponse::success(serde_json::json!(results)))
+}
+
+/// Check health results for anomalies and auto-create alerts.
+fn auto_alert_health_anomalies(state: &AppState, results: &[HostHealth]) {
+    use crate::app_state::AlertEntry;
+    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+
+    for h in results {
+        if !h.connected { continue; }
+
+        // CPU load anomaly (load > core count * 0.8 = high load)
+        if let (Some(load), Some(cores)) = (h.cpu_load, h.cpu_cores) {
+            let ratio = load / cores as f64;
+            if ratio > 1.0 && cores > 0 {
+                state.add_alert(AlertEntry {
+                    id: format!("cpu-{}-{}", h.id, chrono::Utc::now().timestamp()),
+                    timestamp: now.clone(),
+                    level: "warning".into(),
+                    host: h.host.clone(),
+                    metric: "cpu_load".into(),
+                    message: format!("CPU load {:.2} exceeds core count {} (ratio: {:.2})", load, cores, ratio),
+                    value: ratio,
+                    threshold: 1.0,
+                });
+            }
+        }
+
+        // Memory anomaly (> 90%)
+        if let Some(mem_pct) = h.mem_percent {
+            if mem_pct > 90.0 {
+                state.add_alert(AlertEntry {
+                    id: format!("mem-{}-{}", h.id, chrono::Utc::now().timestamp()),
+                    timestamp: now.clone(),
+                    level: if mem_pct > 95.0 { "critical".into() } else { "warning".into() },
+                    host: h.host.clone(),
+                    metric: "memory".into(),
+                    message: format!("Memory usage {:.1}% ({} MB / {} MB)", mem_pct, h.mem_used_mb.unwrap_or(0), h.mem_total_mb.unwrap_or(0)),
+                    value: mem_pct,
+                    threshold: 90.0,
+                });
+            }
+        }
+
+        // Disk anomaly (> 85%)
+        if let Some(ref disk_pct_str) = h.disk_percent {
+            let disk_pct = disk_pct_str.trim_end_matches('%').parse::<f64>().unwrap_or(0.0);
+            if disk_pct > 85.0 {
+                state.add_alert(AlertEntry {
+                    id: format!("disk-{}-{}", h.id, chrono::Utc::now().timestamp()),
+                    timestamp: now.clone(),
+                    level: if disk_pct > 95.0 { "critical".into() } else { "warning".into() },
+                    host: h.host.clone(),
+                    metric: "disk".into(),
+                    message: format!("Disk usage {} (used {}/ total {})", disk_pct_str, h.disk_used.as_deref().unwrap_or("?"), h.disk_total.as_deref().unwrap_or("?")),
+                    value: disk_pct,
+                    threshold: 85.0,
+                });
+            }
+        }
+    }
 }
 
 /// AI-powered diagnosis for a specific host (POST /api/hosts/diagnose)
