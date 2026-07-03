@@ -1,8 +1,7 @@
 use axum::{extract::State, Json};
 use std::sync::Arc;
-use uuid::Uuid;
 
-use crate::app_state::{AppState, WsTokenInfo};
+use crate::app_state::AppState;
 use crate::response::ApiResponse;
 use crate::utils::jwt::{Claims, JwtService};
 
@@ -13,22 +12,23 @@ use crate::utils::jwt::{Claims, JwtService};
 pub async fn issue_jwt_token(
     State(state): State<Arc<AppState>>,
     Json(_body): Json<serde_json::Value>,
-) -> ApiResponse<serde_json::Value> {
-    let jwt_service = JwtService::from_secret(&state.config.jwt_secret)
-        .map_err(|_| ApiResponse::error(500, "JWT configuration error"))?;
+) -> Result<ApiResponse<serde_json::Value>, ApiResponse<serde_json::Value>> {
+    let secret = state.config.jwt_secret.clone();
+    let jwt_service = JwtService::from_secret(&secret)
+        .map_err(|e| ApiResponse::error(500, &format!("JWT configuration error: {}", e)))?;
 
     // Create a claims object with client fingerprint
     let claims = Claims::new("client".into(), "api+ws".into(), 86400);
     let token = jwt_service.sign(&claims)
-        .map_err(|_| ApiResponse::error(500, "Failed to sign JWT"))?;
+        .map_err(|e| ApiResponse::error(500, &format!("Failed to sign JWT: {}", e)))?;
 
     state.add_audit_log("jwt_issued", serde_json::json!({"scope": "api+ws"}), "client");
 
-    ApiResponse::success(serde_json::json!({
+    Ok(ApiResponse::success(serde_json::json!({
         "token": token,
         "tokenType": "Bearer",
         "expiresIn": 86400
-    }))
+    })))
 }
 
 /// Get audit logs (GET /api/audit-logs)

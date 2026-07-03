@@ -55,10 +55,9 @@ EOF
 
 # Create all module stub files so dependency resolution works fully
 RUN mkdir -p src/api src/websocket src/ssh src/docker src/middleware src/utils src/db src/notify
-RUN for mod in api/mod websocket/mod ssh/mod docker/mod middleware/mod db/mod notify/mod; do \
-    echo "" > "src/$mod.rs"; \
-    done
-RUN echo "pub mod hello;" > src/api/mod.rs
+RUN cat > src/api/mod.rs << 'EOF'
+pub mod hello;
+EOF
 RUN echo "" > src/api/hello.rs
 RUN cat > src/utils/mod.rs << 'EOF'
 pub mod crypto;
@@ -70,6 +69,12 @@ RUN echo "" > src/utils/crypto.rs
 RUN echo "" > src/utils/jwt.rs
 RUN echo "" > src/utils/path.rs
 RUN echo "" > src/utils/validator.rs
+RUN echo "" > src/websocket/mod.rs
+RUN echo "" > src/ssh/mod.rs
+RUN echo "" > src/docker/mod.rs
+RUN echo "" > src/middleware/mod.rs
+RUN echo "" > src/db/mod.rs
+RUN echo "" > src/notify/mod.rs
 
 # Ensure Cargo.lock exists (for reproducible builds)
 RUN if [ ! -f Cargo.lock ]; then cargo generate-lockfile; fi

@@ -97,11 +97,11 @@ impl AppState {
             ws_tokens: DashMap::new(),
             marketplace_cache: RwLock::new(None),
             active_logtails: DashMap::new(),
-            config,
             db,
             jwt_service: RwLock::new(
                 JwtService::from_secret(&config.jwt_secret).ok(),
             ),
+            config,
         })
     }
 

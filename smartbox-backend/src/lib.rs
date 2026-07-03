@@ -156,7 +156,7 @@ pub async fn build_app(state: Arc<AppState>) -> Router {
     // ─── Public API routes (no auth required) ───
     let public_api = Router::new()
         .route("/health", get(api::health::health_check))
-        .route("/ws-token", axum::routing::post(api::auth::issue_ws_token));
+        .route("/ws-token", axum::routing::post(api::auth::issue_jwt_token));
 
     // ─── Protected API routes (auth + rate limit required) ───
     let protected_api = Router::new()
