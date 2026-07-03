@@ -171,6 +171,9 @@ pub async fn build_app(state: Arc<AppState>) -> Router {
         .route("/connections", get(api::connections::list_connections))
         .route("/connections", axum::routing::post(api::connections::upsert_connection))
         .route("/connections/{id}", axum::routing::delete(api::connections::delete_connection))
+        // ─── System maintenance routes ───
+        .route("/system/db-info", get(api::system::db_info))
+        .route("/system/db-download", get(api::system::db_download))
         .layer(auth_layer);
 
     // Combine public + protected API routes under /api

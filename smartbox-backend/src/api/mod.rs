@@ -14,3 +14,4 @@ pub mod sftp;
 pub mod vault;
 pub mod notifications;
 pub mod connections;
+pub mod system;

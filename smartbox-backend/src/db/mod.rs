@@ -485,6 +485,28 @@ impl Database {
             Ok(affected > 0)
         }).await
     }
+
+    /// List all tables and their row counts (for system maintenance UI).
+    pub async fn list_table_counts(&self) -> anyhow::Result<Vec<(String, i64)>> {
+        self.exec(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+            )?;
+            let table_names: Vec<String> = stmt.query_map([], |row| row.get(0))?
+                .collect::<Result<_, _>>()?;
+
+            let mut tables = Vec::new();
+            for name in &table_names {
+                let count: i64 = conn.query_row(
+                    &format!("SELECT COUNT(*) FROM \"{}\"", name),
+                    [],
+                    |row| row.get(0),
+                )?;
+                tables.push((name.clone(), count));
+            }
+            Ok(tables)
+        }).await
+    }
 }
 
 // ─── Vault types ───────────────────────────────────────────────

@@ -29,6 +29,7 @@ import { useAlertStore, refreshAlertStore } from '../../stores/alert-store'
 import { usePluginStore, refreshPluginStore } from '../../stores/plugin-store'
 import { AI_PROVIDERS } from '../../types/ai'
 import type { AiProvider } from '../../types/ai'
+import SystemMaintenance from './SystemMaintenance'
 import {
   exportConfig,
   importConfigFromFile,
@@ -659,6 +660,9 @@ export default function SettingsPanel() {
             </p>
           </div>
         </section>
+
+        {/* ─── 系统维护 ─── */}
+        <SystemMaintenance />
 
         {/* ─── 关于 ─── */}
         <section>
