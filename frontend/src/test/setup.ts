@@ -1,17 +1,57 @@
 import '@testing-library/jest-dom'
-import { act } from 'react'
 
 // ─── React 19 CJS act 补丁 ───
 // react-dom/test-utils 在 CJS 环境下 require('react').act 返回 undefined
 // 手动将 React.act 指向正确的 act 实现
-if (typeof (act as any) === 'function' && !(globalThis as any).React?.act) {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const React = require('react')
-  Object.defineProperty(React, 'act', {
-    value: act,
-    writable: true,
-    configurable: true,
-  })
+// React 19.2.7 的 ESM/CJS 混合加载下，`import { act } from 'react'` 在 vitest
+// 中也可能返回 undefined。此补丁在不同加载路径下均生效：
+//   (a) 全局钩子 — 如果 React 暴露在 globalThis 上
+//   (b) CJS require — 如果模块通过 CJS require 加载
+{
+  // 方法1: 通过 react-dom/test-utils 获取 act（它在所有版本中都保留）
+  let actFn: ((callback: () => void | Promise<void>) => void) | null = null
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const testUtils = require('react-dom/test-utils')
+    if (typeof testUtils.act === 'function') {
+      actFn = testUtils.act
+    }
+  } catch {
+    // react-dom/test-utils may not exist in all setups
+  }
+
+  if (actFn) {
+    // Patch globalThis.React.act (if React is exposed globally)
+    if ((globalThis as any).React && typeof (globalThis as any).React.act !== 'function') {
+      Object.defineProperty((globalThis as any).React, 'act', {
+        value: actFn,
+        writable: true,
+        configurable: true,
+      })
+    }
+
+    // Patch CJS require('react') module
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const React = require('react')
+      if (typeof React.act !== 'function') {
+        Object.defineProperty(React, 'act', {
+          value: actFn,
+          writable: true,
+          configurable: true,
+        })
+      }
+    } catch {
+      // React not loaded via CJS
+    }
+
+    // Patch ESM imported react module via globalThis workaround
+    // Vite's CJS→ESM interop re-exports the CJS module; patching the CJS
+    // module should propagate to ESM imports
+    if (!(globalThis as any).__REACT_ACT_PATCHED__) {
+      ;(globalThis as any).__REACT_ACT_PATCHED__ = true
+    }
+  }
 }
 
 // ─── Global mocks for jsdom ───
