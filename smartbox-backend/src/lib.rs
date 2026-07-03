@@ -12,6 +12,7 @@ pub mod middleware;
 pub mod utils;
 pub mod db;
 pub mod models;
+pub mod notify;
 
 pub use app_state::AppState;
 
