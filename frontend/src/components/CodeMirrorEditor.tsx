@@ -13,7 +13,7 @@ import { syntaxHighlighting, defaultHighlightStyle, indentOnInput, bracketMatchi
 import { autocompletion, completionKeymap, closeBrackets } from '@codemirror/autocomplete'
 import { searchKeymap } from '@codemirror/search'
 import { oneDark } from '@codemirror/theme-one-dark'
-import { Eye, EyeOff, Loader2, Save, Sparkles, X, Check, Copy } from 'lucide-react'
+import { Eye, EyeOff, Loader2, Save, Download, Sparkles, X, Check, Copy } from 'lucide-react'
 import MarkdownPreview from './MarkdownPreview'
 import { useFileStore } from '../stores/file-store'
 import { useAiStore } from '../stores/ai-store'
@@ -369,6 +369,23 @@ export default function CodeMirrorEditor() {
               {markdownPreview ? <EyeOff size={14} /> : <Eye size={14} />}
             </button>
           )}
+          <button
+            onClick={() => {
+              const tab = useFileStore.getState().openTabs.find(t => t.id === useFileStore.getState().activeTabId)
+              if (!tab?.content) return
+              const blob = new Blob([tab.content], { type: 'text/plain' })
+              const url = URL.createObjectURL(blob)
+              const a = document.createElement('a')
+              a.href = url
+              a.download = tab.name
+              a.click()
+              URL.revokeObjectURL(url)
+            }}
+            className="btn-icon text-slate-500 hover:text-slate-300"
+            title="下载文件"
+          >
+            <Download size={14} />
+          </button>
         </div>
       </div>
 
