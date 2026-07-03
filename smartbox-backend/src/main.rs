@@ -27,7 +27,49 @@ async fn main() -> anyhow::Result<()> {
     let state = Arc::new(AppState::new(config.clone()).await?);
 
     // Build router
-    let app = build_app(state).await;
+    let app = build_app(state.clone()).await;
+
+    // ─── Idle SSH session cleanup (every 5 minutes) ───
+    let cleanup_state = state.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(300));
+        loop {
+            interval.tick().await;
+            let mut disconnected = 0usize;
+            let ids: Vec<String> = cleanup_state
+                .connections
+                .iter()
+                .map(|e| e.key().clone())
+                .collect();
+            for id in ids {
+                // Remove connection if session is idle or closed
+                let should_remove = {
+                    let entry = cleanup_state.connections.get(&id);
+                    match entry {
+                        Some(conn) => match &conn.session {
+                            Some(session) => {
+                                if !session.is_connected().await || session.is_idle_async().await {
+                                    session.disconnect().await;
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                            None => true, // No session, clean up entry
+                        },
+                        None => false,
+                    }
+                };
+                if should_remove {
+                    cleanup_state.connections.remove(&id);
+                    disconnected += 1;
+                }
+            }
+            if disconnected > 0 {
+                tracing::info!("Cleaned up {} idle/disconnected SSH sessions", disconnected);
+            }
+        }
+    });
 
     // Start server
     let addr = format!("{}:{}", config.host, config.port);

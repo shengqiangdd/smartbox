@@ -1,5 +1,5 @@
 # ============================================
-# Stage 1: Build Vue frontend
+# Stage 1: Build React frontend
 # ============================================
 FROM node:22-alpine AS frontend-builder
 
@@ -29,24 +29,47 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy manifests for dependency caching
+# Copy Cargo manifests for dependency caching
 COPY smartbox-backend/Cargo.toml smartbox-backend/Cargo.lock* ./
 
-# Create dummy source to cache dependencies
-RUN mkdir -p src && echo "fn main() {}" > src/main.rs && \
-    mkdir -p src/api src/websocket src/ssh src/docker src/models src/middleware src/utils src/db/migrations && \
-    touch src/api/mod.rs src/websocket/mod.rs src/ssh/mod.rs src/docker/mod.rs src/models/mod.rs src/middleware/mod.rs src/utils/mod.rs src/db/mod.rs
+# Ensure Cargo.lock exists (for reproducible builds)
+RUN if [ ! -f Cargo.lock ]; then cargo generate-lockfile; fi
 
-# Build dependencies
-RUN cargo build --release 2>/dev/null || true
+# Create dummy source files matching the actual module structure
+# so cargo can resolve all workspace members and cache dependencies
+RUN mkdir -p src && cat > src/main.rs << 'EOF'
+fn main() {}
+EOF
+RUN cat > src/lib.rs << 'EOF'
+pub mod app_state;
+pub mod config;
+pub mod error;
+pub mod response;
+pub mod api;
+pub mod websocket;
+pub mod ssh;
+pub mod docker;
+pub mod middleware;
+pub mod utils;
+pub mod db;
+pub mod models;
+EOF
 
-# Copy real source
+# Create all module stub files so dependency resolution works fully
+RUN mkdir -p src/api src/websocket src/ssh src/docker src/middleware src/utils src/db
+RUN for mod in api/mod websocket/mod ssh/mod docker/mod middleware/mod utils/mod db/mod; do \
+    echo "" > "src/$mod.rs"; \
+    done
+RUN echo "pub mod hello;" > src/api/mod.rs
+RUN echo "" > src/api/hello.rs
+
+# Build dependencies (this caches all crate downloads and compilations)
+RUN cargo build --release 2>&1 | tail -5 || echo "Dep build continues"
+
+# Copy the actual source code (overwrites dummies)
 COPY smartbox-backend/src/ ./src/
 
-# Force rebuild
-RUN touch src/main.rs
-
-# Build release binary
+# Force rebuild of the rust-builder crate with real source
 RUN cargo build --release
 
 # ============================================
@@ -55,13 +78,16 @@ RUN cargo build --release
 FROM debian:12-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates tzdata openssl && \
+    ca-certificates tzdata openssl curl && \
     rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN groupadd -r smartbox && useradd -r -g smartbox -m -d /app smartbox
 
 WORKDIR /app
 
 # Create plugins directory
-RUN mkdir -p plugins
+RUN mkdir -p plugins && chown smartbox:smartbox /app /app/plugins
 
 # Copy Rust binary
 COPY --from=rust-builder /app/target/release/smartbox-backend /app/smartbox-backend
@@ -74,6 +100,11 @@ COPY plugins/ ./plugins/
 
 # Copy default env config
 COPY smartbox-backend/.env.example /app/.env.example
+
+# Set ownership
+RUN chown -R smartbox:smartbox /app
+
+USER smartbox
 
 EXPOSE 3001
 

@@ -10,6 +10,8 @@ type StatusHandler = (status: WsStatus) => void
 
 export type WsStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting'
 
+import { buildWsUrl } from './auth'
+
 interface PendingRequest {
   resolve: (data: Record<string, unknown>) => void
   reject: (err: Error) => void
@@ -228,30 +230,28 @@ let _tokenReady = false
 
 /** 获取 WS 连接地址（带一次性 token） */
 async function resolveWsUrl(): Promise<string> {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const host = window.location.host
   try {
-    const resp = await fetch(`${window.location.protocol}//${host}/api/ws-token`, { method: 'POST' })
-    if (resp.ok) {
-      const { token } = await resp.json()
-      return `${protocol}//${host}/ws?token=${token}`
-    }
-  } catch { /* ignore */ }
-  // 降级：不带 token（后端会拒绝，但至少不崩溃）
-  return `${protocol}//${host}/ws`
+    return buildWsUrl('/ws')
+  } catch (err) {
+    console.error('[WS] Failed to resolve WebSocket URL:', err)
+    // 尝试不带 token 连接（后端会拒绝，但至少让错误清晰）
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const host = window.location.host
+    return `${protocol}//${host}/ws`
+  }
 }
 
 /**
  * 获取 WS 客户端（异步，确保 token 就绪后连接）
  * 所有需要 WS 连接的组件都应通过此函数获取客户端。
+ *
+ * @throws 如果无法获取认证令牌则抛出错误
  */
 export async function getWsClient(): Promise<WsClient> {
   if (!_instance) {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const host = window.location.host
-    _instance = new WsClient(`${protocol}//${host}/ws`)
+    _instance = new WsClient('') // URL will be set below
   }
-  // 每次都刷新 token 并连接（token 是一次性的）
+  // 获取新令牌（每次连接/重连都是新的）
   const url = await resolveWsUrl()
   _instance.setUrl(url)
   _tokenReady = true

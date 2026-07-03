@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use crate::app_state::AppState;
 use crate::response::ApiResponse;
+use crate::utils::escape_sh_arg;
 
 /// List available log sources (POST /api/logs/list-sources)
 pub async fn list_sources(
@@ -58,9 +59,8 @@ pub async fn tail_log(
         }
     };
 
-    // Run tail command via SSH
-    let escaped_path = path.replace('\'', "'\\''");
-    let cmd = format!("tail -n {} '{}' 2>&1", lines, escaped_path);
+    // Run tail command via SSH (cap at 1MB output)
+    let cmd = format!("tail -n {} {} 2>&1 | tail -c 1048576", lines, escape_sh_arg(path));
 
     match session.exec(&cmd).await {
         Ok((stdout, stderr, _exit_code)) => {
@@ -98,7 +98,7 @@ pub async fn grep_log(
         .get("context")
         .and_then(|v| v.as_u64())
         .unwrap_or(0)
-        .min(10);
+        .min(5);
     let ignore_case = body
         .get("ignoreCase")
         .and_then(|v| v.as_bool())
@@ -121,19 +121,17 @@ pub async fn grep_log(
         }
     };
 
-    // Build grep command
-    let escaped_path = path.replace('\'', "'\\''");
-    let escaped_pattern = pattern.replace('\'', "'\\''");
+    // Build grep command (use escape_sh_arg instead of manual quoting)
     let ic = if ignore_case { "-i" } else { "" };
     let cmd = if context > 0 {
         format!(
-            "grep {} -C {} '{}' '{}' 2>&1 | tail -c 1048576",
-            ic, context, escaped_pattern, escaped_path
+            "grep {} -C {} {} {} 2>&1 | tail -c 1048576",
+            ic, context, escape_sh_arg(pattern), escape_sh_arg(path)
         )
     } else {
         format!(
-            "grep {} '{}' '{}' 2>&1 | tail -c 1048576",
-            ic, escaped_pattern, escaped_path
+            "grep {} {} {} 2>&1 | tail -c 1048576",
+            ic, escape_sh_arg(pattern), escape_sh_arg(path)
         )
     };
 

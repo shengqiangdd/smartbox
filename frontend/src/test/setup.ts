@@ -5,7 +5,8 @@ import { act } from 'react'
 // react-dom/test-utils 在 CJS 环境下 require('react').act 返回 undefined
 // 手动将 React.act 指向正确的 act 实现
 if (typeof (act as any) === 'function' && !(globalThis as any).React?.act) {
-  const React = require('react') as typeof import('react')
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const React = require('react')
   Object.defineProperty(React, 'act', {
     value: act,
     writable: true,

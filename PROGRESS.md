@@ -1,5 +1,26 @@
 # 智盒 (SmartBox) — 开发进度日志
 
+## 2026-07-03 — Rust 后端重构完成 ✅
+
+### 🦀 后端重构：Node.js → Rust (Axum + Tokio)
+
+**动机**: 性能提升、内存安全、零运行时依赖、单二进制部署
+
+**完成工作**:
+
+- **14 个功能模块完全对等覆盖**：SSH 会话池/SFTP 缓存复用/Docker 管理/日志系统/WebSocket 终端/插件安装/AI 模型/REST API/SPA 静态托管/认证中间件/速率限制/Shell 注入防护/空闲会话清理/审计日志
+- **43 个源文件，~4005 LOC**，`cargo clippy` 零警告，`cargo test` 34 测试全部通过
+- **Docker 三阶段构建** (Node→Rust→Debian slim)，最终二进制 **8.8MB**
+- **代码质量三零**：TypeScript 零错误 + ESLint 零错误 + Clippy 零警告
+
+**前端增强**:
+- 认证框架：`AuthGate` 启动门控 + `auth.ts` 服务 (getToken/refreshToken/authedFetch/buildWsUrl)
+- React 19 + Vite 8 + Tailwind v4 全套升级
+- 116 个组件测试 + 3 E2E 测试全部通过
+- React Compiler 生产启用
+
+**当前状态**: ✅ 三零已实现，CI/CD 自动推送，可直接生产部署
+
 ## 2026-06-25 — 🎉 项目完全完工！64/64 (100%) ✅
 
 ### 最终归档

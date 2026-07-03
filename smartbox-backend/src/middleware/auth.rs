@@ -1,0 +1,93 @@
+use axum::{
+    body::Body,
+    extract::{Request, State},
+    http::StatusCode,
+    middleware::Next,
+    response::Response,
+};
+use std::sync::Arc;
+
+use crate::app_state::AppState;
+
+/// Validate a token against the in-memory WS token store.
+///
+/// Returns `true` if the token is valid (exists and not expired).
+/// Consumes the token (one-time use).
+fn validate_token(state: &Arc<AppState>, token: &str) -> bool {
+    let entry = state.ws_tokens.get(token);
+    match entry {
+        Some(info) => {
+            if info.expires_at < chrono::Utc::now() {
+                return false; // Expired
+            }
+            // One-time use: remove after validation
+            state.ws_tokens.remove(token);
+            true
+        }
+        None => false,
+    }
+}
+
+/// Authentication middleware for REST API and WebSocket routes.
+///
+/// For REST API: checks `Authorization: Bearer <token>` header.
+/// For WebSocket upgrades: checks `?token=<token>` query parameter.
+///
+/// Routes that don't need auth (/api/health, /api/ws-token, static files)
+/// should be mounted outside the protected router.
+pub async fn auth_middleware(
+    State(state): State<Arc<AppState>>,
+    req: Request<Body>,
+    next: Next,
+) -> Response {
+    let method = req.method();
+
+    // Always allow OPTIONS (CORS preflight)
+    if method == axum::http::Method::OPTIONS {
+        return next.run(req).await;
+    }
+
+    // Try to extract token from either:
+    // 1. Authorization: Bearer <token> header (REST API)
+    // 2. ?token=<token> query parameter (WebSocket upgrade)
+    let token = req
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|h| {
+            let parts: Vec<&str> = h.split_whitespace().collect();
+            if parts.len() == 2 && parts[0].eq_ignore_ascii_case("Bearer") {
+                Some(parts[1].to_string())
+            } else {
+                None
+            }
+        })
+        .or_else(|| {
+            // Try query parameter (for WebSocket upgrade requests)
+            req.uri().query().and_then(|q| {
+                q.split('&').find_map(|pair| {
+                    let mut parts = pair.splitn(2, '=');
+                    if parts.next()? == "token" {
+                        parts.next().map(|v| v.to_string())
+                    } else {
+                        None
+                    }
+                })
+            })
+        });
+
+    match token {
+        Some(t) if validate_token(&state, &t) => next.run(req).await,
+        _ => {
+            let body = serde_json::json!({
+                "error": "Unauthorized: invalid or expired token. Call POST /api/ws-token first."
+            })
+            .to_string();
+            Response::builder()
+                .status(StatusCode::UNAUTHORIZED)
+                .header(axum::http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(body))
+                .unwrap()
+        }
+    }
+}

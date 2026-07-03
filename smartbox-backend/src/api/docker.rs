@@ -7,6 +7,7 @@ use serde::Deserialize;
 
 use crate::app_state::AppState;
 use crate::response::ApiResponse;
+use crate::utils::escape_sh_arg;
 
 /// Common request: just connectionId
 #[derive(Debug, Deserialize)]
@@ -121,12 +122,12 @@ async fn docker_exec(
 
     let session = session.ok_or_else(|| "SSH session not found or not connected".to_string())?;
 
-    // Build the docker command
+    // Build the docker command with proper shell escaping
     let command = {
         let mut s = String::from("docker");
         for arg in docker_args {
             s.push(' ');
-            s.push_str(arg);
+            s.push_str(&escape_sh_arg(arg));
         }
         s
     };

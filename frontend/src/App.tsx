@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
+import { AuthGate } from './components/AuthGate'
 import Layout from './components/layout/Layout'
 import CommandPalette, { registerCommand } from './components/CommandPalette'
 import ShortcutHelpModal from './components/ShortcutHelpModal'
@@ -137,8 +138,10 @@ function AppContent() {
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/*" element={<AppContent />} />
-    </Routes>
+    <AuthGate>
+      <Routes>
+        <Route path="/*" element={<AppContent />} />
+      </Routes>
+    </AuthGate>
   )
 }

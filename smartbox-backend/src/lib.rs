@@ -22,10 +22,12 @@ use axum::{
         header::{CACHE_CONTROL, CONTENT_TYPE},
         StatusCode,
     },
+    middleware as axum_middleware,
     routing::get,
     Router,
 };
 use std::sync::Arc;
+use tower::ServiceBuilder;
 use tower_http::{
     cors::CorsLayer,
     services::ServeDir,
@@ -33,7 +35,7 @@ use tower_http::{
 };
 use tracing::info;
 
-/// Clone of spa_fallback inline - reused for both explicit and fallback routes.
+/// Serve the SPA index.html with a service-worker-unregister script injected.
 async fn serve_index_html(frontend_path: std::path::PathBuf) -> axum::response::Response {
     let index_path = frontend_path.join("index.html");
     match tokio::fs::read_to_string(&index_path).await {
@@ -66,7 +68,7 @@ if ('serviceWorker' in navigator) {
 }
 
 pub async fn build_app(state: Arc<AppState>) -> Router {
-    // CORS
+    // CORS configuration
     let cors = if state.config.cors_origins.is_empty() {
         CorsLayer::permissive()
     } else {
@@ -79,10 +81,32 @@ pub async fn build_app(state: Arc<AppState>) -> Router {
         CorsLayer::new().allow_origin(origins)
     };
 
-    // ============ API routes ============
-    let api_routes = Router::new()
+    // ─── Authentication + Rate-limit middleware layer ───
+    let auth_layer = ServiceBuilder::new()
+        .layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            middleware::auth::auth_middleware as fn(
+                _: axum::extract::State<Arc<AppState>>,
+                _: axum::http::Request<Body>,
+                _: axum_middleware::Next,
+            ) -> _,
+        ))
+        .layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            middleware::rate_limit::rate_limit_middleware as fn(
+                _: axum::extract::State<Arc<AppState>>,
+                _: axum::http::Request<Body>,
+                _: axum_middleware::Next,
+            ) -> _,
+        ));
+
+    // ─── Public API routes (no auth required) ───
+    let public_api = Router::new()
         .route("/health", get(api::health::health_check))
-        .route("/ws-token", axum::routing::post(api::auth::issue_ws_token))
+        .route("/ws-token", axum::routing::post(api::auth::issue_ws_token));
+
+    // ─── Protected API routes (auth + rate limit required) ───
+    let protected_api = Router::new()
         .route("/audit-logs", get(api::auth::get_audit_logs))
         .route("/hosts", get(api::hosts::list_hosts))
         .route("/hosts", axum::routing::post(api::hosts::add_host))
@@ -120,54 +144,70 @@ pub async fn build_app(state: Arc<AppState>) -> Router {
         .route("/plugins/{id}/manifest.json", get(api::plugins::get_plugin_manifest))
         .route("/ai/config", get(api::ai::get_ai_config))
         .route("/ai/fetch-free-models", get(api::ai::fetch_free_models))
-        .route("/ai/fetch-all-models", get(api::ai::fetch_all_models));
+        .route("/ai/fetch-free-models", get(api::ai::fetch_free_models))
+        .route("/ai/fetch-all-models", get(api::ai::fetch_all_models))
+        .route("/sftp/list", axum::routing::post(api::sftp::sftp_list_dir))
+        .route("/sftp/upload", axum::routing::post(api::sftp::sftp_upload))
+        .route("/sftp/download", axum::routing::post(api::sftp::sftp_download))
+        .route("/sftp/delete", axum::routing::post(api::sftp::sftp_delete))
+        .route("/sftp/mkdir", axum::routing::post(api::sftp::sftp_mkdir))
+        .route("/sftp/rename", axum::routing::post(api::sftp::sftp_rename))
+        .route("/sftp/stat", axum::routing::post(api::sftp::sftp_stat))
+        .layer(auth_layer);
 
+    // Combine public + protected API routes under /api
     let api_routes = Router::new()
-        .nest("/api", api_routes)
+        .nest("/api", Router::new()
+            .merge(public_api)
+            .merge(protected_api)
+        )
         .layer(cors.clone())
         .layer(TraceLayer::new_for_http());
 
-    // ============ WebSocket routes ============
-    // Sub-routes for specific WS handlers
-    let ws_sub_routes = Router::new()
-        .route("/terminal", get(websocket::terminal::ws_handler))
-        .route("/logs", get(websocket::logs::ws_handler))
-        .route("/batch", get(websocket::batch::ws_handler))
-        .route("/docker/stats", get(websocket::docker_stats::ws_handler));
+    // ─── Protected WebSocket routes (auth via query token) ───
+    // Build a separate auth layer for WS (ServiceBuilder doesn't clone)
+    let ws_auth_layer = ServiceBuilder::new()
+        .layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            middleware::auth::auth_middleware as fn(
+                _: axum::extract::State<Arc<AppState>>,
+                _: axum::http::Request<Body>,
+                _: axum_middleware::Next,
+            ) -> _,
+        ));
 
-    // Main WS dispatcher + sub-routes under /ws/*
     let ws_routes = Router::new()
         .route("/ws", get(websocket::terminal::ws_handler))
-        .nest("/ws", ws_sub_routes)
+        .route("/ws/terminal", get(websocket::terminal::ws_handler))
+        .route("/ws/logs", get(websocket::logs::ws_handler))
+        .route("/ws/batch", get(websocket::batch::ws_handler))
+        .route("/ws/docker/stats", get(websocket::docker_stats::ws_handler))
+        .layer(ws_auth_layer)
         .layer(cors);
 
-    // ============ Combine API + WS with state ============
+    // ─── Combine all routes ───
     let app_with_state = Router::new()
         .merge(api_routes)
         .merge(ws_routes)
         .with_state(state.clone());
 
-    // ============ Static frontend serving ============
+    // ─── Static frontend serving with SPA fallback ───
     let frontend_path = state.config.frontend_dist.clone();
     info!("Serving frontend from: {:?}", frontend_path);
 
-    // Static file server for existing files
     let serve_dir = ServeDir::new(&frontend_path)
         .append_index_html_on_directories(true)
         .precompressed_br()
         .precompressed_gzip();
 
-    // SPA fallback (clone path for async closure)
     let fp_fallback = frontend_path.clone();
     let spa_handler = get(move || {
         let fp = fp_fallback.clone();
         async move { serve_index_html(fp).await }
     });
 
-    // Fallback: first try static file, then SPA index.html
     let fallback = serve_dir.fallback(spa_handler);
 
-    // Final router: API/WS routes first, then fallback for everything else
     Router::new()
         .merge(app_with_state)
         .fallback_service(fallback)

@@ -162,7 +162,7 @@ export default function PluginsPage() {
         })),
       }, handle)
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   const sandboxCodes = sandboxCodesRef.current
   const sandboxReady = sandboxReadyRef.current

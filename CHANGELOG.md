@@ -1,14 +1,30 @@
 # 📋 变更日志
 
-## [Unreleased] - M17 扩展功能
+## [Unreleased] - Rust 后端重构
+
+### ⚡ 后端重构: Node.js → Rust (Axum + Tokio) 🦀
+- **全面功能对等重构** — SSH/SFTP/Docker/日志/插件/AI/WebSocket 认证等 14 个模块，43 个源文件，~4005 LOC
+- **性能与安全提升** — 单二进制部署 (8.8MB)，零内存安全漏洞，`cargo clippy` 零警告
+- **SSH 核心** — russh 密码/公钥认证 + 会话池 + 空闲清理 (5min 定时) + SFTP 会话缓存复用
+- **REST API** — Axum 路由 + tower-http CORS + SPA fallback + ServeDir 静态托管
+- **WebSocket** — 交互式终端 / Docker 容器 Shell / 日志尾随 / 心跳保活
+- **认证与安全** — Bearer Token 中间件 + 速率限制 (60 req/60s 滑动窗口) + 统一 shell 转义函数
+- **Docker 管理** — 容器/镜像/Compose 全生命周期 API + `docker exec` WebSocket 终端
+- **日志系统** — tail 实时跟踪 + grep 搜索 + 1MB 缓冲区上限 + 流式 WebSocket 传输
+- **插件与 AI** — 插件安装/卸载 API + AI 模型多服务商 (OpenRouter/Anthropic/Google/DeepSeek)
+- **测试覆盖** — 34 个 Rust 单元测试 (utils/response/rate_limit/sftp)，全部通过
 
 ### 🚀 新增
-- 📤 **告警规则导出/导入** — 告警配置（规则+开关）集成到配置导入导出系统，`.smartbox` 文件自动携带
-- 📊 **告警历史导出** — CSV（Excel 友好 UTF-8 BOM）和 JSON 两种格式，一键下载
-- 📈 **监控增强 — 磁盘 IO 读写速率** — 实时采集 `/proc/diskstats`，展示 R/W 速率
-- 📋 **监控增强 — Top 5 进程** — 采集 `ps aux --sort=-%cpu`，展示 PID/USER/CPU%/MEM%/COMMAND
-- 🔧 **告警配置** — 全局开关、规则行内编辑、添加/删除/恢复默认
-- 📜 **告警历史** — 时间线展示、严重级别图标、最近 1 小时统计、清空
+- 🖥️ **前端认证框架** — `AuthGate` 启动认证门控 (loading→ready/error)、`auth.ts` 服务 (getToken/refreshToken/authedFetch/buildWsUrl)
+- 🤖 **AI 多服务商支持** — 后端 `fetch-all-models?provider=` 端点，OpenRouter 完整免费/付费模型列表
+- 📊 **审计日志扩展** — SSH 连接/断开、Docker 容器启动/停止/重启、插件安装/卸载记录
+- 🧹 **代码质量三零** — TypeScript 零错误 + ESLint 零错误 + Clippy 零警告（已实现并维护）
+
+### 🏗️ 工程化
+- Dockerfile 三阶段构建优化 (Node→Rust→Debian slim)，最终二进制 8.8MB
+- Rust 分层缓存：虚拟 src → 缓存依赖 → 覆盖真实源码 → 增量编译
+- `Cargo.lock` 生成兜底，`cargo generate-lockfile` 确保可复现构建
+- CHANGELOG.md、README.md 全面更新反映 Rust 架构
 
 ---
 

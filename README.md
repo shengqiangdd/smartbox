@@ -33,10 +33,16 @@
 ## 🛠️ 技术栈
 
 ```
-前端: React 19 + TypeScript + Vite 8 + CodeMirror 6 + xterm.js + Tailwind CSS 4 + Zustand + lucide-react
-后端: Node.js 22 + Express 5 + express-ws + ssh2 (SSH/SFTP)
-部署: Docker + Docker Compose (单容器), CI: GitHub Actions
-```
+前端: React 19 + TypeScript 5.9 + Vite 8.1 + CodeMirror 6 + xterm.js + Tailwind CSS 4 + Zustand + lucide-react
+后端: Rust 1.96 (Axum + Tokio + russh + tower-http + Serde)
+    ├── REST API — 认证 / SSH / SFTP / Docker / 日志 / 插件 / AI / 健康检查
+    ├── WebSocket — 交互式终端 / Docker 容器 Shell / 日志尾随 / 心跳
+    ├── SSH — 密码/公钥认证 / 会话池 + 空闲清理 / SFTP 缓存复用
+    ├── Docker — 容器/镜像/Compose 管理 / docker exec Shell
+    ├── 安全 — Bearer Token 认证 / 速率限制 / 命令注入防护 / CSP 头
+    └── 日志 — tail 实时跟踪 + grep 搜索 / 1MB 缓冲区上限
+部署: Docker + GitHub Actions (三阶段构建, 8.8MB 二进制)
+CI: TypeScript 零错误 + ESLint 零错误 + Clippy 零警告 + 34 Rust 单元测试 + 198 前端测试
 
 ## 🚀 快速开始
 
@@ -52,14 +58,15 @@
 git clone https://github.com/shengqiangdd/smartbox.git
 cd smartbox
 
-# 2. 安装后端依赖
-cd bridge && npm install
+# 2. 安装前端依赖
+cd frontend && npm install
 
-# 3. 安装前端依赖
-cd ../frontend && npm install
+# 3. 配置后端环境变量
+cd ../smartbox-backend && cp .env.example .env
+# 编辑 .env 设置 API_KEY（用于认证）、DATABASE_URL 等
 
-# 4. 启动后端（终端 1）
-cd ../bridge && node index.js
+# 4. 启动后端（Rust，终端 1）
+cargo run
 
 # 5. 启动前端（终端 2）
 cd ../frontend && npm run dev
@@ -73,7 +80,8 @@ open http://localhost:5173
 ```bash
 cd frontend && npm run build
 # 输出到 frontend/dist/
-# 后端会自动托管静态文件
+# Rust 后端通过 ServeDir 自动托管静态文件
+# 之后构建 Rust 后端：cd smartbox-backend && cargo build --release
 ```
 
 ## 🐳 Docker 一键部署
@@ -150,13 +158,22 @@ plugins/
 
 ```
 smartbox/
-├── bridge/               # 后端服务（HTTP + WebSocket + SSH + Docker + 日志）
-│   ├── index.js          # 主入口（~1900 行，REST + WebSocket）
-│   └── package.json
-├── frontend/             # 前端应用（React SPA）
+├── smartbox-backend/       # Rust 后端服务 (Axum + Tokio)
 │   ├── src/
-│   │   ├── components/   # 通用组件（CommandPalette, CodeMirrorEditor, PluginSandbox…）
-│   │   ├── modules/      # 功能模块
+│   │   ├── api/           # REST API 路由 (SSH/SFTP/Docker/日志/插件/AI/认证)
+│   │   ├── websocket/     # WebSocket handler (终端/Docker Shell/日志尾随)
+│   │   ├── ssh/           # SSH 连接池 + SFTP 缓存复用
+│   │   ├── docker/        # Docker Engine API 包装
+│   │   ├── middleware/    # 认证 (Bearer Token) + 速率限制 (滑动窗口)
+│   │   ├── utils/         # 命令转义/路径校验/密码学/验证器
+│   │   ├── db/            # SQLite 存储 (插件/用户/AI 配置)
+│   │   └── main.rs        # 应用入口 + 路由注册
+│   ├── Cargo.toml
+│   └── Cargo.lock
+├── frontend/               # 前端应用（React SPA）
+│   ├── src/
+│   │   ├── components/    # 通用组件（CommandPalette, CodeMirrorEditor, PluginSandbox…）
+│   │   ├── modules/       # 功能模块
 │   │   │   ├── ssh/      #   SSH 终端 + SFTP + 批量执行 + 批量分发
 │   │   │   ├── docker/   #   Docker 容器/镜像/Compose/监控
 │   │   │   ├── monitor/  #   主机性能看板
@@ -165,21 +182,21 @@ smartbox/
 │   │   │   ├── plugins/  #   插件管理 + 市场
 │   │   │   ├── settings/ #   设置面板 + AI 配置
 │   │   │   └── file-manager/ # 文件管理器
-│   │   ├── services/     # 服务层（WebSocket, AI, 导入导出, 安全存储…）
+│   │   ├── services/     # 服务层（认证 auth, WebSocket, AI, 导入导出, 安全存储…）
 │   │   ├── stores/       # Zustand 状态管理
 │   │   └── types/        # TypeScript 类型
 │   ├── vite.config.ts    # Vite 8 配置 + PWA + Chunk 分割
 │   └── package.json
-├── plugins/              # 14 个内置插件
-├── docs/                 # 文档（架构/插件 API）
-├── .github/              # CI/CD（构建 + Docker + 每周清理）
-├── Dockerfile            # 多阶段构建
-├── docker-compose.yml    # Docker Compose
+├── plugins/                # 14 个内置插件
+├── docs/                   # 文档（架构/插件 API）
+├── .github/                # CI/CD（构建 + Docker + 每周清理）
+├── Dockerfile              # 三阶段构建 (Node → Rust → Debian slim)
+├── docker-compose.yml      # Docker Compose
 ├── README.md
-├── DEPLOY.md             # 部署指南
-├── CHANGELOG.md          # 变更日志
-├── CONTRIBUTING.md       # 贡献指南
-└── LICENSE               # MIT
+├── DEPLOY.md               # 部署指南
+├── CHANGELOG.md            # 变更日志
+├── CONTRIBUTING.md         # 贡献指南
+└── LICENSE                 # MIT
 ```
 
 ## 📄 许可证

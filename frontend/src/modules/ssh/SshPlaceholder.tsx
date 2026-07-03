@@ -82,7 +82,7 @@ export default function SshPlaceholder() {
  setWsStatus(status)
  })
  })
- }, []) // eslint-disable-line react-hooks/exhaustive-deps
+ }, [])
 
  // ─── 建立 SSH 连接（防重复点击） ───
 

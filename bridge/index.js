@@ -534,7 +534,7 @@ app.post('/api/docker/compose/action', (req, res) => {
  cmd += ` ${escapeShellArg(service)}`
  }
  if (args) {
- cmd += ` ${args}`
+ cmd += ` ${args.split(/\s+/).filter(Boolean).map(escapeShellArg).join(' ')}`
  }
  if (action === 'up') {
  cmd += ' -d'

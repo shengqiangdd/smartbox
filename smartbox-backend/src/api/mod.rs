@@ -9,3 +9,4 @@ pub mod docker;
 pub mod logs;
 pub mod plugins;
 pub mod ai;
+pub mod sftp;

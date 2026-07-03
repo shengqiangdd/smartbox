@@ -41,26 +41,34 @@ npm install
 npm run build     # 输出到 frontend/dist/
 ```
 
-### 2. 启动后端（生产模式）
+### 2. 构建 Rust 后端（生产模式）
 
 ```bash
-cd bridge
-npm install
-NODE_ENV=production node index.js
+cd smartbox-backend
+# 首次构建需要安装 Rust 工具链
+# curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+cargo build --release
 ```
 
-后端会自动托管 `frontend/dist/` 静态文件，监听端口 3001。
-
-### 3. 使用 PM2 实现进程守护（推荐）
+### 3. 配置环境变量
 
 ```bash
-npm install -g pm2
-pm2 start bridge/index.js --name smartbox
-pm2 save
-pm2 startup    # 开机自启
+cp .env.example .env
+# 编辑 .env 设置以下变量：
+# API_KEY=your-secret-key         # 用于客户端认证
+# DATABASE_URL=smartbox.db        # SQLite 数据库路径
+# HOST=0.0.0.0
+# PORT=3001
 ```
 
-### 4. 使用 Systemd（Linux）
+### 4. 启动后端
+
+```bash
+./target/release/smartbox-backend
+# 后端自动托管 frontend/dist/ 静态文件，监听端口 3001
+```
+
+### 5. 使用 Systemd 实现进程守护（Linux）
 
 创建 `/etc/systemd/system/smartbox.service`：
 
@@ -72,11 +80,13 @@ After=network.target
 [Service]
 Type=simple
 User=smartbox
-WorkingDirectory=/opt/smartbox/bridge
-ExecStart=/usr/bin/node /opt/smartbox/bridge/index.js
+WorkingDirectory=/opt/smartbox
+ExecStart=/opt/smartbox/smartbox-backend/target/release/smartbox-backend
 Restart=always
 RestartSec=10
-Environment=NODE_ENV=production
+Environment=API_KEY=your-secret-key
+Environment=DATABASE_URL=/opt/smartbox/smartbox-backend/smartbox.db
+Environment=HOST=0.0.0.0
 Environment=PORT=3001
 
 [Install]
