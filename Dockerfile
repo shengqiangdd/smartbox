@@ -50,7 +50,6 @@ pub mod middleware;
 pub mod utils;
 pub mod db;
 pub mod models;
-pub mod notify;
 EOF
 
 # Create all module stub files so dependency resolution works fully

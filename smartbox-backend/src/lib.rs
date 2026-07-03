@@ -11,8 +11,6 @@ pub mod docker;
 pub mod middleware;
 pub mod utils;
 pub mod db;
-pub mod notify;
-
 pub mod models;
 
 pub use app_state::AppState;
