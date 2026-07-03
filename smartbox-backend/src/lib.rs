@@ -167,6 +167,10 @@ pub async fn build_app(state: Arc<AppState>) -> Router {
         .route("/notifications", axum::routing::post(api::notifications::upsert_channel))
         .route("/notifications/{id}", axum::routing::delete(api::notifications::delete_channel))
         .route("/notifications/test/{id}", axum::routing::post(api::notifications::test_channel))
+        // ─── SSH Connection persistence routes ───
+        .route("/connections", get(api::connections::list_connections))
+        .route("/connections", axum::routing::post(api::connections::upsert_connection))
+        .route("/connections/{id}", axum::routing::delete(api::connections::delete_connection))
         .layer(auth_layer);
 
     // Combine public + protected API routes under /api

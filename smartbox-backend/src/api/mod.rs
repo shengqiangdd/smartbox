@@ -13,3 +13,4 @@ pub mod ai;
 pub mod sftp;
 pub mod vault;
 pub mod notifications;
+pub mod connections;

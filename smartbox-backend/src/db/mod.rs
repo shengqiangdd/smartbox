@@ -82,6 +82,12 @@ impl Database {
                 tracing::info!("DB migration V2 applied (vault + notifications)");
             }
 
+            if version < 3 {
+                conn.execute_batch(SCHEMA_V3)?;
+                conn.pragma_update(None, "user_version", 3)?;
+                tracing::info!("DB migration V3 applied (ssh_connections)");
+            }
+
             Ok::<_, anyhow::Error>(())
         })
         .await
@@ -412,6 +418,73 @@ impl Database {
         })
         .await?
     }
+
+    // ─── SSH Connections ─────────────────────────────────────────
+
+    /// List all saved SSH connections, ordered by `sort_order`.
+    pub async fn list_ssh_connections(&self) -> anyhow::Result<Vec<SshConnection>> {
+        self.exec(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, name, host, port, username, auth_type, config, sort_order, created_at, updated_at
+                 FROM ssh_connections ORDER BY sort_order ASC"
+            )?;
+            let rows = stmt.query_map([], |row| {
+                Ok(SshConnection {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    host: row.get(2)?,
+                    port: row.get::<_, i32>(3)? as u16,
+                    username: row.get(4)?,
+                    auth_type: row.get(5)?,
+                    config: row.get(6)?,
+                    sort_order: row.get(7)?,
+                    created_at: row.get(8)?,
+                    updated_at: row.get(9)?,
+                })
+            })?;
+            let mut list = Vec::new();
+            for row in rows {
+                list.push(row?);
+            }
+            Ok(list)
+        }).await
+    }
+
+    /// Upsert an SSH connection.
+    pub async fn upsert_ssh_connection(&self, conn: &SshConnection) -> anyhow::Result<()> {
+        let id = conn.id.clone();
+        let name = conn.name.clone();
+        let host = conn.host.clone();
+        let port = conn.port as i32;
+        let username = conn.username.clone();
+        let auth_type = conn.auth_type.clone();
+        let config = conn.config.clone();
+        let sort_order = conn.sort_order;
+        let created_at = conn.created_at.clone();
+        let updated_at = conn.updated_at.clone();
+        self.exec(move |c| {
+            c.execute(
+                "INSERT INTO ssh_connections (id, name, host, port, username, auth_type, config, sort_order, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                 ON CONFLICT(id) DO UPDATE SET
+                    name=excluded.name, host=excluded.host, port=excluded.port,
+                    username=excluded.username, auth_type=excluded.auth_type,
+                    config=excluded.config, sort_order=excluded.sort_order,
+                    updated_at=excluded.updated_at",
+                rusqlite::params![id, name, host, port, username, auth_type, config, sort_order, created_at, updated_at],
+            )?;
+            Ok(())
+        }).await
+    }
+
+    /// Delete an SSH connection by ID.
+    pub async fn delete_ssh_connection(&self, connection_id: &str) -> anyhow::Result<bool> {
+        let id = connection_id.to_owned();
+        self.exec(move |c| {
+            let affected = c.execute("DELETE FROM ssh_connections WHERE id = ?1", rusqlite::params![id])?;
+            Ok(affected > 0)
+        }).await
+    }
 }
 
 // ─── Vault types ───────────────────────────────────────────────
@@ -436,6 +509,21 @@ pub struct NotificationChannel {
     pub channel_type: String, // discord | slack | telegram | email
     pub config: String,       // JSON object with webhook URL, token, etc.
     pub enabled: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// An SSH connection configuration persisted in SQLite.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SshConnection {
+    pub id: String,
+    pub name: String,
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub auth_type: String,   // password | key | vault_ref
+    pub config: String,      // JSON: {password, private_key, vault_entry_id, sudo_password, group}
+    pub sort_order: i32,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -483,6 +571,21 @@ CREATE TABLE IF NOT EXISTS notification_channels (
     channel_type TEXT   NOT NULL,
     config      TEXT    NOT NULL DEFAULT '{}',
     enabled     INTEGER NOT NULL DEFAULT 1,
+    created_at  TEXT    NOT NULL,
+    updated_at  TEXT    NOT NULL
+);
+";
+
+const SCHEMA_V3: &str = "
+CREATE TABLE IF NOT EXISTS ssh_connections (
+    id          TEXT    PRIMARY KEY,
+    name        TEXT    NOT NULL,
+    host        TEXT    NOT NULL,
+    port        INTEGER NOT NULL DEFAULT 22,
+    username    TEXT    NOT NULL DEFAULT 'root',
+    auth_type   TEXT    NOT NULL DEFAULT 'password',
+    config      TEXT    NOT NULL DEFAULT '{}',
+    sort_order  INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT    NOT NULL,
     updated_at  TEXT    NOT NULL
 );
