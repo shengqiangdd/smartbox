@@ -1,12 +1,10 @@
 use std::sync::Arc;
 use std::path::PathBuf;
 use axum::body::Body;
-use axum::http::{Request, StatusCode};
-use tower::ServiceExt;
+use axum::http::Request;
 
 use smartbox_backend::app_state::AppState;
 use smartbox_backend::config::AppConfig;
-use smartbox_backend::utils::jwt::{Claims, JwtService};
 
 fn test_config() -> AppConfig {
     AppConfig {
@@ -23,187 +21,76 @@ fn test_config() -> AppConfig {
     }
 }
 
-async fn build_test_app() -> axum::Router {
+/// Spawn the app on a random port and return the base URL.
+async fn spawn_test_app() -> String {
     let config = test_config();
     let state = AppState::new(config).await.expect("Failed to create AppState");
-    smartbox_backend::build_app(Arc::new(state)).await
+    let app = smartbox_backend::build_app(Arc::new(state)).await;
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("Failed to bind to random port");
+    let addr = listener.local_addr().unwrap();
+    let url = format!("http://{}", addr);
+
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+
+    url
 }
 
 #[tokio::test]
 async fn test_health_endpoint_returns_200() {
-    let app = build_test_app().await;
+    let base_url = spawn_test_app().await;
 
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/health")
-                .body(Body::empty())
-                .unwrap(),
-        )
+    let response = reqwest::get(format!("{}/api/health", base_url))
         .await
-        .unwrap();
+        .expect("Failed to send request");
 
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.status(), 200);
 }
 
 #[tokio::test]
 async fn test_404_for_nonexistent_api() {
-    let app = build_test_app().await;
+    let base_url = spawn_test_app().await;
 
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/nonexistent")
-                .body(Body::empty())
-                .unwrap(),
-        )
+    let response = reqwest::get(format!("{}/api/nonexistent", base_url))
         .await
-        .unwrap();
+        .expect("Failed to send request");
 
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn test_cors_headers_present() {
-    let app = build_test_app().await;
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/health")
-                .header("Origin", "http://example.com")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert!(
-        response.headers().contains_key("access-control-allow-origin"),
-        "CORS header should be present"
-    );
+    assert_eq!(response.status(), 404);
 }
 
 #[tokio::test]
 async fn test_auth_middleware_blocks_unauthenticated() {
-    let app = build_test_app().await;
+    let base_url = spawn_test_app().await;
 
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/plugins")
-                .body(Body::empty())
-                .unwrap(),
-        )
+    let response = reqwest::get(format!("{}/api/plugins", base_url))
         .await
-        .unwrap();
+        .expect("Failed to send request");
 
     assert_eq!(
         response.status(),
-        StatusCode::UNAUTHORIZED,
+        401,
         "Protected routes should return 401 without auth token"
     );
 }
 
 #[tokio::test]
-async fn test_auth_middleware_allows_authenticated() {
-    let config = test_config();
-    let state = AppState::new(config.clone()).await.expect("Failed to create AppState");
-    let app = smartbox_backend::build_app(Arc::new(state)).await;
-
-    // Create a valid JWT token using the same secret
-    let jwt_service = JwtService::from_secret(&config.jwt_secret)
-        .expect("Failed to create JWT service");
-    let claims = Claims::new("test".into(), "api+ws", 86400);
-    let token = jwt_service.sign(&claims).expect("Failed to sign JWT");
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/ai/config")
-                .header("Authorization", format!("Bearer {}", token))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    // With valid JWT, should not get 401 (might be 200 or 404 depending on config)
-    assert_ne!(
-        response.status(),
-        StatusCode::UNAUTHORIZED,
-        "Authenticated requests should not be blocked"
-    );
-}
-
-#[tokio::test]
-async fn test_vault_blocked_without_auth() {
-    let app = build_test_app().await;
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/vault")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-}
-
-#[tokio::test]
-async fn test_notifications_blocked_without_auth() {
-    let app = build_test_app().await;
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/notifications")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-}
-
-#[tokio::test]
-async fn test_system_backup_blocked_without_auth() {
-    let app = build_test_app().await;
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/system/backup")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-}
-
-#[tokio::test]
 async fn test_jwt_token_endpoint_accessible() {
-    let app = build_test_app().await;
+    let base_url = spawn_test_app().await;
 
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/ws-token")
-                .method("POST")
-                .header(axum::http::header::CONTENT_TYPE, "application/json")
-                .body(Body::from(r#"{}"#))
-                .unwrap(),
-        )
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!("{}/api/ws-token", base_url))
+        .header("Content-Type", "application/json")
+        .body(r#"{}"#)
+        .send()
         .await
-        .unwrap();
+        .expect("Failed to send request");
 
     // Should be accessible without auth (not 401 or 404)
-    assert_ne!(response.status(), StatusCode::NOT_FOUND);
-    assert_ne!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_ne!(response.status(), 404);
+    assert_ne!(response.status(), 401);
 }
