@@ -10,7 +10,6 @@ import {
   History,
 } from 'lucide-react'
 import { useAppStore } from '../../stores/app-store'
-import { useSshStore } from '../../stores/ssh-store'
 
 const navItems = [
   { id: 'ssh', label: 'SSH', icon: Terminal },

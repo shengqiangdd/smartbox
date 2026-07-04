@@ -19,7 +19,7 @@
  * - 导入导出时仍可用用户主密码额外保护
  */
 
-import { encrypt, decrypt, generateKey, isCryptoAvailable } from './crypto'
+import { encrypt, decrypt, isCryptoAvailable } from './crypto'
 
 // ─── 密钥管理 ───
 

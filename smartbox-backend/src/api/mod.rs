@@ -15,3 +15,4 @@ pub mod vault;
 pub mod notifications;
 pub mod connections;
 pub mod system;
+pub mod market;

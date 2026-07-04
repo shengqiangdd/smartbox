@@ -3,8 +3,8 @@ import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
-import { getWsClient, getWsClientSync } from '../../services/websocket'
-import { Search, X, ChevronUp, ChevronDown, Terminal, Keyboard } from 'lucide-react'
+import { Search, X, ChevronUp, ChevronDown, Keyboard } from 'lucide-react'
+import { getWsClientSync } from '../../services/websocket'
 
 /** 分屏面板配置 */
 export interface SplitPanel {
@@ -67,9 +67,16 @@ export default function TerminalView({
   // 搜索状态
   const [showSearch, setShowSearch] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchMatchIndex, setSearchMatchIndex] = useState(0)
-  const [searchMatchCount, setSearchMatchCount] = useState(0)
+  const [searchMatchIndex, _setSearchMatchIndex] = useState(0)
+  const [searchMatchCount, _setSearchMatchCount] = useState(0)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  // 用 ref 避免 event handler 中的闭包过期
+  const onConnectedRef = useRef(onConnected)
+  onConnectedRef.current = onConnected
+  const onDisconnectedRef = useRef(onDisconnected)
+  onDisconnectedRef.current = onDisconnected
+  const showSearchRef = useRef(showSearch)
+  showSearchRef.current = showSearch
   /** generation ID：每次 mount 递增，防止旧实例的异步回调污染新实例 */
   const genRef = useRef(0)
   // 用 ref 持有 wsClient，避免 effect 依赖数组问题
@@ -239,7 +246,7 @@ export default function TerminalView({
             }
           }
         }, 100)
-        onConnected?.()
+        onConnectedRef.current?.()
       }
     })
 
@@ -249,7 +256,7 @@ export default function TerminalView({
         if (!disposedRef.current) {
           term.write('\r\n\x1b[31m[连接已断开]\x1b[0m\r\n')
         }
-        onDisconnected?.()
+        onDisconnectedRef.current?.()
       }
     })
 
@@ -293,7 +300,7 @@ export default function TerminalView({
       if (e.ctrlKey && e.shiftKey && e.key === 'f') {
         e.preventDefault()
         setShowSearch((s) => !s)
-        if (!showSearch) setTimeout(() => searchInputRef.current?.focus(), 50)
+        if (!showSearchRef.current) setTimeout(() => searchInputRef.current?.focus(), 50)
       }
       if (e.key === 'Escape') {
         setShowSearch(false)
@@ -485,43 +492,6 @@ interface SplitContainerProps {
   onSetActiveSplit?: (id: string) => void
   /** 命令同步：分屏收到的终端输入 */
   onTerminalData?: (sessionId: string, data: string) => void
-}
-
-/**
- * 从扁平 splits 数组构建树形布局。
- * 合并相邻同方向分屏为一组，不同方向时另起一组，递归构建。
- */
-function buildSplitTree(splits: SplitDef[]): SplitDef[] {
-  if (splits.length <= 1) return splits
-
-  // 找到第一个方向不同的分界点
-  const firstDir = splits[0]!.direction
-  // 从右往左找，这样最内层的方向优先
-  let splitIdx = -1
-  for (let i = splits.length - 1; i >= 1; i--) {
-    if (splits[i]!.direction !== firstDir) {
-      // 方向变化点：这个 split 用它的 direction（内层），前面用 firstDir（外层）
-      splitIdx = i
-      break
-    }
-  }
-
-  if (splitIdx === -1) {
-    // 全部同方向：平铺
-    return splits
-  }
-
-  // 方向变化：内层（splitIdx 之后）和外层（splitIdx 之前）方向不同
-  // 以外层方向包裹内层
-  const outerDir = firstDir
-  const innerSplits = splits.slice(splitIdx)
-  const outerSplits = splits.slice(0, splitIdx)
-
-  // 递归构建内层和外层
-  const innerResult = buildSplitTree(innerSplits)
-  const outerResult = buildSplitTree(outerSplits)
-
-  return [...outerResult, ...innerResult]
 }
 
 export function SplitContainer({

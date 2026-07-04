@@ -157,7 +157,7 @@ class PluginSandboxManager {
    * 销毁所有沙箱
    */
   destroyAll(): void {
-    for (const [id, instance] of this.sandboxes) {
+    for (const [, instance] of this.sandboxes) {
       instance.handle.destroy()
     }
     this.sandboxes.clear()

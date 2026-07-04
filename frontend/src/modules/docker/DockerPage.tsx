@@ -145,12 +145,12 @@ export default function DockerPage() {
   // 切换 tab 时自动加载
   useEffect(() => {
     if (isVisible) refresh()
-  }, [tab, isVisible])
+  }, [tab, isVisible, refresh])
 
   // 切回页面时刷新
   useEffect(() => {
     if (isVisible) refresh()
-  }, [isVisible])
+  }, [isVisible, refresh])
 
   if (!currentConnId) {
     return (

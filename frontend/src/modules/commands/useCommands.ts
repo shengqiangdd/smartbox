@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react'
 import type { QuickCommand, CommandGroup } from './index'
 import {
   BUILTIN_COMMANDS,
-  COMMAND_GROUPS,
   BUILTIN_GROUPS,
   STORAGE_KEY,
   DEFAULT_CUSTOM,

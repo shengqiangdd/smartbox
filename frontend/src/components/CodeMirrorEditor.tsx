@@ -312,7 +312,8 @@ export default function CodeMirrorEditor() {
         viewRef.current = null
       }
     }
-  }, [activeTab?.id]) // 只在标签切换时重建
+  }, [activeTab?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  // 说明：只依赖 tab.id，确保编辑器在切换标签时重建，而非随内容变化频繁销毁重建
 
   if (!activeTab) {
     return null

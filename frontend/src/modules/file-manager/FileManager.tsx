@@ -63,12 +63,12 @@ function getFileIcon(name: string) {
   }
 }
 
-/** 等待 sftp-ready 事件，最多等 8 秒 */
-function waitForSftpReady(wsClient: WsClient, sessionId: string, timeout = 8000): Promise<boolean> {
+/** 等待 sftp-ready 事件，最多等 8 秒 — 内部辅助，暂未启用 */
+const _waitForSftpReady = (wsClient: WsClient, sessionId: string, timeout = 8000): Promise<boolean> => {
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(false), timeout)
     const unsub = wsClient.on('sftp-ready', (data: Record<string, unknown>) => {
-      if (data.connectionId === sessionId) {
+      if ((data as Record<string, unknown>)['connectionId'] === sessionId) {
         clearTimeout(timer)
         unsub()
         resolve(true)
@@ -76,6 +76,8 @@ function waitForSftpReady(wsClient: WsClient, sessionId: string, timeout = 8000)
     })
   })
 }
+
+/** 等待 sftp-ready 事件，最多等 8 秒 */
 
 /**
  * 尝试复用已有的 SSH session 来获取 SFTP 能力。
@@ -328,7 +330,7 @@ export default function FileManager() {
       setConnecting(false)
       return
     },
-    [connections, sessions, addSession, removeSession, wsClient, setFmState],
+    [sessions, addSession, removeSession, wsClient, setFmState],
   )
 
   // 当前 session 是否有效

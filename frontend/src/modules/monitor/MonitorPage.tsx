@@ -8,16 +8,10 @@ import {
   RefreshCw,
   Server,
   Loader2,
-  ShieldAlert,
-  ChevronDown,
-  ChevronRight,
   Bell,
-  Globe,
-  Brain,
 } from 'lucide-react'
 import { useSshStore } from '../../stores/ssh-store'
 import { useAlertStore } from '../../stores/alert-store'
-import { authedFetch } from '../../services/auth'
 import AlertSettings from './AlertSettings'
 import AlertHistory from './AlertHistory'
 import HostHealthOverview from './HostHealthOverview'
@@ -301,12 +295,6 @@ function Sparkline({
 
 // ─── 主组件 ───
 
-/** Mock 主机名 */
-const MOCK_HOSTS = [
-  { id: 'mock-prod-01', name: 'prod-web-01', host: '192.168.1.100' },
-  { id: 'mock-prod-02', name: 'prod-db-01', host: '192.168.1.101' },
-]
-
 // ─── Mock 数据状态（随机漫步，更真实） ───
 const mockState = new Map<
   string,
@@ -354,8 +342,8 @@ function formatDuration(ms: number): string {
   return `${days} days, ${hours} hours`
 }
 
-/** 生成模拟统计数据（随机漫步） */
-function mockStats(id: string, name: string, host: string): HostStats {
+/** 生成模拟统计数据（随机漫步） — 内部函数 */
+function _mockStats(id: string, name: string, host: string): HostStats {
   const s = initOrGetMock(id)
   s.cpu = walk(s.cpu, 5, 2, 85)
   s.memPct = walk(s.memPct, 3, 20, 75)
@@ -428,7 +416,7 @@ function mockStats(id: string, name: string, host: string): HostStats {
 }
 
 /** 生成模拟历史数据（最近 60 个采样点） */
-function mockHistory(): HistoryPoint[] {
+function _mockHistory(): HistoryPoint[] {
   const now = Date.now()
   return Array.from({ length: 60 }, (_, i) => ({
     time: now - (60 - i) * 5000,

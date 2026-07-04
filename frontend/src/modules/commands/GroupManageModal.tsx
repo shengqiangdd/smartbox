@@ -13,7 +13,7 @@ interface GroupManageModalProps {
 
 export default function GroupManageModal({
   allGroups,
-  customGroups,
+  customGroups: _customGroups,
   onSaveGroup,
   onRemoveGroup,
   onClose,

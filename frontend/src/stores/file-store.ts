@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { FileTab, FileEntry, FileSource } from '../types/file'
+import type { FileTab, FileEntry } from '../types/file'
 
 interface FileState {
   // 当前打开的标签页

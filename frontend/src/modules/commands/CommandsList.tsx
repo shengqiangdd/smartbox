@@ -11,7 +11,6 @@ import {
   Layers,
 } from 'lucide-react'
 import type { QuickCommand, CommandGroup } from './index'
-import { COMMAND_GROUPS } from './index'
 
 interface CommandsListProps {
   commandsByGroup: (CommandGroup & { commands: QuickCommand[] })[]

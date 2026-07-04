@@ -22,11 +22,8 @@ import {
   RefreshCw,
   Loader2,
 } from 'lucide-react'
-import { useAppStore, refreshAppStore } from '../../stores/app-store'
-import { useAiStore, refreshAiStore } from '../../stores/ai-store'
-import { useSshStore, refreshSshStore } from '../../stores/ssh-store'
-import { useAlertStore, refreshAlertStore } from '../../stores/alert-store'
-import { usePluginStore, refreshPluginStore } from '../../stores/plugin-store'
+import { useAppStore } from '../../stores/app-store'
+import { useAiStore } from '../../stores/ai-store'
 import { AI_PROVIDERS } from '../../types/ai'
 import type { AiProvider } from '../../types/ai'
 import SystemMaintenance from './SystemMaintenance'
@@ -54,7 +51,7 @@ export default function SettingsPanel() {
   const [showProviderSelector, setShowProviderSelector] = useState(false)
   const [customModel, setCustomModel] = useState('')
   const [showCustomInput, setShowCustomInput] = useState(false)
-  const [customBaseUrl, setCustomBaseUrl] = useState('')
+  const [customBaseUrl, _customBaseUrl] = useState('')
 
   // ─── 导入导出状态 ───
   const [exportPassword, setExportPassword] = useState('')
@@ -112,7 +109,7 @@ export default function SettingsPanel() {
         })
         .catch(() => {})
     }
-  }, [aiConfig.provider, aiConfig.apiKey])
+  }, [aiConfig.provider, aiConfig.apiKey, setAiConfig])
 
   // ── 从 API 获取的免费模型列表（在 allModels / selectedModelLabel 之前声明） ──
   const allModels =

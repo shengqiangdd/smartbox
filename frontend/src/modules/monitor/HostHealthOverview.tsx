@@ -11,7 +11,6 @@ import {
   Cpu,
   MemoryStick,
   HardDrive,
-  Activity,
   Brain,
   Loader2,
   ChevronDown,

@@ -143,7 +143,7 @@ export default function DockerImages({ connectionId, images, loading, onRefresh 
     } finally {
       setModalLoading(false)
     }
-  }, [modal, connectionId, onRefresh])
+  }, [modal, connectionId, onRefresh, modalInput, modalInput2])
 
   // 查看详情
   const showDetails = useCallback(
@@ -203,15 +203,6 @@ export default function DockerImages({ connectionId, images, loading, onRefresh 
     }
     setInspectLoading(false)
   }, [connectionId, selectedImage])
-
-  const formatSize = (size: string) => {
-    const n = parseFloat(size)
-    if (isNaN(n)) return size
-    if (n >= 1e9) return (n / 1e9).toFixed(1) + ' GB'
-    if (n >= 1e6) return (n / 1e6).toFixed(1) + ' MB'
-    if (n >= 1e3) return (n / 1e3).toFixed(1) + ' kB'
-    return n.toFixed(0) + ' B'
-  }
 
   const isDangling = (img: DockerImage) => img.Repository === '<none>'
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { X, Loader2, Download } from 'lucide-react'
 
 interface Props {
@@ -14,7 +14,7 @@ export default function DockerContainerLogs({ connectionId, containerName, onClo
   const [tail, setTail] = useState(200)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  const fetchLogs = async (n: number) => {
+  const fetchLogs = useCallback(async (n: number) => {
     setLoading(true)
     setError(null)
     try {
@@ -35,11 +35,11 @@ export default function DockerContainerLogs({ connectionId, containerName, onClo
     } finally {
       setLoading(false)
     }
-  }
+  }, [connectionId, containerName])
 
   useEffect(() => {
     fetchLogs(tail)
-  }, [connectionId, containerName, tail])
+  }, [connectionId, containerName, tail, fetchLogs])
 
   // 自动滚到底部
   useEffect(() => {

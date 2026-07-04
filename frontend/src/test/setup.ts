@@ -22,8 +22,9 @@ import '@testing-library/jest-dom'
 
   if (actFn) {
     // Patch globalThis.React.act (if React is exposed globally)
-    if ((globalThis as any).React && typeof (globalThis as any).React.act !== 'function') {
-      Object.defineProperty((globalThis as any).React, 'act', {
+    const gReact = (globalThis as Record<string, unknown>).React as Record<string, unknown> | undefined
+    if (gReact && typeof gReact.act !== 'function') {
+      Object.defineProperty(gReact, 'act', {
         value: actFn,
         writable: true,
         configurable: true,
@@ -48,8 +49,9 @@ import '@testing-library/jest-dom'
     // Patch ESM imported react module via globalThis workaround
     // Vite's CJS→ESM interop re-exports the CJS module; patching the CJS
     // module should propagate to ESM imports
-    if (!(globalThis as any).__REACT_ACT_PATCHED__) {
-      ;(globalThis as any).__REACT_ACT_PATCHED__ = true
+    const gAny = globalThis as Record<string, unknown>
+    if (!gAny.__REACT_ACT_PATCHED__) {
+      gAny.__REACT_ACT_PATCHED__ = true
     }
   }
 }

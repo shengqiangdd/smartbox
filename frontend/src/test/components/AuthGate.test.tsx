@@ -83,6 +83,7 @@ function mockFail(message = 'Auth failed') {
 function mockPending() {
   _shouldSucceed = true
   _errorMessage = null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   _pendingPromise = true as any // truthy to trigger the pending path
 }
 
@@ -247,7 +248,7 @@ describe('AuthGate', () => {
   it('cleans up on unmount (cancelled flag)', async () => {
     mockPending()
 
-    const { container, cleanup } = renderReact(
+    const { cleanup } = renderReact(
       <AuthGate>
         <div data-testid="children">App Content</div>
       </AuthGate>,

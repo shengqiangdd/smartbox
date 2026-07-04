@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import {
   getDeviceKey,
   resetDeviceKey,
@@ -28,7 +28,7 @@ describe('secure-store', () => {
     })
 
     it('returns different key after reset', () => {
-      const key1 = getDeviceKey()
+      const _key1 = getDeviceKey()
       resetDeviceKey()
       const key2 = getDeviceKey()
       // After reset, fingerprint is re-generated — may or may not differ

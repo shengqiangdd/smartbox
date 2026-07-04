@@ -322,7 +322,6 @@ export default function DockerMonitor({ connectionId, containers }: Props) {
         </button>
         <div className="ml-2 flex flex-wrap gap-1">
           {runningContainers.map((c) => {
-            const shortId = c.ID.length > 12 ? c.ID.slice(0, 12) : c.ID
             const isSelected = selectedIds.has(c.ID)
             const displayName = c.Names.length > 20 ? c.Names.slice(0, 18) + '…' : c.Names
             return (

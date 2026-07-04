@@ -3,12 +3,12 @@
  *
  * Uses createRoot directly to avoid React 19 CJS act issue.
  */
-import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
-import { createRoot, type Root } from 'react-dom/client'
+import { describe, it, expect, afterEach, beforeEach } from 'vitest'
+import { createRoot, type Root as _Root } from 'react-dom/client'
 import Toast from '../../components/Toast'
 
 let container: HTMLElement
-let root: Root
+let root: _Root
 
 beforeEach(() => {
   container = document.createElement('div')

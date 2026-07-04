@@ -84,7 +84,7 @@ export interface DockerInspectInfo {
 }
 
 /** /api/docker/* 通用响应 */
-export interface DockerResponse<T = unknown> {
+export interface DockerResponse {
   success: boolean
   data?: string
   error?: string

@@ -61,7 +61,7 @@ export class WsClient {
 
     try {
       this.ws = new WebSocket(this.url)
-    } catch (err) {
+    } catch {
       this.setStatus('disconnected')
       this.scheduleReconnect()
       return
@@ -216,7 +216,7 @@ export class WsClient {
   }
 
   private rejectAllPending(err: Error) {
-    for (const [id, pending] of this.pendingRequests) {
+    for (const [, pending] of this.pendingRequests) {
       clearTimeout(pending.timer)
       pending.reject(err)
     }

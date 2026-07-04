@@ -23,28 +23,36 @@ vi.stubGlobal('crypto', {
 import { exportConfig, importConfig, collectExportData } from '../../services/importExport'
 
 // Mock store hooks used by collectExportData
+type _StoreSelector<T> = (s: T) => unknown
+
 vi.mock('../../stores/ssh-store', () => ({
-  useSshStore: Object.assign((selector: (s: any) => any) => selector({ connections: [] }), {
-    getState: () => ({ connections: [] }),
-  }),
+  useSshStore: Object.assign(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (_selector: _StoreSelector<any>) => ({ connections: [] }),
+    { getState: () => ({ connections: [] }) },
+  ),
 }))
 
 vi.mock('../../stores/ai-store', () => ({
   useAiStore: Object.assign(
-    (selector: (s: any) => any) => selector({ config: { provider: 'openai' } }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (_selector: _StoreSelector<any>) => ({ config: { provider: 'openai' } }),
     { getState: () => ({ config: null }) },
   ),
 }))
 
 vi.mock('../../stores/plugin-store', () => ({
-  usePluginStore: Object.assign((selector: (s: any) => any) => selector({ enabledPlugins: [] }), {
-    getState: () => ({ enabledPlugins: [] }),
-  }),
+  usePluginStore: Object.assign(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (_selector: _StoreSelector<any>) => ({ enabledPlugins: [] }),
+    { getState: () => ({ enabledPlugins: [] }) },
+  ),
 }))
 
 vi.mock('../../stores/app-store', () => ({
   useAppStore: Object.assign(
-    (selector: (s: any) => any) => selector({ theme: 'dark', sidebarCollapsed: false }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (_selector: _StoreSelector<any>) => ({ theme: 'dark', sidebarCollapsed: false }),
     { getState: () => ({ theme: 'dark', sidebarCollapsed: false }) },
   ),
 }))

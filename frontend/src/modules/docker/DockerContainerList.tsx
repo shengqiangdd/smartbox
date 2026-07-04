@@ -8,8 +8,8 @@ import {
   memo,
   useMemo,
 } from 'react'
-import { Play, Square, RotateCcw, Trash2, FileText, Search, Eye } from 'lucide-react'
-import type { DockerContainer, ContainerStatus } from './index'
+import { Play, Square, Trash2, FileText, Search, Eye } from 'lucide-react'
+import type { DockerContainer } from './index'
 import { STATUS_DOTS } from './index'
 
 const DockerContainerLogs = lazy(() => import('./DockerContainerLogs'))
@@ -157,7 +157,6 @@ export default function DockerContainerList({
   onRefresh,
 }: Props) {
   const [filter, setFilter] = useState('')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [logTarget, setLogTarget] = useState<string | null>(null)
   const [detailTarget, setDetailTarget] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
@@ -236,7 +235,7 @@ export default function DockerContainerList({
           <div className="divide-y divide-slate-800/50">
             {filtered.map((c) => {
               const shortId = c.ID.length > 12 ? c.ID.slice(0, 12) : c.ID
-              const isSelected = selectedId === (c.Names || shortId)
+              const isSelected = false
 
               return (
                 <ContainerRow

@@ -1,63 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useAppStore, type NavId } from '../stores/app-store'
+import { useAppStore } from '../stores/app-store'
 import { usePluginStore } from '../stores/plugin-store'
-
-export interface CommandItem {
-  id: string
-  label: string
-  description?: string
-  keywords: string[]
-  icon?: string
-  category: '导航' | '主题' | '插件' | '工具'
-  action: () => void
-}
-
-// 注册命令的系统
-const _registry: CommandItem[] = []
-
-// Expose for test cleanup (only in test environment)
-if (typeof globalThis !== 'undefined') {
-  const g = globalThis as Record<string, unknown>
-  g.__commandRegistry = _registry
-}
-
-export function registerCommand(cmd: CommandItem) {
-  _registry.push(cmd)
-}
-
-export function getCommands(): CommandItem[] {
-  return [..._registry]
-}
-
-// 简单的模糊匹配（支持拼音首字母和英文）
-export function fuzzyMatch(text: string, query: string): boolean {
-  if (!query) return true
-  const lower = text.toLowerCase()
-  const q = query.toLowerCase().trim()
-
-  // 直接子串匹配
-  if (lower.includes(q)) return true
-
-  // 拼音首字母匹配（取每个词的首字母）
-  const initials = lower
-    .split(/[\s_-]/)
-    .map((w) => w[0])
-    .filter(Boolean)
-    .join('')
-  if (initials.includes(q)) return true
-
-  // 单词首字母匹配（驼峰）
-  const camelInitials = text
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .toLowerCase()
-    .split(' ')
-    .map((w) => w[0])
-    .filter(Boolean)
-    .join('')
-  if (camelInitials.includes(q)) return true
-
-  return false
-}
+import type { CommandItem } from '../utils/commands'
+import { getCommands, fuzzyMatch } from '../utils/commands'
 
 export default function CommandPalette() {
   const [query, setQuery] = useState('')
@@ -328,13 +273,14 @@ export default function CommandPalette() {
   ])
 
   // 找到当前选中的项在 flatList 中的真实索引
-  let flatSelectedIndex = 0
+  // flatSelectedIndex is kept for potential future use in pagination
+  let _flatSelectedIndex = 0
   let count = -1
   for (const entry of flatList) {
     if (entry.type === 'category') continue
     count++
     if (count === selectedIndex) {
-      flatSelectedIndex = flatList.indexOf(entry)
+      _flatSelectedIndex = flatList.indexOf(entry)
       break
     }
   }
@@ -398,7 +344,7 @@ export default function CommandPalette() {
               <div className="px-3 pt-2 pb-1 text-[11px] font-medium tracking-wider text-slate-500 uppercase">
                 {category}
               </div>
-              {items.map((cmd, idx) => {
+              {items.map((cmd, _idx) => {
                 const globalIdx = allCommands.indexOf(cmd)
                 const isSelected = globalIdx === selectedIndex
                 return (

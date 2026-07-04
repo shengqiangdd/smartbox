@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { usePluginStore, refreshPluginStore } from '../../stores/plugin-store'
-import type { PluginManifest } from '../../types/plugin'
+import type { PluginManifest, PluginAPI } from '../../types/plugin'
 
 const mockManifest: PluginManifest = {
   id: 'test-plugin',
@@ -27,14 +27,14 @@ const mockManifest2: PluginManifest = {
   commands: [{ id: 'cmd-3', name: 'Command Three', label: 'Cmd3' }],
 }
 
-const mockApi = {
+const mockApi: PluginAPI = {
   registerCommand: vi.fn(),
   registerPanel: vi.fn(),
   getFileContent: vi.fn(),
   setFileContent: vi.fn(),
   getCurrentFileLanguage: vi.fn(),
   showNotification: vi.fn(),
-} as any
+}
 
 describe('plugin-store', () => {
   beforeEach(() => {

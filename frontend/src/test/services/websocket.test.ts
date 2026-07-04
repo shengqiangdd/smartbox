@@ -7,9 +7,9 @@ class MockWebSocket {
   static CLOSED = 3
   readyState = 0
   onopen: (() => void) | null = null
-  onclose: ((e: any) => void) | null = null
-  onerror: ((e: any) => void) | null = null
-  onmessage: ((e: any) => void) | null = null
+  onclose: ((e: CloseEvent) => void) | null = null
+  onerror: ((e: Event) => void) | null = null
+  onmessage: ((e: MessageEvent) => void) | null = null
   sentMessages: string[] = []
 
   constructor(public url: string) {
@@ -25,18 +25,22 @@ class MockWebSocket {
 
   close() {
     this.readyState = MockWebSocket.CLOSED
-    this.onclose?.({ code: 1000, reason: 'close' })
+    this.onclose?.({ code: 1000, reason: 'close' } as CloseEvent)
   }
 
   // 模拟接收消息
   simulateMessage(data: Record<string, unknown>) {
-    this.onmessage?.({ data: JSON.stringify(data) })
+    this.onmessage?.({ data: JSON.stringify(data) } as MessageEvent)
   }
 }
 
 vi.stubGlobal('WebSocket', MockWebSocket)
 
-import { WsClient, getWsClient, getWsClientSync } from '../../services/websocket'
+import { WsClient, getWsClientSync } from '../../services/websocket'
+
+/** Helper to access private ws property for testing */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getMockWs(client: WsClient): MockWebSocket { return (client as any).ws }
 
 describe('WsClient', () => {
   let client: WsClient
@@ -47,8 +51,8 @@ describe('WsClient', () => {
   })
 
   it('connects to WebSocket', async () => {
-    const statuses: string[] = []
-    client.onStatus((s) => statuses.push(s))
+    const _statuses: string[] = []
+    client.onStatus((s) => _statuses.push(s))
     client.connect()
 
     await vi.waitFor(() => {
@@ -61,7 +65,7 @@ describe('WsClient', () => {
     await vi.waitFor(() => expect(client.status).toBe('connected'))
 
     client.send({ type: 'ping' })
-    const ws = (client as any).ws as MockWebSocket
+    const ws = getMockWs(client)
     expect(ws.sentMessages).toHaveLength(1)
     expect(JSON.parse(ws.sentMessages[0]!)).toEqual({ type: 'ping' })
   })
@@ -72,7 +76,7 @@ describe('WsClient', () => {
 
     const promise = client.request({ type: 'get_info' })
 
-    const ws = (client as any).ws as MockWebSocket
+    const ws = getMockWs(client)
     // Find the requestId from sent message
     const sentMsg = JSON.parse(ws.sentMessages[0]!)
     expect(sentMsg.type).toBe('get_info')
@@ -92,7 +96,7 @@ describe('WsClient', () => {
     const handler = vi.fn()
     client.on('docker_event', handler)
 
-    const ws = (client as any).ws as MockWebSocket
+    const ws = getMockWs(client)
     ws.simulateMessage({ type: 'docker_event', container: 'nginx' })
 
     expect(handler).toHaveBeenCalledWith({ type: 'docker_event', container: 'nginx' })

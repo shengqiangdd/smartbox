@@ -306,11 +306,7 @@ function FilePreviewModal({
   const wsClient = getWsClientSync()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  useEffect(() => {
-    loadFile()
-  }, [entry.path])
-
-  const loadFile = async () => {
+  const loadFile = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -330,7 +326,11 @@ function FilePreviewModal({
     } finally {
       setLoading(false)
     }
-  }
+  }, [sessionId, entry.path, wsClient])
+
+  useEffect(() => {
+    loadFile()
+  }, [entry.path, loadFile])
 
   const handleSave = async () => {
     setSaving(true)
@@ -471,6 +471,10 @@ function FilePreviewModal({
 
 // ─── 主组件 ───
 
+// 分块上传常量
+const CHUNK_SIZE = 5 * 1024 * 1024 // 每块 5MB
+const CHUNK_THRESHOLD = 50 * 1024 * 1024 // 超过 50MB 才分块
+
 export default function SftpBrowser({
   sessionId,
   activeConnId,
@@ -507,8 +511,8 @@ export default function SftpBrowser({
   // 搜索
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearch, setShowSearch] = useState(false)
-  const [recursiveSearching, setRecursiveSearching] = useState(false)
-  const [allEntries, setAllEntries] = useState<SftpEntry[]>([])
+  const [_recursiveSearching, setRecursiveSearching] = useState(false)
+  const [_allEntries, setAllEntries] = useState<SftpEntry[]>([])
   const searchInputRef = useRef<HTMLInputElement>(null)
   // 弹窗提示（替代 alert）
   const [alertModal, setAlertModal] = useState<{ title: string; message: string } | null>(null)
@@ -598,15 +602,15 @@ export default function SftpBrowser({
     setCurrentPath('/')
     setSftpReady(false)
     return
-  }, [sessionId])
+  }, [sessionId, listDir])
 
-  // sftp-ready 后自动刷新
+  // sftp-ready 后自动刷新（故意限制 deps：只应在 sftpReady 翻转时触发）
   useEffect(() => {
     if (sftpReady && sessionId) {
       retryCountRef.current = 0
       listDir(currentPath, false)
     }
-  }, [sftpReady])
+  }, [sftpReady]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 关闭右键菜单
   useEffect(() => {
@@ -880,7 +884,6 @@ export default function SftpBrowser({
       })
       if (resp.type === 'sftp-result' && resp.operation === 'readfile') {
         // 用 data URL 替代 blob URL，避免 CSP 阻止
-        const bytes = Uint8Array.from(atob(resp.data as string), (c) => c.charCodeAt(0))
         const dataUrl = `data:application/octet-stream;base64,${resp.data}`
         const a = document.createElement('a')
         a.href = dataUrl
@@ -908,9 +911,6 @@ export default function SftpBrowser({
   }
 
   // ─── 拖拽上传 ───
-
-  const CHUNK_SIZE = 5 * 1024 * 1024 // 每块 5MB
-  const CHUNK_THRESHOLD = 50 * 1024 * 1024 // 超过 50MB 才分块
 
   const readFileAsBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -1085,7 +1085,7 @@ ${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n...还有 ${errors.leng
 
   // 检查是否有同名文件，弹出确认
   const confirmOverwrite = useCallback(
-    (files: File[], targetDir: string): Promise<boolean> => {
+    (files: File[], _targetDir: string): Promise<boolean> => {
       return new Promise((resolve) => {
         const existingNames = new Set(entries.map((e) => e.name))
         const conflicts = files.filter((f) => existingNames.has(f.name))

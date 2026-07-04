@@ -1,27 +1,32 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createRoot, type Root } from 'react-dom/client'
+import { createRoot } from 'react-dom/client'
 import { flushSync } from 'react-dom'
 import { useAppStore } from '../../stores/app-store'
 import BottomNav from '../../components/layout/BottomNav'
 
 const mockSetActiveNav = vi.fn()
 
+function setAppState(partial: Record<string, unknown>) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  useAppStore.setState(partial as any)
+}
+
 beforeEach(() => {
-  useAppStore.setState({
+  setAppState({
     activeNav: 'ssh',
     setActiveNav: mockSetActiveNav,
     sshSessions: [],
     sshSftpOpen: false,
-  } as any)
+  })
 })
 
 afterEach(() => {
-  useAppStore.setState({
+  setAppState({
     activeNav: 'ssh',
     setActiveNav: () => {},
     sshSessions: [],
     sshSftpOpen: false,
-  } as any)
+  })
   document.body.innerHTML = ''
 })
 
@@ -62,7 +67,7 @@ describe('BottomNav', () => {
   })
 
   it('highlights the active nav item', () => {
-    useAppStore.setState({ activeNav: 'docker' } as any)
+    setAppState({ activeNav: 'docker' })
     const { container } = render(<BottomNav />)
 
     // Find all buttons and check the active one
@@ -116,22 +121,22 @@ describe('BottomNav', () => {
   })
 
   it('hides when SSH terminal is fullscreen', () => {
-    useAppStore.setState({
+    setAppState({
       activeNav: 'ssh',
       sshSessions: [{ id: 's1', host: 'test' }],
       sshSftpOpen: false,
-    } as any)
+    })
     const { container } = render(<BottomNav />)
     // Should be empty (null return)
     expect(container.innerHTML).toBe('')
   })
 
   it('shows SSH page with sftp open', () => {
-    useAppStore.setState({
+    setAppState({
       activeNav: 'ssh',
       sshSessions: [{ id: 's1', host: 'test' }],
       sshSftpOpen: true,
-    } as any)
+    })
     const { container } = render(<BottomNav />)
     // Should still render because sftp is open
     expect(container.querySelector('button')).toBeTruthy()

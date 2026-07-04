@@ -1,22 +1,18 @@
 import { useState, useEffect, useCallback, memo, useMemo } from 'react'
 import {
-  History,
   RefreshCw,
   Search,
   Terminal,
   FileCode2,
   Container,
-  Server,
   PlugZap,
   Download,
   Upload,
   Trash2,
   FolderPlus,
   Pencil,
-  Settings,
-  KeyRound,
-  Bell,
   Activity,
+  KeyRound,
 } from 'lucide-react'
 
 interface AuditEntry {

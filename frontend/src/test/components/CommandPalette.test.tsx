@@ -1,13 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createRoot, type Root } from 'react-dom/client'
+import { createRoot } from 'react-dom/client'
 import { flushSync } from 'react-dom'
 import { useAppStore } from '../../stores/app-store'
 import { usePluginStore } from '../../stores/plugin-store'
-import CommandPalette, {
-  fuzzyMatch,
-  registerCommand,
-  getCommands,
-} from '../../components/CommandPalette'
+import CommandPalette from '../../components/CommandPalette'
+import { fuzzyMatch, registerCommand, getCommands } from '../../utils/commands'
+
+// ─── Helpers ────────────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function setAppState(v: Record<string, unknown>) { useAppStore.setState(v as any) }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function setPluginState(v: Record<string, unknown>) { usePluginStore.setState(v as any) }
 
 // ─── Mock stores ────────────────────────────────────────────────
 const mockSetOpen = vi.fn()
@@ -17,7 +20,7 @@ const mockToggleSidebar = vi.fn()
 const mockExecuteCommand = vi.fn()
 
 beforeEach(() => {
-  useAppStore.setState({
+  setAppState({
     commandPaletteOpen: true,
     theme: 'dark',
     setCommandPaletteOpen: mockSetOpen,
@@ -25,26 +28,26 @@ beforeEach(() => {
     setTheme: mockSetTheme,
     toggleSidebar: mockToggleSidebar,
     activeNav: 'ssh',
-  } as any)
-  usePluginStore.setState({
+  })
+  setPluginState({
     commands: [],
     executeCommand: mockExecuteCommand,
-  } as any)
+  })
 })
 
 afterEach(() => {
-  useAppStore.setState({
+  setAppState({
     commandPaletteOpen: false,
     setCommandPaletteOpen: () => {},
     setActiveNav: () => {},
     setTheme: () => {},
     toggleSidebar: () => {},
     activeNav: 'ssh',
-  } as any)
-  usePluginStore.setState({ commands: [], executeCommand: () => {} } as any)
+  })
+  setPluginState({ commands: [], executeCommand: () => {} })
   document.body.innerHTML = ''
   // Clear registered commands from test isolation
-  const reg = (globalThis as any).__commandRegistry
+  const reg = (globalThis as unknown as { __commandRegistry?: unknown[] }).__commandRegistry
   if (reg) reg.length = 0
 })
 
@@ -65,7 +68,7 @@ function render(el: React.ReactNode) {
 
 describe('CommandPalette', () => {
   it('renders nothing when closed', () => {
-    useAppStore.setState({ commandPaletteOpen: false } as any)
+    setAppState({ commandPaletteOpen: false })
     const { container } = render(<CommandPalette />)
     expect(container.innerHTML).toBe('')
   })
@@ -108,7 +111,7 @@ describe('CommandPalette', () => {
   })
 
   it('shows plugin commands when available', () => {
-    usePluginStore.setState({
+    setPluginState({
       commands: [
         {
           id: 'say-hello',
@@ -118,7 +121,7 @@ describe('CommandPalette', () => {
           icon: 'MessageSquare',
         },
       ],
-    } as any)
+    })
 
     const { container } = render(<CommandPalette />)
     expect(container.textContent).toContain('Say Hello')

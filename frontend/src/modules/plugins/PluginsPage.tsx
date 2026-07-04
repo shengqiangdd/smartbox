@@ -114,7 +114,7 @@ export default function PluginsPage() {
 
     // 监听插件热加载通知（开发模式）
     const unsub = getWsClientSync().on('plugins-changed', () => {
-      handleReload()
+      handleReloadRef.current()
     })
     return unsub
   }, [loadPlugins])
@@ -144,6 +144,9 @@ export default function PluginsPage() {
     setRenderTick(0)
     loadPlugins()
   }
+
+  const handleReloadRef = useRef(handleReload)
+  handleReloadRef.current = handleReload
 
   const handleSandboxReady = useCallback((pluginId: string, handle: PluginSandboxHandle) => {
     sandboxReadyRef.current = { ...sandboxReadyRef.current, [pluginId]: true }

@@ -10,7 +10,6 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { useSshStore } from '../../stores/ssh-store'
-import type { SshConnection } from '../../types/ssh'
 
 interface BatchResult {
   connId: string

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useAiStore } from '../../stores/ai-store'
+import type { AiProviderModel } from '../../types/ai'
 
 // Helper to reset store between tests
 function resetAiStore() {
@@ -146,13 +147,13 @@ describe('useAiStore', () => {
   })
 
   describe('fetchedModels', () => {
-    const mockModels = [
-      { id: 'model-a', name: 'Model A', provider: 'openrouter' },
-      { id: 'model-b', name: 'Model B', provider: 'openrouter' },
+    const mockModels: AiProviderModel[] = [
+      { value: 'model-a', label: 'Model A' },
+      { value: 'model-b', label: 'Model B' },
     ]
 
     it('stores fetched models with timestamp', () => {
-      useAiStore.getState().setFetchedModels(mockModels as any[])
+      useAiStore.getState().setFetchedModels(mockModels)
       const state = useAiStore.getState()
       expect(state.fetchedModels).toHaveLength(2)
       expect(state.fetchedModelsAt).toBeTypeOf('number')

@@ -9,6 +9,7 @@ import {
   syncEditorToSandbox,
 } from '../../services/pluginManager'
 import { usePluginStore } from '../../stores/plugin-store'
+import type { PluginManifest, PluginAPI } from '../../types/plugin'
 
 // Mock fetch globally
 const mockFetch = vi.fn()
@@ -145,11 +146,11 @@ describe('pluginManager', () => {
       // First manually register a plugin
       const { registerPlugin } = usePluginStore.getState()
       registerPlugin(
-        mockPluginCatalog.plugins[0]! as any,
+        mockPluginCatalog.plugins[0]! as unknown as PluginManifest,
         {
           addCommand: vi.fn(),
           addPanel: vi.fn(),
-        } as any,
+        } as unknown as PluginAPI,
       )
 
       expect(usePluginStore.getState().plugins.length).toBe(1)

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createRoot, type Root } from 'react-dom/client'
+import { createRoot } from 'react-dom/client'
 import { flushSync } from 'react-dom'
 import { useAppStore } from '../../stores/app-store'
 import Sidebar from '../../components/layout/Sidebar'
@@ -8,27 +8,32 @@ function click(el: Element | null | undefined) {
   if (el) (el as HTMLElement).click()
 }
 
+function setAppState(partial: Record<string, unknown>) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  useAppStore.setState(partial as any)
+}
+
 const mockSetActiveNav = vi.fn()
 const mockToggleSidebar = vi.fn()
 
 beforeEach(() => {
-  useAppStore.setState({
+  setAppState({
     activeNav: 'ssh',
     setActiveNav: mockSetActiveNav,
     sidebarCollapsed: false,
     toggleSidebar: mockToggleSidebar,
     sshSessions: [],
-  } as any)
+  })
 })
 
 afterEach(() => {
-  useAppStore.setState({
+  setAppState({
     activeNav: 'ssh',
     setActiveNav: () => {},
     sidebarCollapsed: false,
     toggleSidebar: () => {},
     sshSessions: [],
-  } as any)
+  })
   document.body.innerHTML = ''
 })
 
@@ -73,7 +78,7 @@ describe('Sidebar (expanded)', () => {
   })
 
   it('highlights the active nav', () => {
-    useAppStore.setState({ activeNav: 'docker' } as any)
+    setAppState({ activeNav: 'docker' })
     const { container } = render(<Sidebar />)
     const activeBtn = container.querySelector('.sidebar-item.active')
     expect(activeBtn).toBeTruthy()
@@ -91,12 +96,12 @@ describe('Sidebar (expanded)', () => {
   })
 
   it('shows SSH session count badge', () => {
-    useAppStore.setState({
+    setAppState({
       sshSessions: [
         { id: 's1', host: 'host1' },
         { id: 's2', host: 'host2' },
       ],
-    } as any)
+    })
     const { container } = render(<Sidebar />)
     const sshBtn = Array.from(container.querySelectorAll('.sidebar-item')).find((b) =>
       b.textContent?.includes('SSH'),
@@ -106,7 +111,7 @@ describe('Sidebar (expanded)', () => {
   })
 
   it('does not show badge when zero sessions', () => {
-    useAppStore.setState({ sshSessions: [] } as any)
+    setAppState({ sshSessions: [] })
     const { container } = render(<Sidebar />)
     const sshBtn = Array.from(container.querySelectorAll('.sidebar-item')).find((b) =>
       b.textContent?.includes('SSH'),
@@ -139,11 +144,11 @@ describe('Sidebar (expanded)', () => {
 
 describe('Sidebar (collapsed)', () => {
   beforeEach(() => {
-    useAppStore.setState({
+    setAppState({
       sidebarCollapsed: true,
       activeNav: 'ssh',
       sshSessions: [],
-    } as any)
+    })
   })
 
   it('renders icons only when collapsed', () => {
@@ -164,8 +169,7 @@ describe('Sidebar (collapsed)', () => {
   })
 
   it('highlights active nav in collapsed mode', () => {
-    useAppStore.setState({ activeNav: 'docker' } as any)
-    // Re-render with new state
+    setAppState({ activeNav: 'docker' })
     const { container } = render(<Sidebar />)
     // In collapsed mode, active button has bg-slate-800 + text-smartbox-400
     const buttons = container.querySelectorAll('nav button')

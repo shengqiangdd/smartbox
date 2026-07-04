@@ -4,13 +4,13 @@ import {
   RefreshCw,
   Play,
   Square,
-  RotateCcw,
   StopCircle,
   FileText,
   Loader2,
   ChevronRight,
   ChevronDown,
   Search,
+  RotateCcw,
 } from 'lucide-react'
 
 function notify(message: string, type: 'success' | 'error' | 'info' = 'info') {
@@ -84,7 +84,7 @@ export default function DockerCompose({ connectionId }: Props) {
     } finally {
       setLoading(false)
     }
-  }, [connectionId, manualPath])
+  }, [connectionId, manualPath]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 手动加载 compose 项目
   const handleManualLoad = useCallback(async () => {

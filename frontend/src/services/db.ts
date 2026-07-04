@@ -66,7 +66,7 @@ async function getDb(): Promise<Db> {
   if (_db) return _db
 
   _db = await openDB<StoreSchema>(DB_NAME, DB_VERSION, {
-    upgrade(db, oldVersion) {
+    upgrade(db, _oldVersion) {
       // 连接配置表
       if (!db.objectStoreNames.contains('connections')) {
         db.createObjectStore('connections', { keyPath: 'id' })

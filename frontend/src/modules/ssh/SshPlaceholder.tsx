@@ -1,23 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import {
-  Server,
-  PanelRightClose,
-  PanelRightOpen,
-  Columns2,
-  Menu,
-  X,
-  PlugZap,
-  Brain,
-  Terminal,
-} from 'lucide-react'
-import { useSshStore, decryptConnection } from '../../stores/ssh-store'
+import { Server, PanelRightClose, PanelRightOpen, Menu, PlugZap, Brain, X, Terminal } from 'lucide-react'
 import { useAppStore, type SplitDef } from '../../stores/app-store'
-import {
-  getWsClient,
-  getWsClientSync,
-  type WsClient,
-  type WsStatus,
-} from '../../services/websocket'
+import { useSshStore, decryptConnection } from '../../stores/ssh-store'
+import { getWsClient, type WsClient, type WsStatus } from '../../services/websocket'
 import ConnectionList from './ConnectionList'
 import TerminalView from './Terminal'
 import { SplitContainer } from './Terminal'
@@ -31,9 +16,7 @@ export default function SshPlaceholder() {
   const selectedConnectionId = useSshStore((s) => s.selectedConnectionId)
   const selectConnection = useSshStore((s) => s.selectConnection)
   const sessions = useSshStore((s) => s.sessions)
-  const addSession = useSshStore((s) => s.addSession)
   const removeSession = useSshStore((s) => s.removeSession)
-  const addSshSession = useAppStore((s) => s.addSshSession)
   const removeSshSession = useAppStore((s) => s.removeSshSession)
 
   const [wsStatus, setWsStatus] = useState<WsStatus>('disconnected')
@@ -50,34 +33,7 @@ export default function SshPlaceholder() {
   const [aiOpen, setAiOpen] = useState(false)
   const aiEnabled = useAiStore((s) => s.config.enabled)
 
-  // ─── 触摸滑动控制侧边栏 ───
-  const touchStartX = useRef(0)
-
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    const touch = e.touches[0]
-    if (!touch) return
-    touchStartX.current = touch.clientX
-  }, [])
-
-  const handleTouchEnd = useCallback(
-    (e: React.TouchEvent) => {
-      const touch = e.changedTouches[0]
-      if (!touch) return
-      const diff = touch.clientX - touchStartX.current
-      if (Math.abs(diff) < 50) return // 滑动距离不够
-      if (diff > 0 && touchStartX.current < 60) {
-        // 从屏幕左侧右滑 → 打开侧边栏
-        setSidebarOpen(true)
-      } else if (diff < 0 && sidebarOpen) {
-        // 左滑关闭
-        setSidebarOpen(false)
-      }
-    },
-    [sidebarOpen, setSidebarOpen],
-  )
-
   // 用 ref 追踪连接状态，防止闭包过期
-  const connectingRef = useRef(false)
   const wsClientRef = useRef<WsClient | null>(null)
 
   // 监听 WebSocket 状态
@@ -152,7 +108,7 @@ export default function SshPlaceholder() {
         setConnecting(false)
       }
     },
-    [connections],
+    [setSidebarOpen],
   )
 
   // ─── 断开连接 ───
@@ -172,7 +128,7 @@ export default function SshPlaceholder() {
         prev.filter((s) => s.sessionId !== sessionId && s.connectionId !== sessionId),
       )
     },
-    [removeSession, removeSshSession, selectConnection, selectedConnectionId],
+    [removeSession, removeSshSession, selectConnection, selectedConnectionId, setSplits],
   )
 
   // ─── 从列表连接 ───
@@ -184,39 +140,7 @@ export default function SshPlaceholder() {
         setSplits([])
       }
     },
-    [handleConnect],
-  )
-
-  // ─── 分屏操作 ───
-
-  const openInSplit = useCallback(
-    async (connectionId: string) => {
-      // 如果传的是连接配置 id，需要先建立连接
-      const conn = useSshStore.getState().connections.find((c) => c.id === connectionId)
-      if (conn) {
-        const sessionId = await handleConnect(connectionId)
-        if (!sessionId) return
-        const newSplit: SplitDef = {
-          id: `split_${Date.now()}`,
-          connectionId: sessionId,
-          sessionId,
-          direction: 'horizontal',
-        }
-        setSplits((prev) => [...prev, newSplit])
-        setActiveSplitId(newSplit.id)
-      } else {
-        // 已经是 sessionId
-        const newSplit: SplitDef = {
-          id: `split_${Date.now()}`,
-          connectionId,
-          sessionId: connectionId,
-          direction: 'horizontal',
-        }
-        setSplits((prev) => [...prev, newSplit])
-        setActiveSplitId(newSplit.id)
-      }
-    },
-    [handleConnect, connections],
+    [handleConnect, setSplits],
   )
 
   const handleSplit = useCallback(
@@ -243,12 +167,12 @@ export default function SshPlaceholder() {
         handleConnect(connId, newSessionId)
       }
     },
-    [handleConnect],
+    [handleConnect, setSplits],
   )
 
   const handleRemoveSplit = useCallback((id: string) => {
     setSplits((prev) => prev.filter((s) => s.id !== id))
-  }, [])
+  }, [setSplits])
 
   const handleSplitConnectionChange = useCallback(
     (splitId: string, newConnectionId: string, newSessionId: string) => {
@@ -263,7 +187,7 @@ export default function SshPlaceholder() {
         handleConnect(newConnectionId)
       }
     },
-    [handleConnect, sessions],
+    [handleConnect, sessions, setSplits],
   )
 
   // ─── 同步组管理 ───
@@ -314,7 +238,7 @@ export default function SshPlaceholder() {
       }))
       return updated
     })
-  }, [])
+  }, [setSplits, setSyncGroups])
 
   // 当 splits 变化时重新计算 syncGroups
   useEffect(() => {
@@ -369,7 +293,7 @@ export default function SshPlaceholder() {
         return result
       })
     },
-    [],
+    [setSplits],
   )
 
   // 构建连接选项 — 包括已连接的 session 和连接配置

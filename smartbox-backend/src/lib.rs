@@ -226,6 +226,8 @@ pub async fn build_app(state: Arc<AppState>) -> Router {
         // ─── System maintenance routes ───
         .route("/system/db-info", get(api::system::db_info))
         .route("/system/db-download", get(api::system::db_download))
+        // ─── Marketplace routes ───
+        .route("/market/index", get(api::market::get_market_index))
         .layer(auth_layer);
 
     // Combine public + protected API routes under /api

@@ -13,17 +13,9 @@ import type { PluginManifest } from '../types/plugin'
 
 // ── 消息类型定义 ──
 
-interface SandboxMessage {
-  source: 'smartbox-plugin-sandbox'
-  pluginId: string
-  seq: number
-  type: string
-  payload: Record<string, unknown>
-}
-
-/** lazy import 避免循环依赖 */
+/** lazy import 避免循环依赖 — 用于编辑器内容读写 */
 let _fileStore: ReturnType<typeof import('../stores/file-store').useFileStore> | null = null
-function getFileStore(): ReturnType<typeof import('../stores/file-store').useFileStore> | null {
+function _getFileStore(): ReturnType<typeof import('../stores/file-store').useFileStore> | null {
   if (!_fileStore) {
     // 动态 import，仅在需要时加载
     import('../stores/file-store').then((m) => {
@@ -46,7 +38,7 @@ interface PluginSandboxProps {
   pluginCode: string
   onReady?: (handle: PluginSandboxHandle) => void
   onCommandRegistered?: (command: { id: string; label?: string; description?: string }) => void
-  onPanelRegistered?: (panel: { id: string; name?: string }) => void
+  onPanelRegistered?: (_panel: { id: string; name?: string }) => void
   onNotification?: (message: string, type: 'info' | 'success' | 'error') => void
   onError?: (error: string) => void
   editorContent?: string | null
@@ -58,41 +50,23 @@ export default function PluginSandbox({
   pluginCode,
   onReady,
   onCommandRegistered,
-  onPanelRegistered,
+  onPanelRegistered: _onPanelRegistered,
   onNotification,
   onError,
-  editorContent,
-  editorLanguage,
+  editorContent: _editorContent,
+  editorLanguage: _editorLanguage,
 }: PluginSandboxProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
-  const [ready, setReady] = useState(false)
+  const [_ready, setReady] = useState(false)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
 
-  const pendingRef = useRef<
-    Map<
-      number,
-      {
-        resolve: (v: unknown) => void
-        reject: (e: Error) => void
-        timer: ReturnType<typeof setTimeout>
-      }
-    >
-  >(new Map())
   const handleRef = useRef<PluginSandboxHandle | null>(null)
   const handlersRegisteredRef = useRef(false)
 
   // ── 生成沙箱 HTML（只在 manifest.id 或 pluginCode 变化时重新生成） ──
   const generateSandboxHTML = useCallback(() => {
     const nonce = Math.random().toString(36).slice(2, 18)
-    const styleBlock = `
-      <style nonce="${nonce}">
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body { width: 100%; height: 100%; background: transparent; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #e2e8f0; overflow: auto; }
-        #plugin-root { min-height: 100%; padding: 4px; }
-      </style>
-    `
-
     const safeId = JSON.stringify(manifest.id)
     const safeManifest = JSON.stringify(manifest)
 
@@ -261,7 +235,7 @@ export default function PluginSandbox({
 `
     return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src 'self'; img-src 'self' data: https:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self' https:; font-src 'self' data:;"></head><body><div id="plugin-root"></div><script nonce="${nonce}">${script}</script></body></html>`
-  }, [manifest.id, manifest.name, pluginCode])
+  }, [manifest, pluginCode])
 
   // ── 使用 srcdoc 而不是 blob URL（避免 Safari 的 blob: 限制）
   // ── 创建 iframe 并注入 HTML（只在内容变化时重建） ──

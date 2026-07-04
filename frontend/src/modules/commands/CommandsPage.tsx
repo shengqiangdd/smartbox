@@ -1,13 +1,11 @@
 import { useState, useCallback } from 'react'
-import { Zap, Terminal, Download, Upload, PanelLeftOpen, PanelLeftClose, Tags } from 'lucide-react'
+import { Zap, Terminal, Download, Upload, Tags } from 'lucide-react'
 import { useSshStore } from '../../stores/ssh-store'
 import { useCommands } from './useCommands'
 import CommandsList from './CommandsList'
 import CommandOutput from './CommandOutput'
 import CommandFormModal from './CommandFormModal'
 import VariableModal from './VariableModal'
-import GroupManageModal from './GroupManageModal'
-import { COMMAND_GROUPS } from './index'
 import type { QuickCommand } from './index'
 
 export default function CommandsPage() {
@@ -16,7 +14,6 @@ export default function CommandsPage() {
 
   const {
     customCommands,
-    customGroups,
     commandsByGroup,
     results,
     executingId,
@@ -26,14 +23,12 @@ export default function CommandsPage() {
     executeCommand,
     clearResults,
     removeResult,
-    setCustomCommands,
-    saveGroup,
-    removeGroup,
   } = useCommands()
 
   const [outputPanelOpen, setOutputPanelOpen] = useState(window.innerWidth >= 768)
   const [showForm, setShowForm] = useState(false)
   const [editCmd, setEditCmd] = useState<QuickCommand | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [showGroupManage, setShowGroupManage] = useState(false)
   const [variableModal, setVariableModal] = useState<{
     cmd: QuickCommand
@@ -146,16 +141,6 @@ export default function CommandsPage() {
     }
     input.click()
   }, [addCommand])
-
-  /** 执行带变量已填充的命令 */
-  const handleVariableExecute = useCallback(
-    async (cmd: QuickCommand, resolvedCommand: string) => {
-      if (!connectionId) return
-      const resolvedCmd = { ...cmd, command: resolvedCommand, variables: undefined }
-      await executeCommand(resolvedCmd, connectionId)
-    },
-    [connectionId, executeCommand],
-  )
 
   // 未连接 — 不拦截显示，命令列表可浏览但执行按钮禁用
   const hasConnection = !!connectionId

@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { useAlertStore, refreshAlertStore, type AlertRule } from '../../stores/alert-store'
+import { describe, it, expect, beforeEach } from 'vitest'
+import { useAlertStore, refreshAlertStore } from '../../stores/alert-store'
 
 describe('alert-store', () => {
   beforeEach(() => {

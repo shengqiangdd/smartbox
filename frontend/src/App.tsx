@@ -2,7 +2,8 @@ import { useEffect, useState, useRef } from 'react'
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import { AuthGate } from './components/AuthGate'
 import Layout from './components/layout/Layout'
-import CommandPalette, { registerCommand } from './components/CommandPalette'
+import CommandPalette from './components/CommandPalette'
+import { registerCommand } from './utils/commands'
 import ShortcutHelpModal from './components/ShortcutHelpModal'
 import Toast from './components/Toast'
 import { useAppStore, refreshAppStore, type NavId } from './stores/app-store'
@@ -43,27 +44,29 @@ function AppContent() {
   // URL ↔ Nav 双向同步
   useEffect(() => {
     const navFromPath = PATH_TO_NAV[location.pathname]
-    if (navFromPath && navFromPath !== activeNav) {
+    if (navFromPath && navFromPath !== useAppStore.getState().activeNav) {
       setActiveNav(navFromPath)
     }
-  }, [location.pathname])
+  }, [location.pathname, setActiveNav])
 
   // activeNav → URL 推送（初始不推）
   const initializedRef = useRef(false)
+  const pathnameRef = useRef(location.pathname)
+  pathnameRef.current = location.pathname
   useEffect(() => {
     if (!initializedRef.current) {
       // 首次加载：如果当前 path 不是有效 nav，推到当前 nav
       initializedRef.current = true
-      if (!PATH_TO_NAV[location.pathname]) {
+      if (!PATH_TO_NAV[pathnameRef.current]) {
         navigate(NAV_PATH[activeNav], { replace: true })
       }
       return
     }
     const expectedPath = NAV_PATH[activeNav]
-    if (location.pathname !== expectedPath) {
+    if (pathnameRef.current !== expectedPath) {
       navigate(expectedPath, { replace: true })
     }
-  }, [activeNav])
+  }, [activeNav, navigate])
 
   // 注册快捷键列表命令到命令面板
   useEffect(() => {
