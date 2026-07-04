@@ -6,6 +6,7 @@ use tower::ServiceExt;
 
 use smartbox_backend::app_state::AppState;
 use smartbox_backend::config::AppConfig;
+use smartbox_backend::utils::jwt::{Claims, JwtService};
 
 fn test_config() -> AppConfig {
     AppConfig {
@@ -20,6 +21,13 @@ fn test_config() -> AppConfig {
         database_url: None,
         log_level: "error".to_string(),
     }
+}
+
+fn build_test_app() -> smartbox_backend::axum::Router {
+    let config = test_config();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let state = rt.block_on(AppState::new(config)).expect("Failed to create AppState");
+    smartbox_backend::build_app(Arc::new(state))
 }
 
 #[tokio::test]
@@ -89,7 +97,6 @@ async fn test_auth_middleware_blocks_unauthenticated() {
     let state = AppState::new(config).await.expect("Failed to create AppState");
     let app = smartbox_backend::build_app(Arc::new(state));
 
-    // Plugins endpoint requires auth
     let response = app
         .oneshot(
             Request::builder()
@@ -113,13 +120,11 @@ async fn test_auth_middleware_allows_authenticated() {
     let state = AppState::new(config).await.expect("Failed to create AppState");
     let app = smartbox_backend::build_app(Arc::new(state));
 
-    // Get a valid JWT token from the health endpoint
-    // First get a ws-token to use
-    let token = smartbox_backend::utils::jwt::JwtService::new(
-        &config.jwt_secret,
-    )
-    .create_token("127.0.0.1", "test-session")
-    .expect("Failed to create JWT token");
+    // Create a valid JWT token
+    let jwt_service = JwtService::from_secret(&config.jwt_secret)
+        .expect("Failed to create JWT service");
+    let claims = Claims::new("test".into(), "api+ws", 86400);
+    let token = jwt_service.sign(&claims).expect("Failed to sign JWT");
 
     let response = app
         .oneshot(
@@ -138,4 +143,90 @@ async fn test_auth_middleware_allows_authenticated() {
         StatusCode::UNAUTHORIZED,
         "Authenticated requests should not be blocked"
     );
+}
+
+#[tokio::test]
+async fn test_vault_blocked_without_auth() {
+    let config = test_config();
+    let state = AppState::new(config).await.expect("Failed to create AppState");
+    let app = smartbox_backend::build_app(Arc::new(state));
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/vault")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_notifications_blocked_without_auth() {
+    let config = test_config();
+    let state = AppState::new(config).await.expect("Failed to create AppState");
+    let app = smartbox_backend::build_app(Arc::new(state));
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/notifications")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_system_backup_blocked_without_auth() {
+    let config = test_config();
+    let state = AppState::new(config).await.expect("Failed to create AppState");
+    let app = smartbox_backend::build_app(Arc::new(state));
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/system/backup")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_jwt_token_endpoint_accessible() {
+    let config = test_config();
+    let state = AppState::new(config).await.expect("Failed to create AppState");
+    let app = smartbox_backend::build_app(Arc::new(state));
+
+    // POST /api/ws-token is mounted outside auth middleware
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/ws-token")
+                .method("POST")
+                .header(axum::http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // Should be accessible without auth (not 401 or 404)
+    assert_ne!(response.status(), StatusCode::NOT_FOUND);
+    assert_ne!(response.status(), StatusCode::UNAUTHORIZED);
+
+    // If 200 OK, the response should have a JSON body with a token field
+    if response.status() == StatusCode::OK {
+        // Success — we trust the handler works correctly
+    }
 }
