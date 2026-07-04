@@ -3,28 +3,41 @@
 ## [Unreleased] - Rust 后端重构
 
 ### ⚡ 后端重构: Node.js → Rust (Axum + Tokio) 🦀
-- **全面功能对等重构** — SSH/SFTP/Docker/日志/插件/AI/WebSocket 认证等 14 个模块，43 个源文件，~4005 LOC
-- **性能与安全提升** — 单二进制部署 (8.8MB)，零内存安全漏洞，`cargo clippy` 零警告
+- **全面功能对等重构** — SSH/SFTP/Docker/日志/插件/AI/WebSocket 认证等 14 个模块，54 个源文件，~8,200 LOC
+- **性能与安全提升** — 单二进制部署 (8.8MB)，零内存安全漏洞，`cargo clippy -- -D warnings` 零警告通过
+- **REST API 完全对等** — 原始 Node.js bridge 的 39 个 REST 端点全部覆盖，新增 17+ 增强端点
+  - 最后补全：`GET /api/ssh/test-config`、`POST /api/docker/rm`、`POST /api/docker/exec`
+  - Rust 独有：Secret Vault、通知渠道、主机健康看板、审计日志可视化、系统维护 CLI
 - **SSH 核心** — russh 密码/公钥认证 + 会话池 + 空闲清理 (5min 定时) + SFTP 会话缓存复用
-- **REST API** — Axum 路由 + tower-http CORS + SPA fallback + ServeDir 静态托管
-- **WebSocket** — 交互式终端 / Docker 容器 Shell / 日志尾随 / 心跳保活
-- **认证与安全** — Bearer Token 中间件 + 速率限制 (60 req/60s 滑动窗口) + 统一 shell 转义函数
-- **Docker 管理** — 容器/镜像/Compose 全生命周期 API + `docker exec` WebSocket 终端
-- **日志系统** — tail 实时跟踪 + grep 搜索 + 1MB 缓冲区上限 + 流式 WebSocket 传输
-- **插件与 AI** — 插件安装/卸载 API + AI 模型多服务商 (OpenRouter/Anthropic/Google/DeepSeek)
-- **测试覆盖** — 34 个 Rust 单元测试 (utils/response/rate_limit/sftp)，全部通过
+- **WebSocket** — 交互式终端 / Docker 容器 Shell / 日志尾随 / Docker stats 实时推送 / 心跳保活
+- **认证与安全** — Bearer Token 中间件 (JWT 24h) + 速率限制 (60 req/60s 滑动窗口) + 统一 shell 转义函数 + CSP nonce 动态注入
+- **SSH 凭据** — AES-256-GCM 加密存储，密钥从 `JWT_SECRET` 派生
+- **Rust 单元测试** — 72 个 `#[test]`（app_state/error/response/utils/sftp/auth/rate_limit/db/notify），全部通过
+- **遗留清理** — 移除 Node.js bridge 目录（`bridge/index.js` 2293 行 + security.js + package.json）共 4144 行死代码
 
 ### 🚀 新增
-- 🖥️ **前端认证框架** — `AuthGate` 启动认证门控 (loading→ready/error)、`auth.ts` 服务 (getToken/refreshToken/authedFetch/buildWsUrl)
+- 🖥️ **前端认证框架** — `AuthGate` 启动认证门控、`auth.ts` 服务 (getToken/refreshToken/authedFetch/buildWsUrl)
 - 🤖 **AI 多服务商支持** — 后端 `fetch-all-models?provider=` 端点，OpenRouter 完整免费/付费模型列表
 - 📊 **审计日志扩展** — SSH 连接/断开、Docker 容器启动/停止/重启、插件安装/卸载记录
-- 🧹 **代码质量三零** — TypeScript 零错误 + ESLint 零错误 + Clippy 零警告（已实现并维护）
+- 🧹 **代码质量三零里程碑** — TypeScript 零错误 + ESLint **零警告** + Clippy 零警告
+  - `react-hooks/exhaustive-deps`: 27→0（17文件修复）
+  - `react-refresh/only-export-components`: 3→0
+  - `no-explicit-any`（生产代码）: 全面消除
+  - `no-explicit-any`（测试代码）: 52→0（块注释策略兼容 Prettier）
+  - CI 硬性门槛：`--max-warnings 0` 强制执行，任何新增警告导致构建失败
 
 ### 🏗️ 工程化
 - Dockerfile 三阶段构建优化 (Node→Rust→Debian slim)，最终二进制 8.8MB
-- Rust 分层缓存：虚拟 src → 缓存依赖 → 覆盖真实源码 → 增量编译
-- `Cargo.lock` 生成兜底，`cargo generate-lockfile` 确保可复现构建
-- CHANGELOG.md、README.md 全面更新反映 Rust 架构
+- **Rust 分层缓存**：虚拟空源码编译依赖 → 覆盖真实源码增量编译 app，冷构建从 ~60min 降至 ~5min
+- **Registry 缓存后备**：`cache-from: type=registry` 兜底 GHA cache 被逐出场景
+- **CI 加固**：`timeout-minutes: 120` 防任务卡死，`CARGO_NET_RETRY=5` + `CARGO_HTTP_TIMEOUT=120` 防网络超时
+- **前端性能**
+  - React Compiler（`babel-plugin-react-compiler`）生产环境启用自动记忆化
+  - 生产环境关闭 Source Map（节省 ~5MB dist 体积）
+  - 移除 3 个未使用生产依赖：`clsx`、`@xterm/addon-web-links`、`tailwind-merge`
+  - 保留 `idb`（被 `src/services/db.ts` 使用）
+- Swatinem/rust-cache@v2 加速 Rust CI 构建
+- CHANGELOG.md、README.md、PROGRESS.md、DEPLOY.md 全面更新
 
 ---
 
