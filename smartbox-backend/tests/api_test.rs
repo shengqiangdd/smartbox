@@ -1,7 +1,5 @@
 use std::sync::Arc;
 use std::path::PathBuf;
-use axum::body::Body;
-use axum::http::Request;
 
 use smartbox_backend::app_state::AppState;
 use smartbox_backend::config::AppConfig;
@@ -34,7 +32,9 @@ async fn spawn_test_app() -> String {
     let url = format!("http://{}", addr);
 
     tokio::spawn(async move {
-        let _ = axum::serve(listener, app).await;
+        if let Err(e) = axum::serve(listener, app).await {
+            eprintln!("Test server error: {:?}", e);
+        }
     });
 
     url
@@ -78,6 +78,24 @@ async fn test_auth_middleware_blocks_unauthenticated() {
 }
 
 #[tokio::test]
+async fn test_vault_notifications_backup_blocked_without_auth() {
+    let base_url = spawn_test_app().await;
+
+    for uri in &["/api/vault", "/api/notifications", "/api/system/backup"] {
+        let response = reqwest::get(format!("{}{}", base_url, uri))
+            .await
+            .expect("Failed to send request");
+
+        assert_eq!(
+            response.status(),
+            401,
+            "Endpoint {} should require auth",
+            uri
+        );
+    }
+}
+
+#[tokio::test]
 async fn test_jwt_token_endpoint_accessible() {
     let base_url = spawn_test_app().await;
 
@@ -93,4 +111,22 @@ async fn test_jwt_token_endpoint_accessible() {
     // Should be accessible without auth (not 401 or 404)
     assert_ne!(response.status(), 404);
     assert_ne!(response.status(), 401);
+}
+
+#[tokio::test]
+async fn test_api_responds_with_json_on_health() {
+    let base_url = spawn_test_app().await;
+
+    let response = reqwest::get(format!("{}/api/health", base_url))
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(response.status(), 200);
+
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .expect("Response should be valid JSON");
+
+    assert_eq!(body["status"], "ok");
 }
