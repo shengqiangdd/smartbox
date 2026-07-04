@@ -1,6 +1,5 @@
-# 依赖 — 交给 Dockerfile 里的 npm install 重新安装
+# 依赖 — 交给 Dockerfile 里的 npm install / cargo build 重新安装
 node_modules/
-bridge/node_modules/
 frontend/node_modules/
 
 # 构建产物
