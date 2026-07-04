@@ -14,28 +14,31 @@ export default function DockerContainerLogs({ connectionId, containerName, onClo
   const [tail, setTail] = useState(200)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  const fetchLogs = useCallback(async (n: number) => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/docker/logs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ connectionId, id: containerName, tail: n }),
-      })
-      const json = await res.json()
-      if (json.success) {
-        setLogs(json.data || '(无日志输出)')
-      } else {
-        setError(json.error || '获取日志失败')
+  const fetchLogs = useCallback(
+    async (n: number) => {
+      setLoading(true)
+      setError(null)
+      try {
+        const res = await fetch('/api/docker/logs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ connectionId, id: containerName, tail: n }),
+        })
+        const json = await res.json()
+        if (json.success) {
+          setLogs(json.data || '(无日志输出)')
+        } else {
+          setError(json.error || '获取日志失败')
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : '请求失败'
+        setError(msg)
+      } finally {
+        setLoading(false)
       }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '请求失败'
-      setError(msg)
-    } finally {
-      setLoading(false)
-    }
-  }, [connectionId, containerName])
+    },
+    [connectionId, containerName],
+  )
 
   useEffect(() => {
     fetchLogs(tail)

@@ -39,8 +39,11 @@ vi.stubGlobal('WebSocket', MockWebSocket)
 import { WsClient, getWsClientSync } from '../../services/websocket'
 
 /** Helper to access private ws property for testing */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getMockWs(client: WsClient): MockWebSocket { return (client as any).ws }
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function getMockWs(client: WsClient): MockWebSocket {
+  return (client as any).ws
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 describe('WsClient', () => {
   let client: WsClient

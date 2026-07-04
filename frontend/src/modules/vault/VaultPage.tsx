@@ -32,7 +32,10 @@ interface VaultEntry {
   updatedAt: string
 }
 
-const KIND_META: Record<string, { label: string; icon: React.ComponentType<{ size?: number }>; color: string }> = {
+const KIND_META: Record<
+  string,
+  { label: string; icon: React.ComponentType<{ size?: number }>; color: string }
+> = {
   ssh_key: { label: 'SSH Key', icon: Terminal, color: 'text-emerald-400' },
   api_key: { label: 'API Key', icon: Key, color: 'text-blue-400' },
   password: { label: 'Password', icon: Lock, color: 'text-amber-400' },

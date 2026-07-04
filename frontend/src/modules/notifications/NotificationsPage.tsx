@@ -29,7 +29,10 @@ interface NotificationChannel {
   updatedAt: string
 }
 
-const CHANNEL_META: Record<string, { label: string; icon: React.ComponentType<{ size?: number }>; color: string }> = {
+const CHANNEL_META: Record<
+  string,
+  { label: string; icon: React.ComponentType<{ size?: number }>; color: string }
+> = {
   discord: { label: 'Discord', icon: MessageSquare, color: 'text-indigo-400' },
   slack: { label: 'Slack', icon: MessageCircle, color: 'text-green-400' },
   telegram: { label: 'Telegram', icon: Send, color: 'text-blue-400' },

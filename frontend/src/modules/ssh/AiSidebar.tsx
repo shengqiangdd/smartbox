@@ -6,17 +6,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import {
-  Brain,
-  Send,
-  Terminal,
-  Loader2,
-  X,
-  Sparkles,
-  Copy,
-  Check,
-  Trash2,
-} from 'lucide-react'
+import { Brain, Send, Terminal, Loader2, X, Sparkles, Copy, Check, Trash2 } from 'lucide-react'
 import { useAiStore } from '../../stores/ai-store'
 import type { AiMessage } from '../../types/ai'
 

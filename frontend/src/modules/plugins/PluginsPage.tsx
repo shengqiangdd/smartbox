@@ -164,13 +164,15 @@ export default function PluginsPage() {
           author: plugin.author,
           icon: plugin.icon,
           entry: plugin.entry,
-          commands: (plugin.commands || []).map((c: { id: string; label?: string; description?: string; icon?: string }) => ({
-            id: c.id,
-            name: c.label || c.id,
-            label: c.label,
-            description: c.description,
-            icon: c.icon,
-          })),
+          commands: (plugin.commands || []).map(
+            (c: { id: string; label?: string; description?: string; icon?: string }) => ({
+              id: c.id,
+              name: c.label || c.id,
+              label: c.label,
+              description: c.description,
+              icon: c.icon,
+            }),
+          ),
           panels: (plugin.panels || []).map((p: { id: string; title?: string; icon?: string }) => ({
             id: p.id,
             name: p.title || p.id,

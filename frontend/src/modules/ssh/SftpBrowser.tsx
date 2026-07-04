@@ -951,7 +951,8 @@ export default function SftpBrowser({
         operation: 'chunk_start',
         path: remotePath,
       })
-      if (!startResult.success) throw new Error((startResult.error as string) || '分块上传初始化失败')
+      if (!startResult.success)
+        throw new Error((startResult.error as string) || '分块上传初始化失败')
       const { chunkId } = startResult
 
       const totalChunks = Math.ceil(file.size / CHUNK_SIZE)

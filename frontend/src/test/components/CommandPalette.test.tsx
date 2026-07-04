@@ -7,10 +7,14 @@ import CommandPalette from '../../components/CommandPalette'
 import { fuzzyMatch, registerCommand, getCommands } from '../../utils/commands'
 
 // ─── Helpers ────────────────────────────────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function setAppState(v: Record<string, unknown>) { useAppStore.setState(v as any) }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function setPluginState(v: Record<string, unknown>) { usePluginStore.setState(v as any) }
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function setAppState(v: Record<string, unknown>) {
+  useAppStore.setState(v as any)
+}
+function setPluginState(v: Record<string, unknown>) {
+  usePluginStore.setState(v as any)
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 // ─── Mock stores ────────────────────────────────────────────────
 const mockSetOpen = vi.fn()

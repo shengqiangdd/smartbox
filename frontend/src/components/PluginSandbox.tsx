@@ -294,7 +294,10 @@ export default function PluginSandbox({
         }
         case 'showNotification': {
           const payload = data.payload as Record<string, unknown>
-          onNotification?.(payload.message as string || '', (payload.type as 'info' | 'success' | 'error') || 'info')
+          onNotification?.(
+            (payload.message as string) || '',
+            (payload.type as 'info' | 'success' | 'error') || 'info',
+          )
           break
         }
         case 'pluginError': {

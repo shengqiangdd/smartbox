@@ -637,7 +637,7 @@ export default function MonitorPage() {
         if (s) evaluate(id, s.name, { cpu: s.cpu, memory: s.memory.pct, disk: s.disk.pct })
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? (err.message || '未知错误') : '未知错误'
+      const msg = err instanceof Error ? err.message || '未知错误' : '未知错误'
       setError('采集失败: ' + msg)
     } finally {
       setLoading(false)

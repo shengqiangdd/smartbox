@@ -1,11 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { QuickCommand, CommandGroup } from './index'
-import {
-  BUILTIN_COMMANDS,
-  BUILTIN_GROUPS,
-  STORAGE_KEY,
-  DEFAULT_CUSTOM,
-} from './index'
+import { BUILTIN_COMMANDS, BUILTIN_GROUPS, STORAGE_KEY, DEFAULT_CUSTOM } from './index'
 
 const GROUP_STORAGE_KEY = 'smartbox-command-groups'
 

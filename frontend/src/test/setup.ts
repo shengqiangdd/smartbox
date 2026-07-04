@@ -22,7 +22,8 @@ import '@testing-library/jest-dom'
 
   if (actFn) {
     // Patch globalThis.React.act (if React is exposed globally)
-    const gReact = (globalThis as Record<string, unknown>).React as Record<string, unknown> | undefined
+    const gReact = (globalThis as Record<string, unknown>).React as
+      Record<string, unknown> | undefined
     if (gReact && typeof gReact.act !== 'function') {
       Object.defineProperty(gReact, 'act', {
         value: actFn,

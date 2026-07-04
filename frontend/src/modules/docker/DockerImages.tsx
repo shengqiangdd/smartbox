@@ -1,13 +1,5 @@
 import { useState, useCallback } from 'react'
-import {
-  Trash2,
-  Search,
-  Download,
-  Upload,
-  Tag as TagIcon,
-  Layers,
-  X,
-} from 'lucide-react'
+import { Trash2, Search, Download, Upload, Tag as TagIcon, Layers, X } from 'lucide-react'
 import type { DockerImage } from './index'
 
 function notify(message: string, type: 'success' | 'error' | 'info' = 'info') {

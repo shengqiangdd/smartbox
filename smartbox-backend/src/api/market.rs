@@ -1,4 +1,5 @@
 use axum::extract::State;
+use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use std::sync::Arc;
 use crate::app_state::AppState;
@@ -20,7 +21,7 @@ pub struct MarketPluginListing {
 }
 
 /// Marketplace index response
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MarketIndex {
     pub plugins: Vec<MarketPluginListing>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -93,7 +94,7 @@ pub async fn get_market_index(
         Ok(p) => p,
         Err(e) => {
             return (
-                axum::StatusCode::INTERNAL_SERVER_ERROR,
+                StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to fetch marketplace: {}", e)
             ).into_response();
         }

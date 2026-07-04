@@ -1,5 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Server, PanelRightClose, PanelRightOpen, Menu, PlugZap, Brain, X, Terminal } from 'lucide-react'
+import {
+  Server,
+  PanelRightClose,
+  PanelRightOpen,
+  Menu,
+  PlugZap,
+  Brain,
+  X,
+  Terminal,
+} from 'lucide-react'
 import { useAppStore, type SplitDef } from '../../stores/app-store'
 import { useSshStore, decryptConnection } from '../../stores/ssh-store'
 import { getWsClient, type WsClient, type WsStatus } from '../../services/websocket'
@@ -170,9 +179,12 @@ export default function SshPlaceholder() {
     [handleConnect, setSplits],
   )
 
-  const handleRemoveSplit = useCallback((id: string) => {
-    setSplits((prev) => prev.filter((s) => s.id !== id))
-  }, [setSplits])
+  const handleRemoveSplit = useCallback(
+    (id: string) => {
+      setSplits((prev) => prev.filter((s) => s.id !== id))
+    },
+    [setSplits],
+  )
 
   const handleSplitConnectionChange = useCallback(
     (splitId: string, newConnectionId: string, newSessionId: string) => {
@@ -194,51 +206,54 @@ export default function SshPlaceholder() {
   const [syncGroups, setSyncGroups] = useState<Record<string, string[]>>({})
   const syncCounterRef = useRef(0)
 
-  const handleToggleSync = useCallback((splitId: string) => {
-    setSplits((prev) => {
-      const target = prev.find((s) => s.id === splitId)
-      if (!target) return prev
+  const handleToggleSync = useCallback(
+    (splitId: string) => {
+      setSplits((prev) => {
+        const target = prev.find((s) => s.id === splitId)
+        if (!target) return prev
 
-      if (target.syncGroup) {
-        // 关闭同步：移除这个分屏的同步组
-        const oldGroup = target.syncGroup
-        const updated = prev.map((s) => (s.id === splitId ? { ...s, syncGroup: undefined } : s))
-        // 更新 syncGroups state
-        setSyncGroups((prevGroups) => {
-          const newGroups = { ...prevGroups }
-          if (newGroups[oldGroup]) {
-            newGroups[oldGroup] = newGroups[oldGroup].filter((id) => id !== splitId)
-            if (newGroups[oldGroup].length <= 1) delete newGroups[oldGroup]
-          }
-          return newGroups
-        })
-        return updated
-      }
+        if (target.syncGroup) {
+          // 关闭同步：移除这个分屏的同步组
+          const oldGroup = target.syncGroup
+          const updated = prev.map((s) => (s.id === splitId ? { ...s, syncGroup: undefined } : s))
+          // 更新 syncGroups state
+          setSyncGroups((prevGroups) => {
+            const newGroups = { ...prevGroups }
+            if (newGroups[oldGroup]) {
+              newGroups[oldGroup] = newGroups[oldGroup].filter((id) => id !== splitId)
+              if (newGroups[oldGroup].length <= 1) delete newGroups[oldGroup]
+            }
+            return newGroups
+          })
+          return updated
+        }
 
-      // 开启同步：加入一个组（优先加入已有组，否则新建组）
-      const firstSyncSplit = prev.find((s) => s.syncGroup)
-      if (firstSyncSplit) {
-        // 加入已有组
-        const groupId = firstSyncSplit.syncGroup!
-        const updated = prev.map((s) => (s.id === splitId ? { ...s, syncGroup: groupId } : s))
+        // 开启同步：加入一个组（优先加入已有组，否则新建组）
+        const firstSyncSplit = prev.find((s) => s.syncGroup)
+        if (firstSyncSplit) {
+          // 加入已有组
+          const groupId = firstSyncSplit.syncGroup!
+          const updated = prev.map((s) => (s.id === splitId ? { ...s, syncGroup: groupId } : s))
+          setSyncGroups((prevGroups) => ({
+            ...prevGroups,
+            [groupId]: [...(prevGroups[groupId] || []), splitId],
+          }))
+          return updated
+        }
+
+        // 新建组
+        syncCounterRef.current += 1
+        const newGroup = `sync_${syncCounterRef.current}`
+        const updated = prev.map((s) => (s.id === splitId ? { ...s, syncGroup: newGroup } : s))
         setSyncGroups((prevGroups) => ({
           ...prevGroups,
-          [groupId]: [...(prevGroups[groupId] || []), splitId],
+          [newGroup]: [splitId],
         }))
         return updated
-      }
-
-      // 新建组
-      syncCounterRef.current += 1
-      const newGroup = `sync_${syncCounterRef.current}`
-      const updated = prev.map((s) => (s.id === splitId ? { ...s, syncGroup: newGroup } : s))
-      setSyncGroups((prevGroups) => ({
-        ...prevGroups,
-        [newGroup]: [splitId],
-      }))
-      return updated
-    })
-  }, [setSplits, setSyncGroups])
+      })
+    },
+    [setSplits, setSyncGroups],
+  )
 
   // 当 splits 变化时重新计算 syncGroups
   useEffect(() => {

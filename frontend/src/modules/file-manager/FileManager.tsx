@@ -64,7 +64,11 @@ function getFileIcon(name: string) {
 }
 
 /** 等待 sftp-ready 事件，最多等 8 秒 — 内部辅助，暂未启用 */
-const _waitForSftpReady = (wsClient: WsClient, sessionId: string, timeout = 8000): Promise<boolean> => {
+const _waitForSftpReady = (
+  wsClient: WsClient,
+  sessionId: string,
+  timeout = 8000,
+): Promise<boolean> => {
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(false), timeout)
     const unsub = wsClient.on('sftp-ready', (data: Record<string, unknown>) => {

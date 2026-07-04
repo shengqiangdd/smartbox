@@ -62,7 +62,7 @@ const languageLoaders: Record<string, () => Promise<unknown>> = {
 /** 动态加载语言扩展 */
 async function loadLanguageExtension(lang: string) {
   const loader = languageLoaders[lang] || languageLoaders['javascript']!
-  const mod = await loader() as Record<string, unknown>
+  const mod = (await loader()) as Record<string, unknown>
   // 每个语言包导出对应的语言函数，名称与包名相关
   // javascript -> javascript(), python -> python(), json -> json(), 等
   if (lang === 'typescript' || lang === 'tsx' || lang === 'jsx') {
