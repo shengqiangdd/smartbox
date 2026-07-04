@@ -11,8 +11,6 @@ import {
   Plus,
   Trash2,
   Send,
-  Check,
-  X,
   Loader2,
   MessageSquare,
   Globe,
@@ -25,13 +23,13 @@ interface NotificationChannel {
   id: string
   name: string
   type: string
-  config: Record<string, any>
+  config: Record<string, unknown>
   enabled: boolean
   createdAt: string
   updatedAt: string
 }
 
-const CHANNEL_META: Record<string, { label: string; icon: any; color: string }> = {
+const CHANNEL_META: Record<string, { label: string; icon: React.ComponentType<{ size?: number }>; color: string }> = {
   discord: { label: 'Discord', icon: MessageSquare, color: 'text-indigo-400' },
   slack: { label: 'Slack', icon: MessageCircle, color: 'text-green-400' },
   telegram: { label: 'Telegram', icon: Send, color: 'text-blue-400' },
@@ -52,8 +50,8 @@ export default function NotificationsPage() {
       const res = await authedFetch('/api/notifications')
       const data = await res.json()
       setChannels(data.data || [])
-    } catch (e: any) {
-      setError(e.message || 'Failed to load channels')
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to load channels')
     } finally {
       setLoading(false)
     }
@@ -68,8 +66,8 @@ export default function NotificationsPage() {
     try {
       await authedFetch(`/api/notifications/${id}`, { method: 'DELETE' })
       setChannels((prev) => prev.filter((ch) => ch.id !== id))
-    } catch (e: any) {
-      alert('删除失败: ' + (e.message || '未知错误'))
+    } catch (e: unknown) {
+      alert('删除失败: ' + (e instanceof Error ? e.message : '未知错误'))
     }
   }
 
@@ -83,8 +81,8 @@ export default function NotificationsPage() {
       } else {
         alert('❌ 测试失败: ' + (data.error || '未知错误'))
       }
-    } catch (e: any) {
-      alert('❌ 测试失败: ' + (e.message || '网络错误'))
+    } catch (e: unknown) {
+      alert('❌ 测试失败: ' + (e instanceof Error ? e.message : '网络错误'))
     } finally {
       setTestingId(null)
     }
@@ -251,7 +249,7 @@ function AddChannelModal({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const buildConfig = (): Record<string, any> => {
+  const buildConfig = (): Record<string, unknown> => {
     switch (type) {
       case 'discord':
         return { webhookUrl }
@@ -300,8 +298,8 @@ function AddChannelModal({
           updatedAt: new Date().toISOString(),
         })
       }
-    } catch (e: any) {
-      setError(e.message || '保存失败')
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : '保存失败')
     } finally {
       setSaving(false)
     }

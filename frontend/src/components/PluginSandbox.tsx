@@ -22,8 +22,8 @@ interface SandboxMessage {
 }
 
 /** lazy import 避免循环依赖 */
-let _fileStore: any = null
-function getFileStore() {
+let _fileStore: ReturnType<typeof import('../stores/file-store').useFileStore> | null = null
+function getFileStore(): ReturnType<typeof import('../stores/file-store').useFileStore> | null {
   if (!_fileStore) {
     // 动态 import，仅在需要时加载
     import('../stores/file-store').then((m) => {
@@ -280,8 +280,8 @@ export default function PluginSandbox({
       return () => {
         // srcdoc 不需要清理
       }
-    } catch (err: any) {
-      const msg = err.message || 'Failed to create sandbox'
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to create sandbox'
       setLoadError(msg)
       setLoading(false)
       onError?.(msg)
@@ -312,15 +312,15 @@ export default function PluginSandbox({
           break
         }
         case 'registerCommand': {
-          const cmd = data.payload.command as any
+          const cmd = data.payload.command as Record<string, unknown> | undefined
           if (cmd?.id) {
-            onCommandRegistered?.(cmd)
+            onCommandRegistered?.(cmd as Parameters<typeof onCommandRegistered>[0])
           }
           break
         }
         case 'showNotification': {
-          const { message, type } = data.payload as any
-          onNotification?.(message || '', type || 'info')
+          const payload = data.payload as Record<string, unknown>
+          onNotification?.(payload.message as string || '', (payload.type as 'info' | 'success' | 'error') || 'info')
           break
         }
         case 'pluginError': {
@@ -332,25 +332,25 @@ export default function PluginSandbox({
         }
         case 'setEditorContent': {
           // 插件写入编辑器内容
-          const fileStore = getFileStore()
-          if (fileStore) {
+          import('../stores/file-store').then((m) => {
+            const fileStore = m.useFileStore
             const state = fileStore.getState()
             const content = data.payload.content as string
             if (state.activeTabId && content !== undefined) {
               state.updateFileContent(state.activeTabId, content)
             }
-          }
+          })
           break
         }
         case 'getEditorContent': {
           // 插件请求编辑器内容 → 回复
-          const fileStore = getFileStore()
-          if (fileStore) {
+          import('../stores/file-store').then((m) => {
+            const fileStore = m.useFileStore
             const state = fileStore.getState()
-            const activeTab = state.openTabs?.find((t: any) => t.id === state.activeTabId)
-            const iframe = iframeRef.current
-            if (iframe?.contentWindow) {
-              iframe.contentWindow.postMessage(
+            const activeTab = state.openTabs?.find((t) => t.id === state.activeTabId)
+            const iframeEl = iframeRef.current
+            if (iframeEl?.contentWindow) {
+              iframeEl.contentWindow.postMessage(
                 {
                   source: 'smartbox-host',
                   type: 'editorContentUpdate',
@@ -360,7 +360,7 @@ export default function PluginSandbox({
                 '*',
               )
             }
-          }
+          })
           break
         }
       }

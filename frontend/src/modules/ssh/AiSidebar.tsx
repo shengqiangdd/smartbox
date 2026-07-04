@@ -8,19 +8,16 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import {
   Brain,
-  MessageSquare,
   Send,
   Terminal,
   Loader2,
   X,
   Sparkles,
-  ChevronDown,
   Copy,
   Check,
   Trash2,
 } from 'lucide-react'
 import { useAiStore } from '../../stores/ai-store'
-import { getWsClientSync } from '../../services/websocket'
 import type { AiMessage } from '../../types/ai'
 
 interface Props {
@@ -121,7 +118,6 @@ export default function AiSidebar({ sessionId, connectionId, onClose }: Props) {
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const wsClient = getWsClientSync()
 
   // 自动滚动到底部
   useEffect(() => {
@@ -177,10 +173,10 @@ export default function AiSidebar({ sessionId, connectionId, onClose }: Props) {
         setMessages((prev) => [...prev, { role: 'assistant', content: fullContent }])
         setStreamingContent('')
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       // 如果是用户取消的，不报错
-      if (err.name === 'AbortError') return
-      const errMsg = err.message || '请求失败'
+      if (err instanceof Error && err.name === 'AbortError') return
+      const errMsg = err instanceof Error ? err.message : '请求失败'
       setMessages((prev) => [
         ...prev,
         { role: 'assistant', content: `**错误**: ${errMsg}\n\n请检查 API Key 和网络连接。` },
@@ -215,7 +211,7 @@ export default function AiSidebar({ sessionId, connectionId, onClose }: Props) {
         content: `⏳ 正在执行: \`${cmd}\``,
         _execId: execId,
         _executing: true,
-      } as any,
+      } as AiMessage,
     ])
 
     try {
@@ -228,23 +224,26 @@ export default function AiSidebar({ sessionId, connectionId, onClose }: Props) {
 
       // 替换占位消息为执行结果
       setMessages((prev) =>
-        prev.map((m) =>
-          (m as any)._execId === execId
+        prev.map((m) => {
+          const msg = m as AiMessage
+          return msg._execId === execId
             ? ({
-                role: 'assistant',
+                ...msg,
                 content: formatExecResult(cmd, result),
-                _execResult: { command: cmd, ...result },
-              } as any)
-            : m,
-        ),
+                _execResult: { command: cmd, ...(result as Record<string, unknown>) },
+              } as AiMessage)
+            : m
+        }),
       )
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : '未知错误'
       setMessages((prev) =>
-        prev.map((m) =>
-          (m as any)._execId === execId
-            ? ({ role: 'assistant', content: `❌ 执行失败: ${err.message}` } as any)
-            : m,
-        ),
+        prev.map((m) => {
+          const msg = m as AiMessage
+          return msg._execId === execId
+            ? ({ ...msg, role: 'assistant', content: `❌ 执行失败: ${errMsg}` } as AiMessage)
+            : m
+        }),
       )
     }
   }
@@ -360,10 +359,11 @@ export default function AiSidebar({ sessionId, connectionId, onClose }: Props) {
                 )}
               </div>
               {/* 执行结果：添加「发送给 AI 分析」按钮 */}
-              {(msg as any)._execResult && !(msg as any)._executing && (
+              {'_execResult' in msg && !msg._executing && msg._execResult && (
                 <button
                   onClick={() => {
-                    const r = (msg as any)._execResult
+                    const r = msg._execResult
+                    if (!r) return
                     analyzeResult(r.command, r.stdout || '', r.stderr || '')
                   }}
                   className="text-smartbox-400 hover:bg-smartbox-500/10 border-smartbox-500/20 mt-2 flex items-center gap-1 rounded border px-2 py-1 text-[10px]"

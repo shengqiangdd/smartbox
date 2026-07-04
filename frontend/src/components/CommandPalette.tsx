@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useAppStore, type NavId } from '../stores/app-store'
 import { usePluginStore } from '../stores/plugin-store'
 
@@ -18,7 +17,8 @@ const _registry: CommandItem[] = []
 
 // Expose for test cleanup (only in test environment)
 if (typeof globalThis !== 'undefined') {
-  ;(globalThis as any).__commandRegistry = _registry
+  const g = globalThis as Record<string, unknown>
+  g.__commandRegistry = _registry
 }
 
 export function registerCommand(cmd: CommandItem) {
@@ -69,6 +69,7 @@ export default function CommandPalette() {
   const setOpen = useAppStore((s) => s.setCommandPaletteOpen)
   const setActiveNav = useAppStore((s) => s.setActiveNav)
   const setTheme = useAppStore((s) => s.setTheme)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const theme = useAppStore((s) => s.theme)
 
   const pluginCommands = usePluginStore((s) => s.commands)

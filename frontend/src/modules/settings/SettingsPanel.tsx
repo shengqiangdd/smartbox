@@ -83,8 +83,8 @@ export default function SettingsPanel() {
           window.dispatchEvent(new CustomEvent('smartbox-config-imported'))
         }, 500)
         return null
-      } catch (err: any) {
-        return err.message || '导入失败'
+      } catch (err: unknown) {
+        return err instanceof Error ? err.message : '导入失败'
       }
     },
     null,
@@ -137,7 +137,7 @@ export default function SettingsPanel() {
         return
       }
       setAiConfig({
-        provider: provider.id as any,
+        provider: provider.id,
         baseUrl: provider.baseUrl,
         model: provider.defaultModel,
         customBaseUrl: false,
@@ -186,7 +186,7 @@ export default function SettingsPanel() {
         if (data.models && Array.isArray(data.models)) {
           setFetchedModels(data.models)
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('获取模型失败:', err)
       } finally {
         setIsFetchingModels(false)
@@ -208,8 +208,9 @@ export default function SettingsPanel() {
     setImportingFile(null)
     setImportError('')
     // 触发文件选择
-    importConfigFromFile().catch((err: any) => {
-      setImportError(err.message || '导入失败')
+    importConfigFromFile().catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : '导入失败'
+      setImportError(msg)
     })
   }, [])
 
@@ -242,8 +243,9 @@ export default function SettingsPanel() {
         new Promise<void>((resolve, reject) => {
           // 密码输入后 handleConfirmImport 会调用 detail.reject/resolve
           // 这里通过全局变量暂存
-          ;(window as any).__importResolve = resolve
-          ;(window as any).__importReject = reject
+          const w = window as unknown as Record<string, unknown>
+          w.__importResolve = resolve
+          w.__importReject = reject
         }),
       )
     }

@@ -81,8 +81,9 @@ export default function DockerPage() {
       } else {
         setError(json.error || '获取容器列表失败')
       }
-    } catch (err: any) {
-      setError(err.message || '请求失败')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '请求失败'
+      setError(msg)
     } finally {
       setLoading(false)
     }
@@ -114,8 +115,9 @@ export default function DockerPage() {
       } else {
         setError(json.error || '获取镜像列表失败')
       }
-    } catch (err: any) {
-      setError(err.message || '请求失败')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '请求失败'
+      setError(msg)
     } finally {
       setLoading(false)
     }

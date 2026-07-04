@@ -7,7 +7,7 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { EditorView, keymap, placeholder } from '@codemirror/view'
-import { EditorState } from '@codemirror/state'
+import { EditorState, type Extension } from '@codemirror/state'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import {
   syntaxHighlighting,
@@ -30,7 +30,7 @@ import type { AiCodeAction, AiCodeActionResult } from '../services/ai-operations
 
 // ── 语言包动态加载器 ──
 // 使用懒加载映射，避免在首屏加载所有 CodeMirror 语言包
-const languageLoaders: Record<string, () => Promise<any>> = {
+const languageLoaders: Record<string, () => Promise<unknown>> = {
   javascript: () => import('@codemirror/lang-javascript'),
   typescript: () => import('@codemirror/lang-javascript'),
   jsx: () => import('@codemirror/lang-javascript'),
@@ -62,11 +62,11 @@ const languageLoaders: Record<string, () => Promise<any>> = {
 /** 动态加载语言扩展 */
 async function loadLanguageExtension(lang: string) {
   const loader = languageLoaders[lang] || languageLoaders['javascript']!
-  const mod = await loader()
+  const mod = await loader() as Record<string, unknown>
   // 每个语言包导出对应的语言函数，名称与包名相关
   // javascript -> javascript(), python -> python(), json -> json(), 等
   if (lang === 'typescript' || lang === 'tsx' || lang === 'jsx') {
-    return mod.javascript({
+    return (mod.javascript as (opts: Record<string, boolean>) => unknown)({
       typescript: lang === 'typescript' || lang === 'tsx',
       jsx: lang === 'jsx' || lang === 'tsx',
     })
@@ -77,24 +77,24 @@ async function loadLanguageExtension(lang: string) {
     return cssMod.css()
   }
   if (lang === 'c' || lang === 'cpp') {
-    return mod.cpp()
+    return (mod.cpp as () => unknown)()
   }
   if (lang === 'jsonc' || lang === 'json5') {
-    return mod.json()
+    return (mod.json as () => unknown)()
   }
   if (lang === 'mdx') {
-    return mod.markdown()
+    return (mod.markdown as () => unknown)()
   }
   if (lang === 'yml') {
-    return mod.yaml()
+    return (mod.yaml as () => unknown)()
   }
   // 默认调用包中同名的导出函数
   const exportName = lang === 'c' || lang === 'cpp' ? 'cpp' : lang
   if (typeof mod[exportName] === 'function') {
-    return mod[exportName]()
+    return (mod[exportName] as () => unknown)()
   }
   if (typeof mod.default === 'function') {
-    return mod.default()
+    return (mod.default as () => unknown)()
   }
   return []
 }
@@ -201,8 +201,9 @@ export default function CodeMirrorEditor() {
           aiConfig.baseUrl,
         )
         setAiResult(result)
-      } catch (err: any) {
-        setAiError(err.message || 'AI 操作失败')
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'AI 操作失败'
+        setAiError(msg)
       } finally {
         setAiProcessing(null)
       }
@@ -273,7 +274,7 @@ export default function CodeMirrorEditor() {
           autocompletion(),
           syntaxHighlighting(defaultHighlightStyle),
           oneDark,
-          langExt,
+          langExt as Extension,
           placeholder('在此编辑文件...'),
           updateListener,
           EditorView.theme({

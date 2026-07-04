@@ -67,7 +67,7 @@ function getFileIcon(name: string) {
 function waitForSftpReady(wsClient: WsClient, sessionId: string, timeout = 8000): Promise<boolean> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(false), timeout)
-    const unsub = wsClient.on('sftp-ready', (data: any) => {
+    const unsub = wsClient.on('sftp-ready', (data: Record<string, unknown>) => {
       if (data.connectionId === sessionId) {
         clearTimeout(timer)
         unsub()
@@ -133,7 +133,7 @@ async function ensureSftpSession(
         sftpUnsub?.()
         resolve(false)
       }, 8000)
-      sftpUnsub = wsClient.on('sftp-ready', (data: any) => {
+      sftpUnsub = wsClient.on('sftp-ready', (data: Record<string, unknown>) => {
         if (data.connectionId === sessionId) {
           clearTimeout(timer)
           sftpUnsub?.()

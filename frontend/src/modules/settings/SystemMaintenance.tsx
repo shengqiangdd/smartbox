@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { Database, Download, Server, HardDrive, Table, Loader2, AlertTriangle } from 'lucide-react'
+import { Database, Download, Server, Table, Loader2, AlertTriangle } from 'lucide-react'
 import { authedFetch } from '../../services/auth'
 
 interface TableInfo {
@@ -20,9 +20,10 @@ interface DbInfo {
   tables: TableInfo[]
 }
 
-function byteSizeHuman(bytes: number): string {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function byteSizeHuman(_bytes: number): string {
   const units = ['B', 'KB', 'MB', 'GB']
-  let size = bytes
+  let size = _bytes
   let i = 0
   while (size >= 1024 && i < units.length - 1) {
     size /= 1024
@@ -44,8 +45,9 @@ export default function SystemMaintenance() {
       const json = await res.json()
       setDbInfo(json.data || null)
       setError(null)
-    } catch (e: any) {
-      setError(e.message || '加载失败')
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '加载失败'
+      setError(msg)
     } finally {
       setLoading(false)
     }
@@ -69,8 +71,9 @@ export default function SystemMaintenance() {
       a.download = filename
       a.click()
       URL.revokeObjectURL(url)
-    } catch (e: any) {
-      alert('下载失败: ' + (e.message || '未知错误'))
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '未知错误'
+      alert('下载失败: ' + msg)
     } finally {
       setDownloading(false)
     }

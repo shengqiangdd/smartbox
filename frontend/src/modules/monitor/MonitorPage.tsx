@@ -648,8 +648,9 @@ export default function MonitorPage() {
         const s = newStats[id]
         if (s) evaluate(id, s.name, { cpu: s.cpu, memory: s.memory.pct, disk: s.disk.pct })
       }
-    } catch (err: any) {
-      setError('采集失败: ' + (err?.message || '未知错误'))
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? (err.message || '未知错误') : '未知错误'
+      setError('采集失败: ' + msg)
     } finally {
       setLoading(false)
     }

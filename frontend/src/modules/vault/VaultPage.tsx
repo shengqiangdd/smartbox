@@ -32,7 +32,7 @@ interface VaultEntry {
   updatedAt: string
 }
 
-const KIND_META: Record<string, { label: string; icon: any; color: string }> = {
+const KIND_META: Record<string, { label: string; icon: React.ComponentType<{ size?: number }>; color: string }> = {
   ssh_key: { label: 'SSH Key', icon: Terminal, color: 'text-emerald-400' },
   api_key: { label: 'API Key', icon: Key, color: 'text-blue-400' },
   password: { label: 'Password', icon: Lock, color: 'text-amber-400' },
@@ -56,8 +56,8 @@ export default function VaultPage() {
       const res = await authedFetch('/api/vault')
       const data = await res.json()
       setEntries(data.data || [])
-    } catch (e: any) {
-      setError(e.message || 'Failed to load vault entries')
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to load vault entries')
     } finally {
       setLoading(false)
     }
@@ -72,8 +72,8 @@ export default function VaultPage() {
     try {
       await authedFetch(`/api/vault/${id}`, { method: 'DELETE' })
       setEntries((prev) => prev.filter((e) => e.id !== id))
-    } catch (e: any) {
-      alert('删除失败: ' + (e.message || '未知错误'))
+    } catch (e: unknown) {
+      alert('删除失败: ' + (e instanceof Error ? e.message : '未知错误'))
     }
   }
 
@@ -199,7 +199,7 @@ export default function VaultPage() {
                 >
                   <div className="mb-3 flex items-start justify-between">
                     <div className="flex items-center gap-2">
-                      <Icon size={18} className={meta.color} />
+                      <Icon size={18} />
                       <div>
                         <div className="text-sm font-medium text-slate-200">{entry.name}</div>
                         <div className="text-xs text-slate-500">{meta.label}</div>
@@ -316,8 +316,8 @@ function AddEntryModal({
         }
         onCreated(newEntry)
       }
-    } catch (e: any) {
-      setError(e.message || '保存失败')
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : '保存失败')
     } finally {
       setSaving(false)
     }

@@ -219,7 +219,7 @@ export default function DockerMonitor({ connectionId, containers }: Props) {
 
         return newMonitors
       })
-    } catch (err: any) {
+    } catch {
       // silent
     } finally {
       setLoading(false)

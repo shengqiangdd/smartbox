@@ -36,8 +36,9 @@ export default function DockerDetail({ connectionId, containerId, onClose }: Pro
           notify(json.error || '获取详情失败', 'error')
           onClose()
         }
-      } catch (err: any) {
-        notify(err.message || '请求失败', 'error')
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : '请求失败'
+        notify(msg, 'error')
         onClose()
       } finally {
         setLoading(false)

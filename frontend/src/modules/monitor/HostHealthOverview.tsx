@@ -81,8 +81,9 @@ export default function HostHealthOverview({
       const data = await res.json()
       setHosts(data.data || [])
       setError(null)
-    } catch (e: any) {
-      setError(e.message || 'Failed to load')
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Failed to load'
+      setError(msg)
     } finally {
       setLoading(false)
     }
@@ -105,8 +106,9 @@ export default function HostHealthOverview({
       const data = await res.json()
       const diag = data.data?.aiDiagnosis || data.data?.rawReport || '诊断不可用'
       setDiagnosis((prev) => ({ ...prev, [hostId]: diag }))
-    } catch (e: any) {
-      setDiagnosis((prev) => ({ ...prev, [hostId]: '诊断失败: ' + (e.message || '未知错误') }))
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '未知错误'
+      setDiagnosis((prev) => ({ ...prev, [hostId]: '诊断失败: ' + msg }))
     } finally {
       setDiagnosing(null)
     }

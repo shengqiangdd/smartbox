@@ -56,8 +56,9 @@ export default function LogViewer({ connectionId, logPath, onClose }: LogViewerP
       } else {
         setError(json.error || '获取日志失败')
       }
-    } catch (err: any) {
-      setError(err.message || '请求失败')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '请求失败'
+      setError(msg)
     } finally {
       setLoading(false)
     }
@@ -196,8 +197,9 @@ export default function LogViewer({ connectionId, logPath, onClose }: LogViewerP
       } else {
         setSearchResult(`搜索错误: ${json.error}`)
       }
-    } catch (err: any) {
-      setSearchResult(`请求失败: ${err.message}`)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '请求失败'
+      setSearchResult(`请求失败: ${msg}`)
     } finally {
       setSearching(false)
     }

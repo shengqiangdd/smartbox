@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useActionState } from 'react'
 import { X, CheckCircle2, AlertCircle, Loader2, PlugZap, Eye, EyeOff } from 'lucide-react'
-import { useSshStore, decryptConnection } from '../../stores/ssh-store'
+import { useSshStore } from '../../stores/ssh-store'
 import { getWsClientSync } from '../../services/websocket'
 import { encryptField } from '../../services/secure-store'
 import type { AuthType, SshConnection } from '../../types/ssh'
@@ -134,16 +134,18 @@ export default function ConnectionForm({ onClose, editId }: Props) {
         12000,
       )
 
-      if ((msg as any).success) {
+      const result = msg as Record<string, unknown>
+      if (result.success) {
         setTestStatus('success')
-        setTestMessage((msg as any).message || '连接成功')
+        setTestMessage((result.message as string) || '连接成功')
       } else {
         setTestStatus('error')
-        setTestMessage((msg as any).message || '连接失败')
+        setTestMessage((result.message as string) || '连接失败')
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '连接测试超时'
       setTestStatus('error')
-      setTestMessage(err.message || '连接测试超时')
+      setTestMessage(msg)
     }
   }, [host, port, username, password, privateKey, sudoPassword, authType, wsClient])
 

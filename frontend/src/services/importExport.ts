@@ -344,11 +344,12 @@ export async function importConfig(file: File, password?: string): Promise<void>
   let data: ExportData
   try {
     data = await parseImportContent(content, password)
-  } catch (err: any) {
-    if (err.message?.includes('密码错误') || err.message?.includes('请输入密码')) {
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message?.includes('密码错误')) {
       throw err
     }
-    throw new Error('解析文件失败：' + (err.message || '格式错误'))
+    const msg = err instanceof Error ? err.message : '格式错误'
+    throw new Error('解析文件失败：' + msg)
   }
 
   // 验证
@@ -402,8 +403,9 @@ export async function importConfigFromFile(): Promise<void> {
     if (error) throw new Error(error)
     applyImportData(data.data)
     notify(`配置导入成功 ✅（${data.data.connections.length} 个连接，已合并）`, 'success')
-  } catch (err: any) {
-    notify('导入失败：' + (err.message || '未知错误'), 'error')
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : '未知错误'
+    notify('导入失败：' + msg, 'error')
     throw err
   }
 }

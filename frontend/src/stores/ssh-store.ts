@@ -168,8 +168,9 @@ export const useSshStore = create<SshState>()(
           }
 
           set({ connections: merged, serverSynced: true, serverError: null })
-        } catch (e: any) {
-          set({ serverError: e.message || 'Server sync failed', serverSynced: false })
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : 'Server sync failed'
+          set({ serverError: msg, serverSynced: false })
         }
       },
 
@@ -180,8 +181,9 @@ export const useSshStore = create<SshState>()(
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(localToServer(conn)),
           })
-        } catch (e: any) {
-          console.warn('Failed to push connection to server:', e.message)
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : 'Sync failed'
+          console.warn('Failed to push connection to server:', msg)
         }
       },
 
@@ -190,8 +192,9 @@ export const useSshStore = create<SshState>()(
           await authedFetch(`/api/connections/${encodeURIComponent(id)}`, {
             method: 'DELETE',
           })
-        } catch (e: any) {
-          console.warn('Failed to remove connection from server:', e.message)
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : 'Sync failed'
+          console.warn('Failed to remove connection from server:', msg)
         }
       },
 

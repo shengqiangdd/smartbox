@@ -75,7 +75,7 @@ export async function fetchPluginCode(entry: string): Promise<string> {
 /**
  * 获取插件 manifest（从后端）
  */
-export async function fetchPluginManifest(pluginId: string): Promise<any> {
+export async function fetchPluginManifest(pluginId: string): Promise<PluginManifest> {
   const response = await fetch(`/api/plugins/${pluginId}/manifest.json`)
   if (!response.ok) {
     throw new Error(`Failed to load manifest: HTTP ${response.status}`)
@@ -92,8 +92,8 @@ export async function fetchPluginManifest(pluginId: string): Promise<any> {
  */
 export async function loadPluginToSandbox(plugin: PluginCatalogItem): Promise<PluginLoadResult> {
   try {
-    // 1. 下载插件代码
-    const code = await fetchPluginCode(plugin.entry)
+    // 1. 下载插件代码（预留：未来可直接注入到沙箱中执行）
+    await fetchPluginCode(plugin.entry)
 
     // 2. 构建 PluginManifest
     const manifest: PluginManifest = {
@@ -121,13 +121,14 @@ export async function loadPluginToSandbox(plugin: PluginCatalogItem): Promise<Pl
     // 3. 将插件注册到 Store（标记为已加载，后续由 PluginSandbox 组件执行）
     const store = usePluginStore.getState()
     if (!store.getPlugin(plugin.id)) {
-      store.registerPlugin(manifest, {} as any)
+      store.registerPlugin(manifest, {} as never)
     }
 
     return { id: plugin.id, success: true }
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err)
     console.error(`[PluginManager] Failed to load plugin "${plugin.name}":`, err)
-    return { id: plugin.id, success: false, error: err.message }
+    return { id: plugin.id, success: false, error: errMsg }
   }
 }
 
@@ -165,7 +166,7 @@ export function createSandboxHandlers(pluginId: string) {
           entry: '',
           commands: [],
           panels: [],
-        } as any,
+        } as PluginManifest,
         handle,
       )
     },

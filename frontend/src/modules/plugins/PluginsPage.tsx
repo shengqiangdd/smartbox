@@ -7,7 +7,6 @@ import {
   RefreshCw,
   AlertCircle,
   Shield,
-  Terminal,
   Play,
   Globe,
 } from 'lucide-react'
@@ -58,8 +57,9 @@ export default function PluginsPage() {
       for (const plugin of plugins) {
         try {
           codes[plugin.id] = await fetchPluginCode(plugin.entry)
-        } catch (err: any) {
-          console.error(`[PluginsPage] Failed to fetch code for "${plugin.id}":`, err)
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : String(err)
+          console.error(`[PluginsPage] Failed to fetch code for "${plugin.id}":`, errMsg)
         }
         keys[plugin.id] = Date.now() + Math.random()
       }
@@ -94,14 +94,15 @@ export default function PluginsPage() {
                 position: 'main' as const,
               })),
             },
-            {} as any,
+            {} as never,
           )
         }
       }
 
       setRenderTick((t) => t + 1)
-    } catch (err: any) {
-      setError(err.message || '加载插件失败')
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : '加载插件失败'
+      setError(errMsg)
     } finally {
       setLoading(false)
     }
@@ -160,14 +161,14 @@ export default function PluginsPage() {
           author: plugin.author,
           icon: plugin.icon,
           entry: plugin.entry,
-          commands: (plugin.commands || []).map((c: any) => ({
+          commands: (plugin.commands || []).map((c: { id: string; label?: string; description?: string; icon?: string }) => ({
             id: c.id,
             name: c.label || c.id,
             label: c.label,
             description: c.description,
             icon: c.icon,
           })),
-          panels: (plugin.panels || []).map((p: any) => ({
+          panels: (plugin.panels || []).map((p: { id: string; title?: string; icon?: string }) => ({
             id: p.id,
             name: p.title || p.id,
             icon: p.icon,

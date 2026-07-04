@@ -7,7 +7,6 @@ import {
   RotateCcw,
   StopCircle,
   FileText,
-  Terminal,
   Loader2,
   ChevronRight,
   ChevronDown,
@@ -78,8 +77,9 @@ export default function DockerCompose({ connectionId }: Props) {
         return { path: p, name: projectName, services: [] }
       })
       setProjects(parsed)
-    } catch (err: any) {
-      notify(err.message || '请求失败', 'error')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '请求失败'
+      notify(msg, 'error')
       setProjects([])
     } finally {
       setLoading(false)
@@ -106,8 +106,9 @@ export default function DockerCompose({ connectionId }: Props) {
       const projectName =
         parts.slice(0, -1).filter(Boolean).pop() || path.replace(/\.(yml|yaml)$/, '')
       setProjects([{ path, name: projectName, services: [] }])
-    } catch (err: any) {
-      notify(err.message || '请求失败', 'error')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '请求失败'
+      notify(msg, 'error')
     } finally {
       setLoading(false)
     }
@@ -194,11 +195,12 @@ export default function DockerCompose({ connectionId }: Props) {
       if (expandedPath === path && action !== 'logs') {
         setTimeout(() => fetchServices(path), 500)
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '请求失败'
       if (action === 'logs') {
-        setLogData({ key, content: `请求失败: ${err.message}` })
+        setLogData({ key, content: `请求失败: ${msg}` })
       }
-      notify(`${action} 请求失败: ${err.message}`, 'error')
+      notify(`${action} 请求失败: ${msg}`, 'error')
     } finally {
       setActionLoading(null)
     }

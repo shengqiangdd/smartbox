@@ -2,7 +2,6 @@ import { useState, useCallback } from 'react'
 import {
   Trash2,
   Search,
-  RefreshCw,
   Download,
   Upload,
   Tag as TagIcon,
@@ -47,7 +46,7 @@ export default function DockerImages({ connectionId, images, loading, onRefresh 
   const [selectedImage, setSelectedImage] = useState<DockerImage | null>(null)
   const [history, setHistory] = useState<HistoryLayer[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
-  const [inspectData, setInspectData] = useState<any>(null)
+  const [inspectData, setInspectData] = useState<Record<string, unknown> | null>(null)
   const [inspectLoading, setInspectLoading] = useState(false)
   const [detailTab, setDetailTab] = useState<'history' | 'inspect'>('history')
 
@@ -77,8 +76,9 @@ export default function DockerImages({ connectionId, images, loading, onRefresh 
           notify(`已删除镜像 ${id.slice(0, 12)}`, 'success')
           onRefresh()
         }
-      } catch (err: any) {
-        notify(`删除请求失败: ${err.message}`, 'error')
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : '未知错误'
+        notify(`删除请求失败: ${msg}`, 'error')
       } finally {
         setActionLoading(null)
       }
@@ -106,7 +106,7 @@ export default function DockerImages({ connectionId, images, loading, onRefresh 
     setModalLoading(true)
     try {
       let url = ''
-      const body: any = { connectionId }
+      const body: Record<string, unknown> = { connectionId }
 
       if (modal.type === 'pull') {
         url = '/api/docker/pull'
@@ -137,8 +137,9 @@ export default function DockerImages({ connectionId, images, loading, onRefresh 
         setModal(null)
         onRefresh()
       }
-    } catch (err: any) {
-      notify(`${getActionLabel(modal.type)}请求失败: ${err.message}`, 'error')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '未知错误'
+      notify(`${getActionLabel(modal.type)}请求失败: ${msg}`, 'error')
     } finally {
       setModalLoading(false)
     }

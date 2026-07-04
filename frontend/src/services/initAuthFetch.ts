@@ -15,7 +15,7 @@ import { getToken, clearToken } from './auth'
 
 /** 安装全局 fetch 拦截器，返回取消函数 */
 export function initAuthFetch(): () => void {
-  if ((window as any).__AUTH_FETCH_INSTALLED) {
+  if ((window as unknown as Record<string, unknown>).__AUTH_FETCH_INSTALLED) {
     return () => {}
   }
 
@@ -45,7 +45,7 @@ export function initAuthFetch(): () => void {
       }
 
       return resp
-    } catch (err) {
+    } catch {
       console.warn('[AuthFetch] Token unavailable, falling back:', path)
       return originalFetch(request)
     }
@@ -57,7 +57,7 @@ export function initAuthFetch(): () => void {
     configurable: true,
   })
 
-  ;(window as any).__AUTH_FETCH_INSTALLED = true
+  ;(window as unknown as Record<string, unknown>).__AUTH_FETCH_INSTALLED = true
 
   return () => {
     Object.defineProperty(window, 'fetch', {
@@ -65,6 +65,6 @@ export function initAuthFetch(): () => void {
       writable: true,
       configurable: true,
     })
-    ;(window as any).__AUTH_FETCH_INSTALLED = false
+    ;(window as unknown as Record<string, unknown>).__AUTH_FETCH_INSTALLED = false
   }
 }

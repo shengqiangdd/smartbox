@@ -945,13 +945,13 @@ export default function SftpBrowser({
       const remotePath = targetDir === '/' ? `/${file.name}` : `${targetDir}/${file.name}`
 
       // 1. chunk_start
-      const startResult: any = await wsClient.request({
+      const startResult = await wsClient.request({
         type: 'sftp',
         connectionId: sessionId,
         operation: 'chunk_start',
         path: remotePath,
       })
-      if (!startResult.success) throw new Error(startResult.error || '分块上传初始化失败')
+      if (!startResult.success) throw new Error((startResult.error as string) || '分块上传初始化失败')
       const { chunkId } = startResult
 
       const totalChunks = Math.ceil(file.size / CHUNK_SIZE)
@@ -1038,9 +1038,10 @@ export default function SftpBrowser({
           await uploadFile(file, targetDir, (pct: number) => {
             setUploadProgress({ current: pct, total: 100, name: file.name, pct })
           })
-        } catch (err: any) {
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : '上传失败'
           setUploadProgress(null)
-          setAlertModal({ title: '上传失败', message: err.message })
+          setAlertModal({ title: '上传失败', message: msg })
           return
         }
         setUploadProgress(null)
@@ -1063,9 +1064,10 @@ export default function SftpBrowser({
         try {
           await uploadFile(file, targetDir)
           successCount++
-        } catch (err: any) {
+        } catch (err: unknown) {
           errorCount++
-          errors.push(err.message)
+          const msg = err instanceof Error ? err.message : '未知错误'
+          errors.push(msg)
         }
       }
       setUploadProgress(null)

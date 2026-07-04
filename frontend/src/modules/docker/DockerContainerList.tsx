@@ -196,8 +196,9 @@ export default function DockerContainerList({
           notify(`${action} 成功`, 'success')
           onRefresh()
         }
-      } catch (err: any) {
-        notify(`${action} 请求失败: ${err.message}`, 'error')
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : '请求失败'
+        notify(`${action} 请求失败: ${msg}`, 'error')
       } finally {
         setActionLoading(null)
       }

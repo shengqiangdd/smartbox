@@ -131,15 +131,16 @@ export default function CommandsPage() {
         if (!data.commands || !Array.isArray(data.commands)) {
           throw new Error('格式无效：缺少 commands 字段')
         }
-        const imported = data.commands.map((c: any) => ({
+        const imported = data.commands.map((c: Record<string, unknown>) => ({
           ...c,
           id: `imported-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           isBuiltin: false,
         }))
         imported.forEach((cmd: QuickCommand) => addCommand(cmd))
         setImportError(null)
-      } catch (err: any) {
-        setImportError(`导入失败: ${err.message}`)
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : '导入失败'
+        setImportError(`导入失败: ${msg}`)
         setTimeout(() => setImportError(null), 5000)
       }
     }

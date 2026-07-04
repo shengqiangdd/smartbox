@@ -91,8 +91,9 @@ export default function PluginMarket() {
       }
       const data: MarketIndex = await resp.json()
       setPlugins(data.plugins || [])
-    } catch (err: any) {
-      setError(err.message || 'Failed to load market plugins')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to load market plugins'
+      setError(msg)
     } finally {
       setLoading(false)
     }
@@ -133,10 +134,11 @@ export default function PluginMarket() {
           [plugin.id]: { status: 'error', message: result.error || '安装失败' },
         }))
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '网络错误'
       setInstallStates((prev) => ({
         ...prev,
-        [plugin.id]: { status: 'error', message: err.message || '网络错误' },
+        [plugin.id]: { status: 'error', message: msg },
       }))
     }
   }
@@ -169,10 +171,11 @@ export default function PluginMarket() {
           [pluginId]: { status: 'error', message: result.error || '卸载失败' },
         }))
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '网络错误'
       setInstallStates((prev) => ({
         ...prev,
-        [pluginId]: { status: 'error', message: err.message || '网络错误' },
+        [pluginId]: { status: 'error', message: msg },
       }))
     }
   }

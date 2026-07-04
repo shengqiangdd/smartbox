@@ -40,7 +40,7 @@ function getPluginAPI(): PluginAPIReturn {
           entry: '',
           commands: [command],
         },
-        {} as any,
+        {} as never,
       )
     },
 
@@ -102,7 +102,7 @@ export function getPluginPanelComponent(panelId: string): React.ComponentType | 
  */
 export function initGlobalAPI() {
   if (typeof window !== 'undefined') {
-    ;(window as any).SmartBox = {
+    (window as unknown as Record<string, unknown>).SmartBox = {
       getPluginAPI,
       getCommandHandlers: () => commandHandlers,
       getPanelComponents: () => panelComponents,

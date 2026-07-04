@@ -4,17 +4,13 @@ import {
   Upload,
   Download,
   File,
-  Folder,
   CheckCircle2,
   XCircle,
   Loader2,
   Server,
-  AlertCircle,
-  ChevronDown,
-  ChevronRight,
   Clock,
 } from 'lucide-react'
-import { decryptConnection, useSshStore } from '../../stores/ssh-store'
+import { useSshStore } from '../../stores/ssh-store'
 import { getWsClientSync } from '../../services/websocket'
 import type { WsClient } from '../../services/websocket'
 
@@ -34,6 +30,7 @@ type TransferMode = 'upload' | 'command'
 
 export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
   const sessions = useSshStore((s) => s.sessions)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const connections = useSshStore((s) => s.connections)
   const [mode, setMode] = useState<TransferMode>('upload')
 
@@ -43,11 +40,9 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
   // 上传状态
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [destPath, setDestPath] = useState('/root/')
-  const [expandedTargets, setExpandedTargets] = useState<Set<number>>(new Set())
 
   // 远程命令模式
   const [remoteCommand, setRemoteCommand] = useState('')
-  const [resultFilter, setResultFilter] = useState<'all' | 'success' | 'error'>('all')
 
   const [running, setRunning] = useState(false)
   const [log, setLog] = useState<string[]>([])
@@ -56,7 +51,6 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
   // 初始化：加载当前已连接的 sessions
   const loadConnectedSessions = useCallback(() => {
     const available = sessions.map((sess) => {
-      const conn = connections.find((c) => c.id === sess.connectionId)
       return {
         connId: sess.id,
         name: sess.connectionName || sess.id.slice(0, 8),
@@ -74,13 +68,13 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
     } else {
       addLog('⚠️ 没有已连接的 SSH 会话，请先建立连接')
     }
-  }, [sessions, connections, destPath])
+  }, [sessions, destPath])
 
   const addLog = (msg: string) => {
     setLog((prev) => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`])
   }
 
-  // 切换目标选中
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const toggleTarget = (idx: number) => {
     setTargets((prev) => {
       const next = [...prev]
@@ -187,14 +181,15 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
             return next
           })
           addLog(`✅ [${target.name}] 上传完成 (${(file.size / 1024).toFixed(1)} KB)`)
-        } catch (err: any) {
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : '上传失败'
           setTargets((prev) => {
             const next = [...prev]
             const entry = next[i]!
-            next[i] = { ...entry, status: 'error', error: err.message }
+            next[i] = { ...entry, status: 'error', error: msg }
             return next
           })
-          addLog(`❌ [${target.name}] 上传失败: ${err.message}`)
+          addLog(`❌ [${target.name}] 上传失败: ${msg}`)
         }
       }
 
@@ -327,14 +322,15 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
             `❌ [${target.name}] 失败 (${json.exitCode}): ${(json.stderr || '').slice(0, 100)}`,
           )
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : '请求失败'
         setTargets((prev) => {
           const next = [...prev]
           const entry = next[i]!
-          next[i] = { ...entry, status: 'error', error: err.message }
+          next[i] = { ...entry, status: 'error', error: msg }
           return next
         })
-        addLog(`❌ [${target.name}] 请求失败: ${err.message}`)
+        addLog(`❌ [${target.name}] 请求失败: ${msg}`)
       }
     }
 

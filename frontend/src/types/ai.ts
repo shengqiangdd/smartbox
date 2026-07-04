@@ -204,6 +204,12 @@ export const AI_PROVIDERS: AiProvider[] = [
 export interface AiMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
+  /** Internal: unique ID for execution placeholder messages */
+  _execId?: string
+  /** Internal: whether this message represents an executing command */
+  _executing?: boolean
+  /** Internal: cached exec result for analysis button */
+  _execResult?: { command: string; stdout?: string; stderr?: string }
 }
 
 export type AiActionType = 'explain' | 'refactor' | 'fix' | 'optimize' | 'translate' | 'comment'

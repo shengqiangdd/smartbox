@@ -134,7 +134,7 @@ export default function BatchExecPanel({ onClose }: { onClose: () => void }) {
             return copy
           })
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         const duration = Date.now() - start
         setResults((prev) => {
           const copy = [...prev]
@@ -142,7 +142,7 @@ export default function BatchExecPanel({ onClose }: { onClose: () => void }) {
           copy[idx] = {
             ...entry,
             status: 'error',
-            error: err.message || '请求失败',
+            error: err instanceof Error ? err.message : '请求失败',
             stdout: '',
             stderr: '',
             exitCode: null,

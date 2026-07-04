@@ -29,8 +29,9 @@ export default function DockerContainerLogs({ connectionId, containerName, onClo
       } else {
         setError(json.error || '获取日志失败')
       }
-    } catch (err: any) {
-      setError(err.message || '请求失败')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '请求失败'
+      setError(msg)
     } finally {
       setLoading(false)
     }
