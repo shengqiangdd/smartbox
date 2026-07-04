@@ -6,6 +6,15 @@ use crate::response::ApiResponse;
 use crate::ssh::client::ConnectRequest;
 use crate::ssh::SshSession;
 
+/// Get SSH test configuration from environment variables (GET /api/ssh/test-config)
+pub async fn test_config() -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "host": std::env::var("ssh_test_host").unwrap_or_default(),
+        "user": std::env::var("ssh_test_user").unwrap_or_default(),
+        "password": std::env::var("ssh_test_password").unwrap_or_default(),
+    }))
+}
+
 /// Execute a command on an SSH connection (POST /api/ssh/exec)
 pub async fn exec_command(
     State(state): State<Arc<AppState>>,

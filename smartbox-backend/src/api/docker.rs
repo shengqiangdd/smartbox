@@ -108,6 +108,16 @@ pub struct ComposeActionRequest {
     pub service: Option<String>,
 }
 
+/// Docker exec request — run command in a container
+#[derive(Debug, Deserialize)]
+pub struct DockerExecRequest {
+    #[serde(alias = "connectionId")]
+    pub connection_id: String,
+    pub id: String,
+    pub command: String,
+    pub shell: Option<String>,
+}
+
 // ─── Helper: execute docker command via SSH ───
 
 async fn docker_exec(
@@ -271,6 +281,50 @@ pub async fn remove_image(
     args.push(&req.id);
     match docker_exec(&state, &req.connection_id, &args).await {
         Ok(data) => ApiResponse::success(serde_json::json!({ "data": data })),
+        Err(e) => ApiResponse::error(-1, &e),
+    }
+}
+
+/// POST /api/docker/rm — Remove Docker container
+pub async fn remove_container(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<RmiRequest>,
+) -> ApiResponse<serde_json::Value> {
+    let mut args = vec!["rm"];
+    if req.force.unwrap_or(false) {
+        args.push("-f");
+    }
+    args.push(&req.id);
+    match docker_exec(&state, &req.connection_id, &args).await {
+        Ok(data) => ApiResponse::success(serde_json::json!({ "data": data })),
+        Err(e) => ApiResponse::error(-1, &e),
+    }
+}
+
+/// POST /api/docker/exec — Run a one-shot command inside a container
+pub async fn exec_container(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<DockerExecRequest>,
+) -> ApiResponse<serde_json::Value> {
+    let args: Vec<String> = if let Some(shell) = &req.shell {
+        vec![
+            "exec".into(),
+            "-it".into(),
+            req.id.clone(),
+            shell.clone(),
+            "-c".into(),
+            req.command.clone(),
+        ]
+    } else {
+        vec![
+            "exec".into(),
+            req.id.clone(),
+            req.command.clone(),
+        ]
+    };
+    let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    match docker_exec(&state, &req.connection_id, &args_ref).await {
+        Ok(data) => ApiResponse::success(serde_json::json!({ "data": data, "exitCode": 0 })),
         Err(e) => ApiResponse::error(-1, &e),
     }
 }
