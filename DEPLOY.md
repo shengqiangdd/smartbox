@@ -94,8 +94,8 @@ cargo build --release
 ```bash
 cp .env.example .env
 # 编辑 .env 设置以下变量：
-# API_KEY=your-secret-key         # 用于客户端认证
-# DATABASE_URL=smartbox.db        # SQLite 数据库路径
+# JWT_SECRET=your-jwt-secret           # 令牌签名密钥（必填，用于认证和 Vault 加密）
+# DATABASE_URL=smartbox.db             # SQLite 数据库路径
 # HOST=0.0.0.0
 # PORT=3001
 ```
@@ -105,6 +105,8 @@ cp .env.example .env
 ```bash
 ./target/release/smartbox-backend
 # 后端自动托管 frontend/dist/ 静态文件，监听端口 3001
+# SQLite 数据库自动创建，WAL 模式确保并发安全
+# 支持 /api/* REST + /ws WebSocket + SPA 静态文件一站式服务
 ```
 
 ### 5. 使用 Systemd 实现进程守护（Linux）
@@ -113,20 +115,21 @@ cp .env.example .env
 
 ```ini
 [Unit]
-Description=SmartBox Web IDE
+Description=SmartBox Web IDE (Rust backend)
 After=network.target
 
 [Service]
 Type=simple
 User=smartbox
 WorkingDirectory=/opt/smartbox
-ExecStart=/opt/smartbox/smartbox-backend/target/release/smartbox-backend
+ExecStart=/opt/smartbox/smartbox-backend
 Restart=always
 RestartSec=10
-Environment=API_KEY=your-secret-key
-Environment=DATABASE_URL=/opt/smartbox/smartbox-backend/smartbox.db
+Environment=JWT_SECRET=your-secret-key
+Environment=DATABASE_URL=/opt/smartbox/data/smartbox.db
 Environment=HOST=0.0.0.0
 Environment=PORT=3001
+Environment=RUST_LOG=info
 
 [Install]
 WantedBy=multi-user.target
@@ -198,12 +201,18 @@ server {
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `PORT` | `3001` | 后端监听端口 |
-| `NODE_ENV` | `development` | 运行环境 |
-| `BRIDGE_PORT` | `3001` | Bridge 服务端口 |
+| `HOST` | `0.0.0.0` | 监听地址 |
 | `DATABASE_URL` | `无` (Docker 内默认 `/data/smartbox.db`) | SQLite 数据库路径 |
+| `JWT_SECRET` | 自动生成 | 用于令牌签发和 Vault 加密密钥派生 |
+| `VAULT_KEY` | `无` (从 JWT_SECRET 派生) | Secret Vault AES-256-GCM 加密密钥，建议显式设置 |
 | `LOG_LEVEL` | `info` | 日志级别 (trace/debug/info/warn/error) |
-| `JWT_SECRET` | 自动生成 | 用于 WebSocket 认证令牌签名 |
+| `FRONTEND_DIST` | `./frontend/dist` | 前端静态文件目录路径 |
 | `OPENROUTER_API_KEY` | 无 | AI 功能 API Key |
+| `ssh_test_host` | 无 | SSH 快速连接测试主机（开发用） |
+| `ssh_test_user` | 无 | SSH 快速连接测试用户（开发用） |
+| `ssh_test_password` | 无 | SSH 快速连接测试密码（开发用） |
+| `GITHUB_TOKEN` | 无 | GitHub API Token（插件市场功能） |
+| `RUST_LOG` | `info` | Rust 日志级别 |
 
 ---
 
