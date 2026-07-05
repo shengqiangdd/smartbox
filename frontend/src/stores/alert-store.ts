@@ -10,8 +10,6 @@ import { persist } from 'zustand/middleware'
 
 // ─── 声音提醒 ───
 
-const BRIDGE_URL = import.meta.env.VITE_BRIDGE_URL || ''
-
 // 复用单例 AudioContext，避免频繁创建导致资源耗尽
 let sharedAudioCtx: AudioContext | null = null
 function getAudioCtx(): AudioContext | null {
@@ -48,7 +46,7 @@ function playAlertSound(severity: AlertSeverity, enabled: boolean) {
 }
 
 function syncAlertToBackend(event: AlertEvent) {
-  fetch(`${BRIDGE_URL}/api/alerts`, {
+  fetch('/api/alerts', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
