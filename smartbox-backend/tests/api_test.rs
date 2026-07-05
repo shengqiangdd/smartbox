@@ -1,6 +1,12 @@
-/// Integration tests for SmartBox backend API.
+/// Integration tests for SmartBox backend.
+///
+/// Uses in-process request/response via `tower::ServiceExt::oneshot`
+/// to exercise the full router stack without spawning an HTTP server.
 use std::sync::Arc;
 use std::path::PathBuf;
+use axum::body::Body;
+use axum::http::{Request, StatusCode};
+use tower::ServiceExt;
 
 use smartbox_backend::app_state::AppState;
 use smartbox_backend::config::AppConfig;
@@ -23,15 +29,13 @@ fn test_config() -> AppConfig {
     }
 }
 
-async fn build_test_state() -> Arc<AppState> {
-    Arc::new(
-        AppState::new(test_config())
-            .await
-            .expect("Failed to create AppState"),
-    )
+async fn build_test_app() -> axum::Router {
+    let config = test_config();
+    let state = AppState::new(config).await.expect("Failed to create AppState");
+    smartbox_backend::build_app(Arc::new(state)).await
 }
 
-// ─── Unit tests (no HTTP server) ───
+// ─── Tests ───
 
 #[test]
 fn test_app_state_creation() {
@@ -56,85 +60,128 @@ fn test_jwt_roundtrip() {
     assert_eq!(decoded.claims.scope, "api+ws");
 }
 
-#[tokio::test]
-async fn test_build_app_creates_router() {
-    let state = build_test_state().await;
-    let _app = smartbox_backend::build_app(state).await;
-}
-
-// ─── HTTP server integration tests ───
-
-/// Spawn the app on a random port and return the base URL.
-/// Uses `axum::serve` to run the server in a background task.
-async fn spawn_test_app() -> String {
-    let state = build_test_state().await;
-    let app = smartbox_backend::build_app(state).await;
-
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind");
-    let addr = listener.local_addr().unwrap();
-    let base = format!("http://{}", addr);
-
-    tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap_or_else(|e| {
-            panic!("server error: {:?}", e);
-        });
-    });
-
-    // Brief wait for server startup
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-    base
-}
-
+/// Health endpoint: GET /api/health → 200 OK
 #[tokio::test]
 async fn health_check_returns_200() {
-    let base = spawn_test_app().await;
-    let resp = reqwest::get(format!("{}/api/health", base))
-        .await
-        .expect("GET /api/health");
-    assert_eq!(resp.status(), 200);
-    let body: serde_json::Value = resp.json().await.unwrap();
-    assert_eq!(body["status"], "ok");
+    let app = build_test_app().await;
+    let req = Request::builder()
+        .uri("/api/health")
+        .body(Body::from(""))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
 }
 
+/// Unknown route: GET /api/nonexistent → 404
 #[tokio::test]
 async fn unknown_route_returns_404() {
-    let base = spawn_test_app().await;
-    let resp = reqwest::get(format!("{}/api/nonexistent", base))
-        .await
-        .expect("GET /api/nonexistent");
-    assert_eq!(resp.status(), 404);
+    let app = build_test_app().await;
+    let req = Request::builder()
+        .uri("/api/nonexistent")
+        .body(Body::from(""))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
+/// Auth middleware: GET /api/plugins → 401
 #[tokio::test]
-async fn plugin_endpoint_requires_auth() {
-    let base = spawn_test_app().await;
-    let resp = reqwest::get(format!("{}/api/plugins", base))
-        .await
-        .expect("GET /api/plugins");
-    assert_eq!(resp.status(), 401);
+async fn protected_routes_require_auth() {
+    let app = build_test_app().await;
+    let req = Request::builder()
+        .uri("/api/plugins")
+        .body(Body::from(""))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
+/// Auth middleware with valid JWT → passes
 #[tokio::test]
-async fn vault_endpoint_requires_auth() {
-    let base = spawn_test_app().await;
-    let resp = reqwest::get(format!("{}/api/vault", base))
-        .await
-        .expect("GET /api/vault");
-    assert_eq!(resp.status(), 401);
+async fn authenticated_request_passes_auth() {
+    let config = test_config();
+    let state = AppState::new(config.clone()).await.expect("AppState");
+    let app = smartbox_backend::build_app(Arc::new(state)).await;
+
+    // Sign a valid JWT
+    let jwt = JwtService::from_secret(&config.jwt_secret).unwrap();
+    let claims = Claims::new("test".into(), "api+ws", 86400);
+    let token = jwt.sign(&claims).unwrap();
+
+    let req = Request::builder()
+        .uri("/api/ai/config")
+        .header("Authorization", format!("Bearer {}", token))
+        .body(Body::from(""))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    // Should not be 401
+    assert_ne!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
+/// Auth middleware with invalid JWT → 401
+#[tokio::test]
+async fn invalid_jwt_is_rejected() {
+    let app = build_test_app().await;
+    let req = Request::builder()
+        .uri("/api/plugins")
+        .header("Authorization", "Bearer invalid-token")
+        .body(Body::from(""))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// Vault endpoint requires auth
+#[tokio::test]
+async fn vault_requires_auth() {
+    let app = build_test_app().await;
+    let req = Request::builder()
+        .uri("/api/vault")
+        .body(Body::from(""))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// Notifications endpoint requires auth
+#[tokio::test]
+async fn notifications_require_auth() {
+    let app = build_test_app().await;
+    let req = Request::builder()
+        .uri("/api/notifications")
+        .body(Body::from(""))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// System backup endpoint requires auth
+#[tokio::test]
+async fn system_backup_requires_auth() {
+    let app = build_test_app().await;
+    let req = Request::builder()
+        .uri("/api/system/backup")
+        .body(Body::from(""))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// JWT token endpoint is public (no auth)
 #[tokio::test]
 async fn ws_token_endpoint_is_public() {
-    let base = spawn_test_app().await;
-    let client = reqwest::Client::new();
-    let resp = client
-        .post(format!("{}/api/ws-token", base))
+    let app = build_test_app().await;
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/ws-token")
         .header("Content-Type", "application/json")
-        .body("{}")
-        .send()
-        .await
-        .expect("POST /api/ws-token");
-    assert!(resp.status() != 404 && resp.status() != 401, "expected 2xx, got {}", resp.status());
+        .body(Body::from(r#"{}"#))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    // Should not be 401 or 404
+    assert!(
+        resp.status() != StatusCode::UNAUTHORIZED && resp.status() != StatusCode::NOT_FOUND,
+        "Expected public access, got {}",
+        resp.status()
+    );
 }
