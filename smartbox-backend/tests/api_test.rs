@@ -114,3 +114,27 @@ async fn invalid_jwt_is_rejected() {
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
+
+/// Vault endpoint requires auth.
+#[tokio::test]
+async fn vault_requires_auth() {
+    let app = build_test_app().await;
+    let req = Request::builder()
+        .uri("/api/vault")
+        .body(Body::from(""))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// Notifications endpoint requires auth.
+#[tokio::test]
+async fn notifications_require_auth() {
+    let app = build_test_app().await;
+    let req = Request::builder()
+        .uri("/api/notifications")
+        .body(Body::from(""))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
