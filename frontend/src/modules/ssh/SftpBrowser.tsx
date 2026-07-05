@@ -529,7 +529,9 @@ export default function SftpBrowser({
 
   const wsClient = getWsClientSync()
   const wsRef = useRef(wsClient)
-  useEffect(() => { wsRef.current = wsClient }, [wsClient])
+  useEffect(() => {
+    wsRef.current = wsClient
+  }, [wsClient])
   const retryCountRef = useRef(0)
   const fileStore = useFileStore()
   const setActiveNav = useAppStore((s) => s.setActiveNav)
@@ -540,7 +542,9 @@ export default function SftpBrowser({
   useEffect(() => {
     if (!sessionId) {
       const t = setTimeout(() => setSftpReady(false), 0)
-      return () => { clearTimeout(t) }
+      return () => {
+        clearTimeout(t)
+      }
     }
     const t = setTimeout(() => setSftpReady(false), 0)
     const unsub = wsClient.on('sftp-ready', (data) => {
@@ -602,7 +606,10 @@ export default function SftpBrowser({
       }, 0)
       retryCountRef.current = 0
       const t2 = setTimeout(() => listDir('/', true), 300)
-      return () => { clearTimeout(t1); clearTimeout(t2) }
+      return () => {
+        clearTimeout(t1)
+        clearTimeout(t2)
+      }
     }
     const t3 = setTimeout(() => {
       setEntries([])
@@ -640,7 +647,11 @@ export default function SftpBrowser({
   // ─── 递归搜索 ───
 
   const recursiveSearch = useCallback(
-    async function recursiveSearch(dir: string, query: string, depth: number = 0): Promise<SftpEntry[]> {
+    async function recursiveSearch(
+      dir: string,
+      query: string,
+      depth: number = 0,
+    ): Promise<SftpEntry[]> {
       if (!sessionId) return []
       // 限制最大递归深度为 5 层，防止遍历整个文件系统
       if (depth > 5) return []

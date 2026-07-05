@@ -108,7 +108,6 @@ export default function PluginsPage() {
     }
   }, [])
 
-
   const isPluginEnabled = (pluginId: string) => {
     return storePlugins.some((p) => p.manifest.id === pluginId && p.enabled)
   }

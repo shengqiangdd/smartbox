@@ -26,7 +26,11 @@ interface LogViewerProps {
 }
 
 export default function LogViewer({ connectionId, logPath, onClose }: LogViewerProps) {
-  type LogsFetchState = { status: 'loading' | 'idle' | 'error'; data: string; errorMsg: string | null }
+  type LogsFetchState = {
+    status: 'loading' | 'idle' | 'error'
+    data: string
+    errorMsg: string | null
+  }
   const [{ status, data: content, errorMsg }, dispatch] = useReducer(
     (s: LogsFetchState, a: Partial<LogsFetchState>) => ({ ...s, ...a }),
     { status: 'loading', data: '', errorMsg: null } as LogsFetchState,
@@ -41,7 +45,9 @@ export default function LogViewer({ connectionId, logPath, onClose }: LogViewerP
   const wsRef = useRef<WebSocket | null>(null)
   const requestIdRef = useRef<string | undefined>(undefined)
   const contentRef = useRef(content)
-  useEffect(() => { contentRef.current = content }, [content])
+  useEffect(() => {
+    contentRef.current = content
+  }, [content])
 
   useEffect(() => {
     requestIdRef.current = `logtail-${Date.now()}`
@@ -111,7 +117,8 @@ export default function LogViewer({ connectionId, logPath, onClose }: LogViewerP
             const prev = contentRef.current
             const combined = prev + (prev.endsWith('\n') ? '' : '\n') + msg.lines.join('\n')
             const lineArr = combined.split('\n')
-            const newData = lineArr.length > 50000 ? lineArr.slice(lineArr.length - 50000).join('\n') : combined
+            const newData =
+              lineArr.length > 50000 ? lineArr.slice(lineArr.length - 50000).join('\n') : combined
             dispatch({ data: newData })
           } else if (msg.type === 'logtail_stopped') {
             setFollowMode(false)

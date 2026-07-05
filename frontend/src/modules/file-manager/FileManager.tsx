@@ -191,7 +191,10 @@ export default function FileManager() {
   const addSession = useSshStore((s) => s.addSession)
   const removeSession = useSshStore((s) => s.removeSession)
   const [{ connecting, statusMsg }, dispatch] = useReducer(
-    (state: { connecting: boolean; statusMsg: string }, action: Partial<{ connecting: boolean; statusMsg: string }>) => ({ ...state, ...action }),
+    (
+      state: { connecting: boolean; statusMsg: string },
+      action: Partial<{ connecting: boolean; statusMsg: string }>,
+    ) => ({ ...state, ...action }),
     { connecting: false, statusMsg: '' },
   )
   const wsClient = getWsClientSync()

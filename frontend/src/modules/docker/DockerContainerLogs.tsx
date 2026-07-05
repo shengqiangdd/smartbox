@@ -18,7 +18,11 @@ function logsReducer(_s: LogsState, a: LogsState): LogsState {
 }
 
 export default function DockerContainerLogs({ connectionId, containerName, onClose }: Props) {
-  const [logsState, dispatch] = useReducer(logsReducer, { status: 'loading', data: '', error: null } as LogsState)
+  const [logsState, dispatch] = useReducer(logsReducer, {
+    status: 'loading',
+    data: '',
+    error: null,
+  } as LogsState)
   const [tail, setTail] = useState(200)
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -119,9 +123,13 @@ export default function DockerContainerLogs({ connectionId, containerName, onClo
               加载中...
             </div>
           ) : logsState.error ? (
-            <div className="flex h-full items-center justify-center text-red-400">{logsState.error}</div>
+            <div className="flex h-full items-center justify-center text-red-400">
+              {logsState.error}
+            </div>
           ) : (
-            <pre className="whitespace-pre-wrap text-slate-300">{logsState.data || '(无日志输出)'}</pre>
+            <pre className="whitespace-pre-wrap text-slate-300">
+              {logsState.data || '(无日志输出)'}
+            </pre>
           )}
         </div>
       </div>

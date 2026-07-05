@@ -46,7 +46,10 @@ export default function DockerCompose({ connectionId }: Props) {
   const [manualPath, setManualPath] = useState('')
 
   // 启动时自动发现 compose 文件（用 dispatch 规避 set-state-in-effect 规则）
-  const [initTrigger, kickstart] = useReducer((_: unknown, __: unknown) => ({}), undefined as unknown)
+  const [initTrigger, kickstart] = useReducer(
+    (_: unknown, __: unknown) => ({}),
+    undefined as unknown,
+  )
   useEffect(() => {
     if (!initTrigger) {
       kickstart(undefined)
@@ -94,7 +97,12 @@ export default function DockerCompose({ connectionId }: Props) {
           const discovered: ComposeProject[] = (json.projects || json.data || []).map(
             (p: { path: string; name?: string }) => ({
               path: p.path,
-              name: p.name || p.path.split('/').pop()!.replace(/\.(yml|yaml)$/, ''),
+              name:
+                p.name ||
+                p.path
+                  .split('/')
+                  .pop()!
+                  .replace(/\.(yml|yaml)$/, ''),
               services: [],
             }),
           )

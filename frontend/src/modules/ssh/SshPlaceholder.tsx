@@ -455,9 +455,7 @@ export default function SshPlaceholder() {
                 ))}
               </div>
 
-              <div className="ml-auto hidden items-center md:flex">
-                {showWsIndicator()}
-              </div>
+              <div className="ml-auto hidden items-center md:flex">{showWsIndicator()}</div>
 
               {/* 工具栏按钮组 */}
               <div className="flex shrink-0 items-center">

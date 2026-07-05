@@ -108,10 +108,11 @@ export default function AuditLogPage() {
   const [filter, setFilter] = useState<string>('all')
 
   type FetchState = { status: 'loading' | 'idle'; data: AuditEntry[]; total: number }
-  const [fetchState, dispatch] = useReducer(
-    (_s: FetchState, a: FetchState): FetchState => a,
-    { status: 'loading', data: [], total: 0 },
-  )
+  const [fetchState, dispatch] = useReducer((_s: FetchState, a: FetchState): FetchState => a, {
+    status: 'loading',
+    data: [],
+    total: 0,
+  })
 
   const fetchLogs = useCallback(async () => {
     dispatch({ status: 'loading', data: [], total: 0 })
@@ -172,7 +173,12 @@ export default function AuditLogPage() {
             </option>
           ))}
         </select>
-        <button onClick={fetchLogs} disabled={fetchState.status === 'loading'} className="btn btn-ghost p-2" title="刷新">
+        <button
+          onClick={fetchLogs}
+          disabled={fetchState.status === 'loading'}
+          className="btn btn-ghost p-2"
+          title="刷新"
+        >
           <RefreshCw size={14} className={fetchState.status === 'loading' ? 'animate-spin' : ''} />
         </button>
       </div>
