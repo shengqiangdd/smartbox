@@ -73,7 +73,7 @@ ENV FRONTEND_DIST=/app/frontend/dist \
     DATABASE_URL=/data/smartbox.db
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates tzdata openssl curl && \
+    ca-certificates tzdata openssl curl tini && \
     rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -106,4 +106,5 @@ USER smartbox
 
 EXPOSE 3001
 
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["/app/smartbox-backend"]

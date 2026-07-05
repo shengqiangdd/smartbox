@@ -15,6 +15,34 @@ fn print_usage() {
     eprintln!("  --help                      Show this help");
 }
 
+/// Set up OS signal handlers for graceful shutdown.
+/// Returns a future that resolves when a shutdown signal is received.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+        tracing::info!("Received SIGINT (Ctrl+C), starting graceful shutdown...");
+    };
+
+    #[cfg(unix)]
+    let sigterm = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+        tracing::info!("Received SIGTERM, starting graceful shutdown...");
+    };
+
+    #[cfg(not(unix))]
+    let sigterm = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = sigterm => {},
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Load .env if present
@@ -64,7 +92,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Load config
     let config = AppConfig::from_env()?;
-    tracing::info!("Starting SmartBox Backend on {}:{}", config.host, config.port);
+    tracing::info!("Starting SmartBox Backend PID={} on {}:{}", std::process::id(), config.host, config.port);
     tracing::info!("Frontend dist: {:?}", config.frontend_dist);
 
     // Build app state
@@ -120,9 +148,13 @@ async fn main() -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!("Listening on http://{}/", addr);
 
+    // Run server with graceful shutdown on SIGTERM/SIGINT
+    tracing::info!("Server started. Use Ctrl+C or 'docker stop' to gracefully shut down.");
     axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
         .await?;
 
+    tracing::info!("Server has shut down gracefully.");
     Ok(())
 }
 
