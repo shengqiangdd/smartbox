@@ -29,7 +29,9 @@ fn test_config() -> AppConfig {
     }
 }
 
-async fn build_test_app() -> axum::Router {
+/// Build a test router. Must match the return type of
+/// `smartbox_backend::build_app()` — `axum::Router<Arc<AppState>>`.
+async fn build_test_app() -> axum::Router<Arc<AppState>> {
     let config = test_config();
     let state = AppState::new(config).await.expect("Failed to create AppState");
     smartbox_backend::build_app(Arc::new(state)).await
@@ -84,7 +86,7 @@ async fn unknown_route_returns_404() {
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
-/// Auth middleware: GET /api/plugins → 401
+/// Auth middleware: GET /api/plugins without token → 401
 #[tokio::test]
 async fn protected_routes_require_auth() {
     let app = build_test_app().await;
@@ -96,14 +98,13 @@ async fn protected_routes_require_auth() {
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
-/// Auth middleware with valid JWT → passes
+/// Auth middleware with valid JWT → passes (not 401)
 #[tokio::test]
 async fn authenticated_request_passes_auth() {
     let config = test_config();
     let state = AppState::new(config.clone()).await.expect("AppState");
     let app = smartbox_backend::build_app(Arc::new(state)).await;
 
-    // Sign a valid JWT
     let jwt = JwtService::from_secret(&config.jwt_secret).unwrap();
     let claims = Claims::new("test".into(), "api+ws", 86400);
     let token = jwt.sign(&claims).unwrap();
@@ -114,7 +115,6 @@ async fn authenticated_request_passes_auth() {
         .body(Body::from(""))
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
-    // Should not be 401
     assert_ne!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
@@ -167,7 +167,7 @@ async fn system_backup_requires_auth() {
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
-/// JWT token endpoint is public (no auth)
+/// JWT token endpoint is public (no auth required)
 #[tokio::test]
 async fn ws_token_endpoint_is_public() {
     let app = build_test_app().await;
@@ -178,7 +178,6 @@ async fn ws_token_endpoint_is_public() {
         .body(Body::from(r#"{}"#))
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
-    // Should not be 401 or 404
     assert!(
         resp.status() != StatusCode::UNAUTHORIZED && resp.status() != StatusCode::NOT_FOUND,
         "Expected public access, got {}",
