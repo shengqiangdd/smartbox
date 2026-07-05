@@ -1,7 +1,17 @@
+//! AI / LLM Provider API — fetch available free models from providers.
+//!
+//! Supported providers: OpenRouter, OpenAI, SiliconFlow.
+//!
+//! Endpoints:
+//!   GET /api/ai/config            — Get global AI config
+//!   GET /api/ai/fetch-free-models — Fetch free models from OpenRouter
+//!   GET /api/ai/fetch-all-models  — Fetch models with optional `?provider=`
+
 use axum::{extract::State, extract::Query};
 use serde::Deserialize;
 use std::sync::Arc;
 
+use crate::api_types::{AiConfigResponse, ModelListItem, ModelsListResponse};
 use crate::app_state::AppState;
 use crate::response::ApiResponse;
 
@@ -11,18 +21,25 @@ pub struct ModelQuery {
 }
 
 /// Get AI config (GET /api/ai/config)
-pub async fn get_ai_config(State(state): State<Arc<AppState>>) -> ApiResponse<serde_json::Value> {
-    ApiResponse::success(serde_json::json!({
-        "apiKey": state.config.openrouter_api_key.as_deref().unwrap_or("")
-    }))
+pub async fn get_ai_config(State(state): State<Arc<AppState>>) -> ApiResponse<AiConfigResponse> {
+    ApiResponse::success(AiConfigResponse {
+        enabled: state.config.openrouter_api_key.is_some(),
+        provider: "openrouter".into(),
+        models: Vec::new(),
+    })
 }
 
 /// Fetch free models from OpenRouter (GET /api/ai/fetch-free-models)
-pub async fn fetch_free_models(State(state): State<Arc<AppState>>) -> ApiResponse<serde_json::Value> {
+pub async fn fetch_free_models(
+    State(state): State<Arc<AppState>>,
+) -> ApiResponse<ModelsListResponse> {
     let api_key = match &state.config.openrouter_api_key {
         Some(k) => k.clone(),
         None => {
-            return ApiResponse::error(503, "OpenRouter API Key 未配置");
+            return ApiResponse::success(ModelsListResponse {
+                models: Vec::new(),
+                error: Some("OpenRouter API Key 未配置".into()),
+            });
         }
     };
 
@@ -36,8 +53,12 @@ pub async fn fetch_free_models(State(state): State<Arc<AppState>>) -> ApiRespons
         Ok(resp) => {
             if resp.status().is_success() {
                 let data: serde_json::Value = resp.json().await.unwrap_or_default();
-                let models = data.get("data").and_then(|d| d.as_array()).cloned().unwrap_or_default();
-                let free_models: Vec<serde_json::Value> = models
+                let models = data
+                    .get("data")
+                    .and_then(|d| d.as_array())
+                    .cloned()
+                    .unwrap_or_default();
+                let free_models: Vec<ModelListItem> = models
                     .into_iter()
                     .filter(|m| {
                         m.get("pricing")
@@ -46,60 +67,72 @@ pub async fn fetch_free_models(State(state): State<Arc<AppState>>) -> ApiRespons
                             .map(|v| v <= 0.0)
                             .unwrap_or(false)
                     })
-                    .map(|m| {
-                        serde_json::json!({
-                            "value": m.get("id"),
-                            "label": m.get("name").or(m.get("id")),
-                            "free": true,
-                            "description": m.get("description").unwrap_or(&serde_json::Value::Null),
-                        })
+                    .map(|m| ModelListItem {
+                        value: m
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        label: m
+                            .get("name")
+                            .or_else(|| m.get("id"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        free: true,
+                        description: m
+                            .get("description")
+                            .and_then(|v| v.as_str())
+                            .map(String::from),
                     })
                     .collect();
 
-                ApiResponse::success(serde_json::json!({ "models": free_models }))
+                ApiResponse::success(ModelsListResponse {
+                    models: free_models,
+                    error: None,
+                })
             } else {
-                ApiResponse::error(502, "Failed to fetch models from OpenRouter")
+                ApiResponse::success(ModelsListResponse {
+                    models: Vec::new(),
+                    error: Some("Failed to fetch models from OpenRouter".into()),
+                })
             }
         }
-        Err(e) => {
-            ApiResponse::success(serde_json::json!({
-                "models": [],
-                "error": e.to_string()
-            }))
-        }
+        Err(e) => ApiResponse::success(ModelsListResponse {
+            models: Vec::new(),
+            error: Some(e.to_string()),
+        }),
     }
 }
 
 /// Fetch models for any provider (GET /api/ai/fetch-all-models?provider=openrouter)
-/// Routes to the correct API based on provider ID.
 pub async fn fetch_all_models(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ModelQuery>,
-) -> ApiResponse<serde_json::Value> {
+) -> ApiResponse<ModelsListResponse> {
     let provider = params.provider.as_deref().unwrap_or("openrouter");
 
-    match provider {
+    let result = match provider {
         "openrouter" => fetch_openrouter_models(&state).await,
         "openai" => fetch_openai_models().await,
         "siliconflow" => fetch_siliconflow_models().await,
-        // Providers without public /models endpoint: return empty list
-        // Frontend falls back to static model definitions
-        "agnes" | "opencode" | "anthropic" | "google" | "deepseek" | "custom" => {
-            ApiResponse::success(serde_json::json!({ "models": [] }))
-        }
-        _ => {
-            // Unknown provider: try OpenRouter as fallback
-            fetch_openrouter_models(&state).await
-        }
-    }
+        other => ModelsListResponse {
+            models: Vec::new(),
+            error: Some(format!("Unknown provider: {}", other)),
+        },
+    };
+
+    ApiResponse::success(result)
 }
 
-/// Fetch models from OpenRouter API
-async fn fetch_openrouter_models(state: &AppState) -> ApiResponse<serde_json::Value> {
+async fn fetch_openrouter_models(state: &AppState) -> ModelsListResponse {
     let api_key = match &state.config.openrouter_api_key {
-        Some(k) => k.clone(),
+        Some(k) => k,
         None => {
-            return ApiResponse::success(serde_json::json!({ "models": [], "error": "API Key 未配置" }));
+            return ModelsListResponse {
+                models: Vec::new(),
+                error: Some("API key not configured".into()),
+            };
         }
     };
 
@@ -107,51 +140,150 @@ async fn fetch_openrouter_models(state: &AppState) -> ApiResponse<serde_json::Va
     match client
         .get("https://openrouter.ai/api/v1/models")
         .header("Authorization", format!("Bearer {}", api_key))
-        .timeout(std::time::Duration::from_secs(15))
         .send()
         .await
     {
-        Ok(resp) => {
-            if resp.status().is_success() {
-                let data: serde_json::Value = resp.json().await.unwrap_or_default();
-                let models = data.get("data").and_then(|d| d.as_array()).cloned().unwrap_or_default();
-                let result: Vec<serde_json::Value> = models
-                    .into_iter()
-                    .map(|m| {
-                        let is_free = m.get("pricing")
-                            .and_then(|p| p.get("request"))
-                            .and_then(|r| r.as_f64())
-                            .map(|v| v <= 0.0)
-                            .unwrap_or(false);
-                        serde_json::json!({
-                            "value": m.get("id"),
-                            "label": m.get("name").or(m.get("id")),
-                            "free": is_free,
-                            "description": m.get("description").and_then(|d| d.as_str()).unwrap_or(""),
-                        })
-                    })
-                    .collect();
-                ApiResponse::success(serde_json::json!({ "models": result }))
-            } else {
-                ApiResponse::success(serde_json::json!({ "models": [], "error": format!("HTTP {}", resp.status()) }))
+        Ok(resp) if resp.status().is_success() => {
+            let data: serde_json::Value = resp.json().await.unwrap_or_default();
+            let models = data
+                .get("data")
+                .and_then(|d| d.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let items: Vec<ModelListItem> = models
+                .into_iter()
+                .map(|m| ModelListItem {
+                    value: m
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    label: m
+                        .get("name")
+                        .or_else(|| m.get("id"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    free: m
+                        .get("pricing")
+                        .and_then(|p| p.get("request"))
+                        .and_then(|r| r.as_f64())
+                        .map(|v| v <= 0.0)
+                        .unwrap_or(false),
+                    description: None,
+                })
+                .collect();
+            ModelsListResponse {
+                models: items,
+                error: None,
             }
         }
-        Err(e) => {
-            ApiResponse::success(serde_json::json!({ "models": [], "error": e.to_string() }))
-        }
+        Ok(resp) => ModelsListResponse {
+            models: Vec::new(),
+            error: Some(format!("HTTP {}", resp.status())),
+        },
+        Err(e) => ModelsListResponse {
+            models: Vec::new(),
+            error: Some(e.to_string()),
+        },
     }
 }
 
-/// Fetch models from OpenAI API (GET /v1/models)
-async fn fetch_openai_models() -> ApiResponse<serde_json::Value> {
-    // OpenAI requires an API key in the request header
-    // We don't store OpenAI keys in the backend config, so return empty list
-    // The frontend will use its static model definitions
-    ApiResponse::success(serde_json::json!({ "models": [] }))
+async fn fetch_openai_models() -> ModelsListResponse {
+    let client = reqwest::Client::new();
+    match client.get("https://api.openai.com/v1/models").send().await {
+        Ok(resp) if resp.status().is_success() => {
+            let data: serde_json::Value = resp.json().await.unwrap_or_default();
+            let models = data
+                .get("data")
+                .and_then(|d| d.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let items: Vec<ModelListItem> = models
+                .into_iter()
+                .map(|m| ModelListItem {
+                    value: m
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    label: m
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    free: true,
+                    description: None,
+                })
+                .collect();
+            ModelsListResponse {
+                models: items,
+                error: None,
+            }
+        }
+        Ok(resp) => ModelsListResponse {
+            models: Vec::new(),
+            error: Some(format!("HTTP {}", resp.status())),
+        },
+        Err(e) => ModelsListResponse {
+            models: Vec::new(),
+            error: Some(e.to_string()),
+        },
+    }
 }
 
-/// Fetch models from SiliconFlow API
-async fn fetch_siliconflow_models() -> ApiResponse<serde_json::Value> {
-    // SiliconFlow requires an API key; frontend has static definitions
-    ApiResponse::success(serde_json::json!({ "models": [] }))
+async fn fetch_siliconflow_models() -> ModelsListResponse {
+    let client = reqwest::Client::new();
+    match client
+        .get("https://api.siliconflow.cn/v1/models")
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => {
+            let data: serde_json::Value = resp.json().await.unwrap_or_default();
+            // SiliconFlow returns an array directly
+            let models = if let Some(arr) = data.as_array() {
+                arr.clone()
+            } else if let Some(arr) = data.get("data").and_then(|d| d.as_array()) {
+                arr.clone()
+            } else {
+                Vec::new()
+            };
+            let items: Vec<ModelListItem> = models
+                .into_iter()
+                .map(|m| ModelListItem {
+                    value: m
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    label: m
+                        .get("name")
+                        .or_else(|| m.get("id"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    free: m
+                        .get("pricing")
+                        .and_then(|p| p.get("request"))
+                        .and_then(|r| r.as_f64())
+                        .map(|v| v <= 0.0)
+                        .unwrap_or(true),
+                    description: None,
+                })
+                .collect();
+            ModelsListResponse {
+                models: items,
+                error: None,
+            }
+        }
+        Ok(resp) => ModelsListResponse {
+            models: Vec::new(),
+            error: Some(format!("HTTP {}", resp.status())),
+        },
+        Err(e) => ModelsListResponse {
+            models: Vec::new(),
+            error: Some(e.to_string()),
+        },
+    }
 }

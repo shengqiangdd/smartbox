@@ -3,7 +3,7 @@
 //! Replaces `ApiResponse<serde_json::Value>` with concrete response types
 //! for compile-time API contract validation and better serialization perf.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 // ─── Health ───
 
@@ -119,6 +119,24 @@ pub struct ModelEntry {
     pub provider: String,
 }
 
+/// A single model item returned from model-listing endpoints
+#[derive(Serialize)]
+pub struct ModelListItem {
+    pub value: String,
+    pub label: String,
+    pub free: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Wrapper for /api/ai/fetch-* endpoints
+#[derive(Serialize)]
+pub struct ModelsListResponse {
+    pub models: Vec<ModelListItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
 // ─── Connection (saved SSH connection config) ───
 
 #[derive(Serialize)]
@@ -140,18 +158,6 @@ pub struct PluginInstallResponse {
     #[serde(rename = "pluginId")]
     pub plugin_id: String,
     pub message: String,
-}
-
-// ─── Vault ───
-
-#[derive(Serialize)]
-pub struct VaultEntryResponse {
-    pub id: String,
-    pub name: String,
-    #[serde(rename = "type")]
-    pub entry_type: String,
-    pub created_at: String,
-    pub updated_at: String,
 }
 
 // ─── Docker ───
@@ -181,3 +187,110 @@ pub struct DockerExecResultResponse {
 pub struct HostHealthCheckResponse {
     pub hosts: Vec<serde_json::Value>,
 }
+
+/// Response from AI diagnosis endpoint
+#[derive(Serialize)]
+pub struct DiagnoseResponse {
+    pub health: serde_json::Value,
+    #[serde(rename = "rawReport")]
+    pub raw_report: String,
+    #[serde(rename = "aiDiagnosis")]
+    pub ai_diagnosis: String,
+}
+
+// ─── SSH ───
+
+/// Request body for SSH exec
+#[derive(Deserialize)]
+pub struct SshExecRequest {
+    #[serde(rename = "connectionId")]
+    pub connection_id: String,
+    pub command: String,
+}
+
+/// Response body for SSH exec
+#[derive(Serialize)]
+pub struct SshExecResponse {
+    pub stdout: String,
+    pub stderr: String,
+    #[serde(rename = "exitCode")]
+    pub exit_code: i32,
+}
+
+/// Response body for SSH connect (inside ApiResponse)
+#[derive(Serialize)]
+pub struct SshConnectResponse {
+    #[serde(rename = "connectionId")]
+    pub connection_id: String,
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+}
+
+/// Request body for SSH disconnect
+#[derive(Deserialize)]
+pub struct SshDisconnectRequest {
+    #[serde(rename = "connectionId")]
+    pub connection_id: String,
+}
+
+// ─── Notifications ───
+
+/// Single notification channel entry
+#[derive(Serialize)]
+pub struct NotificationChannelEntry {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub channel_type: String,
+    pub name: String,
+    pub config: serde_json::Value,
+    pub enabled: bool,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+}
+
+/// List notification channels response
+#[derive(Serialize)]
+pub struct NotificationChannelsResponse {
+    pub total: usize,
+    pub channels: Vec<NotificationChannelEntry>,
+}
+
+// ─── Vault ───
+
+/// Single vault secret entry (full detail with decrypted value)
+#[derive(Serialize)]
+pub struct VaultEntryDetail {
+    pub id: String,
+    pub name: String,
+    pub kind: String,
+    pub value: String,
+    pub tags: Vec<String>,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+}
+
+/// List vault entries response
+#[derive(Serialize)]
+pub struct VaultListResponse {
+    pub total: usize,
+    pub entries: Vec<VaultEntryDetail>,
+}
+
+/// Vault types response
+#[derive(Serialize)]
+pub struct VaultTypeInfo {
+    pub id: String,
+    pub label: String,
+    pub icon: String,
+}
+
+#[derive(Serialize)]
+pub struct VaultTypesResponse {
+    pub types: Vec<VaultTypeInfo>,
+}
+

@@ -11,6 +11,7 @@
 use axum::{extract::State, extract::Path, Json};
 use std::sync::Arc;
 
+use crate::api_types::{NotificationChannelEntry, NotificationChannelsResponse};
 use crate::app_state::AppState;
 use crate::db::NotificationChannel;
 use crate::error::AppError;
@@ -21,33 +22,37 @@ const SUPPORTED_TYPES: &[&str] = &["discord", "slack", "telegram", "email"];
 /// List notification channels (GET /api/notifications)
 pub async fn list_channels(
     State(state): State<Arc<AppState>>,
-) -> Result<ApiResponse<serde_json::Value>, AppError> {
+) -> Result<ApiResponse<NotificationChannelsResponse>, AppError> {
     let db = state.db.as_ref().ok_or_else(|| AppError::NotFound("Database not available".into()))?;
 
     let channels = db.list_notification_channels().await
         .map_err(|e| AppError::Internal(format!("DB error: {}", e)))?;
 
-    let result: Vec<serde_json::Value> = channels.iter().map(|ch| {
+    let entries: Vec<NotificationChannelEntry> = channels.iter().map(|ch| {
         let config: serde_json::Value = serde_json::from_str(&ch.config).unwrap_or_default();
-        serde_json::json!({
-            "id": ch.id,
-            "name": ch.name,
-            "type": ch.channel_type,
-            "config": config,
-            "enabled": ch.enabled,
-            "createdAt": ch.created_at,
-            "updatedAt": ch.updated_at,
-        })
+        NotificationChannelEntry {
+            id: ch.id.clone(),
+            channel_type: ch.channel_type.clone(),
+            name: ch.name.clone(),
+            config,
+            enabled: ch.enabled,
+            created_at: ch.created_at.clone(),
+            updated_at: ch.updated_at.clone(),
+        }
     }).collect();
 
-    Ok(ApiResponse::success(serde_json::json!(result)))
+    let total = entries.len();
+    Ok(ApiResponse::success(NotificationChannelsResponse {
+        total,
+        channels: entries,
+    }))
 }
 
 /// Create or update a notification channel (POST /api/notifications)
 pub async fn upsert_channel(
     State(state): State<Arc<AppState>>,
     Json(body): Json<serde_json::Value>,
-) -> Result<ApiResponse<serde_json::Value>, AppError> {
+) -> Result<ApiResponse<NotificationChannelEntry>, AppError> {
     let db = state.db.as_ref().ok_or_else(|| AppError::NotFound("Database not available".into()))?;
 
     let name = body.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
@@ -82,17 +87,22 @@ pub async fn upsert_channel(
     db.upsert_notification_channel(&channel).await
         .map_err(|e| AppError::Internal(format!("DB error: {}", e)))?;
 
-    Ok(ApiResponse::success(serde_json::json!({
-        "id": id,
-        "message": "Notification channel saved"
-    })))
+    Ok(ApiResponse::success(NotificationChannelEntry {
+        id: channel.id,
+        channel_type: channel.channel_type,
+        name: channel.name,
+        config,
+        enabled: channel.enabled,
+        created_at: channel.created_at,
+        updated_at: channel.updated_at,
+    }))
 }
 
 /// Delete a notification channel (DELETE /api/notifications/:id)
 pub async fn delete_channel(
     State(state): State<Arc<AppState>>,
     Path(channel_id): Path<String>,
-) -> Result<ApiResponse<serde_json::Value>, AppError> {
+) -> Result<ApiResponse<()>, AppError> {
     let db = state.db.as_ref().ok_or_else(|| AppError::NotFound("Database not available".into()))?;
 
     let deleted = db.delete_notification_channel(&channel_id).await
@@ -102,14 +112,14 @@ pub async fn delete_channel(
         return Err(AppError::NotFound("Channel not found".into()));
     }
 
-    Ok(ApiResponse::success(serde_json::json!({ "message": "Channel deleted" })))
+    Ok(ApiResponse::success(()))
 }
 
 /// Send a test alert to a channel (POST /api/notifications/test/:id)
 pub async fn test_channel(
     State(state): State<Arc<AppState>>,
     Path(channel_id): Path<String>,
-) -> Result<ApiResponse<serde_json::Value>, AppError> {
+) -> Result<ApiResponse<String>, AppError> {
     let db = state.db.as_ref().ok_or_else(|| AppError::NotFound("Database not available".into()))?;
 
     let channels = db.list_notification_channels().await
@@ -131,7 +141,7 @@ pub async fn test_channel(
     };
 
     match test_result {
-        Ok(msg) => Ok(ApiResponse::success(serde_json::json!({ "message": msg }))),
+        Ok(msg) => Ok(ApiResponse::success(msg)),
         Err(e) => Err(AppError::Internal(format!("Test failed: {}", e))),
     }
 }

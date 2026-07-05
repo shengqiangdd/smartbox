@@ -41,7 +41,7 @@ pub struct HostHealth {
 /// Get health status for all connected hosts (GET /api/hosts/health)
 pub async fn get_all_health(
     State(state): State<Arc<AppState>>,
-) -> Result<ApiResponse<serde_json::Value>, AppError> {
+) -> Result<ApiResponse<Vec<HostHealth>>, AppError> {
     let connection_ids: Vec<String> = state
         .connections
         .iter()
@@ -49,7 +49,7 @@ pub async fn get_all_health(
         .collect();
 
     if connection_ids.is_empty() {
-        return Ok(ApiResponse::success(serde_json::json!([])));
+        return Ok(ApiResponse::success(Vec::new()));
     }
 
     let mut results = Vec::new();
@@ -121,7 +121,7 @@ pub async fn get_all_health(
     // Auto-analyze health results and create alerts for anomalies
     auto_alert_health_anomalies(&state, &results);
 
-    Ok(ApiResponse::success(serde_json::json!(results)))
+    Ok(ApiResponse::success(results))
 }
 
 /// Check health results for anomalies and auto-create alerts.
@@ -188,7 +188,7 @@ fn auto_alert_health_anomalies(state: &AppState, results: &[HostHealth]) {
 pub async fn diagnose_host(
     State(state): State<Arc<AppState>>,
     Json(body): Json<serde_json::Value>,
-) -> Result<ApiResponse<serde_json::Value>, AppError> {
+) -> Result<ApiResponse<crate::api_types::DiagnoseResponse>, AppError> {
     let host_id = body.get("hostId").and_then(|v| v.as_str()).ok_or_else(|| {
         AppError::BadRequest("Missing hostId".into())
     })?;
@@ -234,11 +234,14 @@ pub async fn diagnose_host(
         String::new()
     };
 
-    Ok(ApiResponse::success(serde_json::json!({
-        "health": health,
-        "rawReport": health_text,
-        "aiDiagnosis": ai_diagnosis,
-    })))
+    let health_value = serde_json::to_value(&health)
+        .unwrap_or_default();
+
+    Ok(ApiResponse::success(crate::api_types::DiagnoseResponse {
+        health: health_value,
+        raw_report: health_text,
+        ai_diagnosis,
+    }))
 }
 
 /// Run health check commands on a single host via SSH.

@@ -1,9 +1,12 @@
 use axum::{extract::State, Json};
 use std::sync::Arc;
 
+use crate::api_types::{
+    SshConnectResponse, SshDisconnectRequest, SshExecRequest, SshExecResponse,
+};
 use crate::app_state::AppState;
 use crate::response::ApiResponse;
-use crate::ssh::client::ConnectRequest;
+use crate::ssh::client::{ConnectRequest, SshConnection};
 use crate::ssh::SshSession;
 
 /// Get SSH test configuration from environment variables (GET /api/ssh/test-config)
@@ -18,24 +21,17 @@ pub async fn test_config() -> Json<serde_json::Value> {
 /// Execute a command on an SSH connection (POST /api/ssh/exec)
 pub async fn exec_command(
     State(state): State<Arc<AppState>>,
-    Json(body): Json<serde_json::Value>,
-) -> ApiResponse<serde_json::Value> {
-    let connection_id = body
-        .get("connectionId")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let command = body
-        .get("command")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    Json(body): Json<SshExecRequest>,
+) -> ApiResponse<SshExecResponse> {
+    let connection_id = &body.connection_id;
+    let command = &body.command;
 
     if connection_id.is_empty() || command.is_empty() {
         return ApiResponse::error(400, "Missing connectionId or command");
     }
 
     // Look up the connection
-    let conn_entry = state.connections.get(connection_id);
-    let conn = match conn_entry {
+    let conn = match state.connections.get(connection_id) {
         Some(c) => c,
         None => return ApiResponse::error(400, "SSH not connected"),
     };
@@ -45,15 +41,15 @@ pub async fn exec_command(
         None => return ApiResponse::error(400, "SSH not connected"),
     };
 
+    // Drop the read guard before awaiting (session is Arc)
+    drop(conn);
+
     // Execute command
     match session.exec(command).await {
         Ok((stdout, stderr, exit_code)) => {
             // Audit log the command execution
             let detail = serde_json::json!({
                 "action": "ssh_exec",
-                "host": conn.host,
-                "port": conn.port,
-                "username": conn.username,
                 "command": command,
                 "exit_code": exit_code,
                 "stdout_len": stdout.len(),
@@ -62,12 +58,12 @@ pub async fn exec_command(
             let ip = "0.0.0.0".to_string();
             state.add_audit_log("ssh_exec", detail, &ip);
 
-            ApiResponse::success(serde_json::json!({
-                "stdout": stdout,
-                "stderr": stderr,
-                "exitCode": exit_code
-            }))
-        },
+            ApiResponse::success(SshExecResponse {
+                stdout,
+                stderr,
+                exit_code: exit_code as i32,
+            })
+        }
         Err(e) => ApiResponse::error(500, &format!("SSH exec error: {}", e)),
     }
 }
@@ -76,7 +72,7 @@ pub async fn exec_command(
 pub async fn connect_ssh(
     State(state): State<Arc<AppState>>,
     Json(body): Json<ConnectRequest>,
-) -> ApiResponse<serde_json::Value> {
+) -> ApiResponse<SshConnectResponse> {
     let connection_id = uuid::Uuid::new_v4().to_string();
     let host = body.host;
     let port = body.port.unwrap_or(22);
@@ -86,118 +82,80 @@ pub async fn connect_ssh(
 
     // Try password auth first, then key auth
     if let Some(password) = &body.password {
-        if !password.is_empty() {
-            match session.connect_password(password).await {
-                Ok(()) => {
-                    let mut conn = crate::ssh::client::SshConnection::new(
-                        connection_id.clone(),
-                        host.clone(),
-                        port,
-                        username.clone(),
-                        "password".into(),
-                    );
-                    conn.set_session(Arc::new(session));
-                    state.connections.insert(connection_id.clone(), conn);
-                    
-                    // 🔥 Pre-warm SFTP session for first-operation latency reduction
-                    let session_arc = {
-                        let entry = state.connections.get(&connection_id);
-                        entry.and_then(|c| c.session.clone())
-                            .expect("SSH session just inserted, must exist")
-                    };
-                    tokio::spawn(async move {
-                        let _ = session_arc.get_sftp_session().await;
-                    });
-                    
-                    state.add_audit_log("ssh_connect", serde_json::json!({
-                        "connectionId": connection_id,
-                        "host": host,
-                        "port": port,
-                        "username": username,
-                        "auth": "password"
-                    }), "api");
-                    return ApiResponse::success(serde_json::json!({
-                        "connectionId": connection_id,
-                        "connected": true
-                    }));
-                }
-                Err(e) => {
-                    return ApiResponse::error(401, &format!("SSH connect error: {}", e));
-                }
-            }
+        if !password.is_empty() && session.connect_password(password).await.is_ok() {
+            save_connection(&state, &connection_id, &host, port, &username, session).await;
+            return ApiResponse::success(SshConnectResponse {
+                connection_id,
+                host,
+                port,
+                username,
+            });
         }
     }
 
-    // Try private key auth
-    if let Some(key) = &body.private_key {
-        if !key.is_empty() {
-            match session.connect_key(key, body.sudo_password.as_deref()).await {
-                Ok(()) => {
-                    let mut conn = crate::ssh::client::SshConnection::new(
-                        connection_id.clone(),
-                        host.clone(),
-                        port,
-                        username.clone(),
-                        "publickey".into(),
-                    );
-                    conn.set_session(Arc::new(session));
-                    state.connections.insert(connection_id.clone(), conn);
-                    
-                    // 🔥 Pre-warm SFTP session for first-operation latency reduction
-                    let session_arc = {
-                        let entry = state.connections.get(&connection_id);
-                        entry.and_then(|c| c.session.clone())
-                            .expect("SSH session just inserted, must exist")
-                    };
-                    tokio::spawn(async move {
-                        let _ = session_arc.get_sftp_session().await;
-                    });
-                    
-                    state.add_audit_log("ssh_connect", serde_json::json!({
-                        "connectionId": connection_id,
-                        "host": host,
-                        "port": port,
-                        "username": username,
-                        "auth": "publickey"
-                    }), "api");
-                    return ApiResponse::success(serde_json::json!({
-                        "connectionId": connection_id,
-                        "connected": true
-                    }));
-                }
-                Err(e) => {
-                    return ApiResponse::error(401, &format!("SSH connect error: {}", e));
-                }
-            }
+    // Try key auth
+    if let Some(private_key) = &body.private_key {
+        if !private_key.is_empty()
+            && session.connect_key(private_key, None).await.is_ok()
+        {
+            save_connection(&state, &connection_id, &host, port, &username, session).await;
+            return ApiResponse::success(SshConnectResponse {
+                connection_id,
+                host,
+                port,
+                username,
+            });
         }
     }
 
-    ApiResponse::error(400, "No authentication method provided")
+    ApiResponse::error(401, "SSH authentication failed")
 }
 
-/// Disconnect SSH (POST /api/ssh/disconnect)
+/// Disconnect from an SSH server (POST /api/ssh/disconnect)
 pub async fn disconnect_ssh(
     State(state): State<Arc<AppState>>,
-    Json(body): Json<serde_json::Value>,
-) -> ApiResponse<serde_json::Value> {
-    let connection_id = body
-        .get("connectionId")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    Json(body): Json<SshDisconnectRequest>,
+) -> ApiResponse<String> {
+    let connection_id = &body.connection_id;
 
-    if connection_id.is_empty() {
-        return ApiResponse::error(400, "Missing connectionId");
+    let (_key, mut conn) = match state.connections.remove(connection_id) {
+        Some(c) => c,
+        None => return ApiResponse::error(404, "SSH connection not found"),
+    };
+
+    if let Some(session) = conn.session.take() {
+        let _ = session.disconnect().await;
     }
 
-    if let Some((_, conn)) = state.connections.remove(connection_id) {
-        if let Some(session) = conn.session {
-            session.disconnect().await;
-        }
-        state.add_audit_log("ssh_disconnect", serde_json::json!({
-            "connectionId": connection_id
-        }), "api");
-        ApiResponse::success_msg("Disconnected")
-    } else {
-        ApiResponse::error(404, "Connection not found")
-    }
+    // Audit log
+    let detail = serde_json::json!({
+        "action": "ssh_disconnect",
+        "host": conn.host,
+        "port": conn.port,
+        "username": conn.username,
+    });
+    let ip = "0.0.0.0".to_string();
+    state.add_audit_log("ssh_disconnect", detail, &ip);
+
+    ApiResponse::success_msg("Disconnected")
+}
+
+async fn save_connection(
+    state: &AppState,
+    connection_id: &str,
+    host: &str,
+    port: u16,
+    username: &str,
+    session: SshSession,
+) {
+    let entry = SshConnection {
+        connection_id: connection_id.to_string(),
+        host: host.to_string(),
+        port,
+        username: username.to_string(),
+        auth_method: "password".to_string(),
+        session: Some(Arc::new(session)),
+    };
+
+    state.connections.insert(connection_id.to_string(), entry);
 }
