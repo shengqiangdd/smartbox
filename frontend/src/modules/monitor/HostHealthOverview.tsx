@@ -306,7 +306,6 @@ function HostHealthOverviewInner({
             collapsed={collapsed}
             diagnosing={diagnosing}
             diagnosis={diagnosis}
-            onToggle={() => setCollapsed((c) => !c)}
             onDiagnose={() => runDiagnosis(host.id)}
             onSelect={() => onSelectHost?.(host.id)}
           />
