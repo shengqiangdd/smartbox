@@ -3,9 +3,12 @@
  *
  * Shows the health status of all connected SSH hosts with color-coded
  * indicators and optional AI-powered diagnosis.
+ *
+ * Optimized with React.memo + extracted HostCard to avoid full re-render
+ * on each 30s polling cycle.
  */
 
-import { useState, useEffect, useCallback, useReducer } from 'react'
+import { memo, useState, useEffect, useCallback, useReducer, useMemo } from 'react'
 import {
   Server,
   Cpu,
@@ -42,27 +45,151 @@ interface HostHealth {
   processes: number | null
 }
 
-function healthColor(percent: number | null): string {
-  if (percent == null) return 'text-slate-500'
-  if (percent > 90) return 'text-red-400'
-  if (percent > 70) return 'text-amber-400'
+// ─── Helper fns ───
+
+function pctColor(pct: number | null): string {
+  if (pct == null) return 'text-slate-500'
+  if (pct > 90) return 'text-red-400'
+  if (pct > 70) return 'text-amber-400'
   return 'text-emerald-400'
 }
 
-function healthBg(percent: number | null): string {
-  if (percent == null) return 'bg-slate-600'
-  if (percent > 90) return 'bg-red-500'
-  if (percent > 70) return 'bg-amber-500'
+function pctBg(pct: number | null): string {
+  if (pct == null) return 'bg-slate-600'
+  if (pct > 90) return 'bg-red-500'
+  if (pct > 70) return 'bg-amber-500'
   return 'bg-emerald-500'
 }
 
-function statusIcon(connected: boolean, memPct: number | null) {
+function StatusIcon({ connected, memPct }: { connected: boolean; memPct: number | null }) {
   if (!connected) return <XCircle size={16} className="text-red-400" />
   if (memPct != null && memPct > 90) return <AlertTriangle size={16} className="text-red-400" />
   return <CheckCircle size={16} className="text-emerald-400" />
 }
+const StatusIconMemo = memo(StatusIcon);
 
-export default function HostHealthOverview({
+// ─── HostCard sub‑component (memoised) ───
+
+interface HostCardProps {
+  host: HostHealth
+  collapsed: boolean
+  diagnosing: string | null
+  diagnosis: Record<string, string>
+  onDiagnose: () => void
+  onSelect: () => void
+}
+
+const HostCard = memo(function HostCard({
+  host,
+  collapsed,
+  diagnosing,
+  diagnosis,
+  onDiagnose,
+  onSelect,
+}: HostCardProps) {
+  return (
+    <div
+      className={`rounded-xl border border-slate-700/50 bg-slate-800/60 p-4 backdrop-blur-sm transition-all hover:border-slate-600/50 ${collapsed ? 'hidden' : ''}`}
+    >
+      {/* Header */}
+      <div className="mb-3 flex items-center justify-between">
+        <button onClick={onSelect} className="flex items-center gap-2 text-left hover:text-blue-400 transition-colors">
+          <StatusIconMemo connected={host.connected} memPct={host.mem_percent} />
+          <span className="font-medium text-slate-200">{host.host}</span>
+          <span className="text-xs text-slate-500">port {host.port}</span>
+        </button>
+        <button
+          onClick={onDiagnose}
+          disabled={diagnosing === host.id}
+          className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-700 hover:text-slate-300 disabled:opacity-50"
+          title="AI Diagnosis"
+        >
+          {diagnosing === host.id ? <Loader2 size={14} className="animate-spin" /> : <Brain size={14} />}
+        </button>
+      </div>
+
+      {/* Metrics grid */}
+      <div className="grid grid-cols-2 gap-3 text-sm">
+        {/* CPU */}
+        <div className="rounded-lg bg-slate-800/80 p-2.5">
+          <div className="mb-1 flex items-center gap-1.5 text-xs text-slate-400">
+            <Cpu size={12} /> CPU
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className={`text-lg font-semibold tabular-nums ${pctColor(host.cpu_load)}`}>
+              {host.cpu_load != null ? `${host.cpu_load.toFixed(1)}%` : '--'}
+            </span>
+            {host.cpu_cores != null && <span className="text-xs text-slate-500">{host.cpu_cores} cores</span>}
+          </div>
+          <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-700">
+            <div className={`h-full rounded-full transition-all ${pctBg(host.cpu_load)}`} style={{ width: `${host.cpu_load ?? 0}%` }} />
+          </div>
+        </div>
+
+        {/* Memory */}
+        <div className="rounded-lg bg-slate-800/80 p-2.5">
+          <div className="mb-1 flex items-center gap-1.5 text-xs text-slate-400">
+            <MemoryStick size={12} /> Memory
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className={`text-lg font-semibold tabular-nums ${pctColor(host.mem_percent)}`}>
+              {host.mem_percent != null ? `${host.mem_percent.toFixed(1)}%` : '--'}
+            </span>
+          </div>
+          <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-700">
+            <div className={`h-full rounded-full ${pctBg(host.mem_percent)}`} style={{ width: `${host.mem_percent ?? 0}%` }} />
+          </div>
+          {host.mem_used_mb != null && host.mem_total_mb != null && (
+            <div className="mt-1 text-[10px] text-slate-500">
+              {(host.mem_used_mb / 1024).toFixed(1)}G / {(host.mem_total_mb / 1024).toFixed(1)}G
+            </div>
+          )}
+        </div>
+
+        {/* Disk */}
+        <div className="rounded-lg bg-slate-800/80 p-2.5">
+          <div className="mb-1 flex items-center gap-1.5 text-xs text-slate-400">
+            <HardDrive size={12} /> Disk
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className={`text-lg font-semibold tabular-nums ${pctColor(host.disk_percent != null ? parseFloat(host.disk_percent) : null)}`}>
+              {host.disk_percent != null ? `${host.disk_percent}` : '--'}
+            </span>
+          </div>
+          <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-700">
+            <div className={`h-full rounded-full ${pctBg(host.disk_percent != null ? parseFloat(host.disk_percent) : null)}`}
+              style={{ width: `${host.disk_percent != null ? parseFloat(host.disk_percent) : 0}%` }}
+            />
+          </div>
+          {host.disk_used != null && host.disk_total != null && (
+            <div className="mt-1 text-[10px] text-slate-500">{host.disk_used} / {host.disk_total}</div>
+          )}
+        </div>
+
+        {/* Uptime + Processes */}
+        <div className="rounded-lg bg-slate-800/80 p-2.5">
+          {host.uptime && <div className="mb-2 text-xs text-slate-400"><span className="text-slate-500">Uptime:</span> {host.uptime}</div>}
+          {host.processes != null && <div className="text-xs text-slate-400"><span className="text-slate-500">Processes:</span> {host.processes}</div>}
+          {!host.connected && <div className="text-xs text-red-400">Disconnected</div>}
+        </div>
+      </div>
+
+      {/* AI Diagnosis */}
+      {diagnosis[host.id] && (
+        <div className="mt-3 rounded-lg bg-slate-800/80 p-3">
+          <div className="mb-1 flex items-center gap-1.5 text-xs text-slate-400">
+            <Brain size={12} /> AI Diagnosis
+          </div>
+          <p className="text-xs text-slate-300 leading-relaxed">{diagnosis[host.id]}</p>
+        </div>
+      )}
+    </div>
+  )
+})
+
+// ─── Main component ───
+
+function HostHealthOverviewInner({
   onSelectHost,
 }: {
   onSelectHost?: (hostId: string) => void
@@ -79,6 +206,7 @@ export default function HostHealthOverview({
   const [collapsed, setCollapsed] = useState(false)
   const [diagnosing, setDiagnosing] = useState<string | null>(null)
   const [diagnosis, setDiagnosis] = useState<Record<string, string>>({})
+  const { hosts, status, errorMsg } = healthState
 
   const loadHealth = useCallback(async () => {
     try {
@@ -93,11 +221,11 @@ export default function HostHealthOverview({
 
   useEffect(() => {
     loadHealth()
-    const timer = setInterval(loadHealth, 30000) // auto-refresh every 30s
+    const timer = setInterval(loadHealth, 30000)
     return () => clearInterval(timer)
   }, [loadHealth])
 
-  const runDiagnosis = async (hostId: string) => {
+  const runDiagnosis = useCallback(async (hostId: string) => {
     setDiagnosing(hostId)
     try {
       const res = await authedFetch('/api/hosts/diagnose', {
@@ -106,206 +234,86 @@ export default function HostHealthOverview({
         body: JSON.stringify({ hostId }),
       })
       const data = await res.json()
-      const diag = data.data?.aiDiagnosis || data.data?.rawReport || '诊断不可用'
-      setDiagnosis((prev) => ({ ...prev, [hostId]: diag }))
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : '未知错误'
-      setDiagnosis((prev) => ({ ...prev, [hostId]: '诊断失败: ' + msg }))
+      setDiagnosis((prev) => ({ ...prev, [hostId]: data.data ?? 'No diagnosis available' }))
+    } catch {
+      setDiagnosis((prev) => ({ ...prev, [hostId]: 'Diagnosis failed' }))
     } finally {
       setDiagnosing(null)
     }
-  }
+  }, [])
 
-  const critical = healthState.hosts.filter((h) => h.connected && (h.mem_percent ?? 0) > 90)
-  const warning = healthState.hosts.filter(
-    (h) => h.connected && (h.mem_percent ?? 0) > 70 && (h.mem_percent ?? 0) <= 90,
+  // Memoised derived lists
+  const critical = useMemo(
+    () => hosts.filter((h) => h.connected && (h.mem_percent ?? 0) > 90),
+    [hosts],
+  )
+  const warning = useMemo(
+    () => hosts.filter((h) => h.connected && (h.mem_percent ?? 0) > 70 && (h.mem_percent ?? 0) <= 90),
+    [hosts],
   )
 
+  if (status === 'loading') {
+    return (
+      <div className="flex items-center justify-center py-12 text-slate-400">
+        <Loader2 size={20} className="mr-2 animate-spin" />
+        Loading host health...
+      </div>
+    )
+  }
+
+  if (status === 'error') {
+    return <div className="rounded-lg bg-red-900/20 p-4 text-sm text-red-400">{errorMsg}</div>
+  }
+
   return (
-    <div className="border-b border-slate-700/30">
-      {/* Header */}
-      <button
-        onClick={() => setCollapsed(!collapsed)}
-        className="flex w-full items-center gap-2 px-4 py-2 text-xs text-slate-400 hover:bg-slate-800/30 hover:text-slate-300"
-      >
-        <Server size={14} />
-        <span className="font-medium">主机健康概览</span>
-        {healthState.status === 'loading' ? (
-          <Loader2 size={12} className="ml-1 animate-spin" />
-        ) : (
-          <>
-            <span className="ml-1 rounded bg-slate-800 px-1.5 py-0.5 text-[10px]">
-              {healthState.hosts.length} 台
+    <div className="space-y-3">
+      {/* Header bar */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Server size={16} className="text-blue-400" />
+          <span className="text-sm font-medium text-slate-300">Host Health</span>
+          {critical.length > 0 && (
+            <span className="rounded bg-red-900/30 px-2 py-0.5 text-[10px] font-medium text-red-400">
+              {critical.length} critical
             </span>
-            {critical.length > 0 && (
-              <span className="rounded bg-red-900/30 px-1.5 py-0.5 text-[10px] text-red-400">
-                {critical.length} 危急
-              </span>
-            )}
-            {warning.length > 0 && (
-              <span className="rounded bg-amber-900/30 px-1.5 py-0.5 text-[10px] text-amber-400">
-                {warning.length} 警告
-              </span>
-            )}
-          </>
-        )}
-        <div className="ml-auto">
+          )}
+          {warning.length > 0 && (
+            <span className="rounded bg-amber-900/30 px-2 py-0.5 text-[10px] font-medium text-amber-400">
+              {warning.length} warning
+            </span>
+          )}
+        </div>
+        <button
+          onClick={() => setCollapsed((c) => !c)}
+          className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-slate-700 hover:text-slate-300"
+        >
           {collapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-        </div>
-      </button>
+          {collapsed ? 'Show' : 'Hide'}
+        </button>
+      </div>
 
-      {/* Content */}
-      {!collapsed && (
-        <div className="space-y-2 px-4 pb-3">
-          {healthState.errorMsg && (
-            <div className="rounded-lg bg-red-900/20 px-3 py-2 text-xs text-red-400">
-              加载失败: {healthState.errorMsg}
-              <button onClick={loadHealth} className="ml-2 underline">
-                重试
-              </button>
-            </div>
-          )}
-
-          {healthState.status !== 'loading' && healthState.hosts.length === 0 && (
-            <div className="rounded-lg bg-slate-800/30 px-3 py-4 text-center text-xs text-slate-500">
-              暂无已连接的主机
-            </div>
-          )}
-
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {healthState.hosts.map((h) => {
-              const memColor = healthColor(h.mem_percent)
-              const cpuColor = healthColor(
-                h.cpu_load != null && h.cpu_cores != null ? (h.cpu_load / h.cpu_cores) * 100 : null,
-              )
-              return (
-                <div
-                  key={h.id}
-                  className={`group rounded-lg border p-3 transition-colors ${
-                    h.connected
-                      ? 'border-slate-700/50 bg-slate-800/20 hover:border-slate-600/50'
-                      : 'border-red-900/30 bg-red-900/10'
-                  }`}
-                >
-                  {/* Host header */}
-                  <div className="mb-2 flex items-center justify-between">
-                    <div className="flex min-w-0 items-center gap-2">
-                      {statusIcon(h.connected, h.mem_percent)}
-                      <span className="truncate text-xs font-medium text-slate-200">{h.host}</span>
-                    </div>
-                    {h.connected && onSelectHost && (
-                      <button
-                        onClick={() => onSelectHost(h.id)}
-                        className="text-smartbox-400 hover:bg-smartbox-600/20 rounded px-1.5 py-0.5 text-[10px] opacity-0 group-hover:opacity-100"
-                      >
-                        详情
-                      </button>
-                    )}
-                  </div>
-
-                  {!h.connected ? (
-                    <p className="text-[10px] text-red-400">未连接</p>
-                  ) : h.error ? (
-                    <p className="text-[10px] text-amber-400">{h.error}</p>
-                  ) : (
-                    <>
-                      {/* CPU */}
-                      <div className="mb-1.5 flex items-center gap-2">
-                        <Cpu size={12} className="shrink-0 text-slate-500" />
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between text-[10px]">
-                            <span className="text-slate-500">负载</span>
-                            <span className={`font-mono ${cpuColor}`}>
-                              {h.cpu_load?.toFixed(1)} / {h.cpu_cores}核
-                            </span>
-                          </div>
-                          <div className="mt-0.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-700/60">
-                            <div
-                              className={`h-full rounded-full transition-all ${
-                                (h.cpu_load ?? 0) > (h.cpu_cores ?? 1) * 0.7
-                                  ? 'bg-amber-500'
-                                  : 'bg-emerald-500'
-                              }`}
-                              style={{
-                                width: `${Math.min(100, ((h.cpu_load ?? 0) / (h.cpu_cores ?? 1)) * 100)}%`,
-                              }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Memory */}
-                      <div className="mb-1.5 flex items-center gap-2">
-                        <MemoryStick size={12} className="shrink-0 text-slate-500" />
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between text-[10px]">
-                            <span className="text-slate-500">内存</span>
-                            <span className={`font-mono ${memColor}`}>
-                              {h.mem_percent?.toFixed(1)}%
-                            </span>
-                          </div>
-                          <div className="mt-0.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-700/60">
-                            <div
-                              className={`h-full rounded-full transition-all ${healthBg(h.mem_percent)}`}
-                              style={{ width: `${Math.min(100, h.mem_percent ?? 0)}%` }}
-                            />
-                          </div>
-                          <div className="text-[9px] text-slate-600">
-                            {h.mem_used_mb != null ? Math.round(h.mem_used_mb / 1024) : '?'}G /{' '}
-                            {h.mem_total_mb != null ? Math.round(h.mem_total_mb / 1024) : '?'}G
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Disk */}
-                      <div className="mb-1.5 flex items-center gap-2">
-                        <HardDrive size={12} className="shrink-0 text-slate-500" />
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between text-[10px]">
-                            <span className="text-slate-500">磁盘</span>
-                            <span className="font-mono text-slate-400">
-                              {h.disk_percent || '?'}
-                            </span>
-                          </div>
-                          <div className="text-[9px] text-slate-600">
-                            / {h.disk_used || '?'} / {h.disk_total || '?'}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Uptime & processes */}
-                      <div className="flex items-center justify-between text-[9px] text-slate-600">
-                        <span>{h.uptime || '?'}</span>
-                        <span>{h.processes ?? '?'} proc</span>
-                      </div>
-
-                      {/* AI Diagnosis button */}
-                      <button
-                        onClick={() => runDiagnosis(h.id)}
-                        disabled={diagnosing === h.id}
-                        className="mt-2 flex w-full items-center justify-center gap-1 rounded bg-slate-800/50 py-1 text-[10px] text-slate-500 transition-colors hover:bg-slate-700/50 hover:text-slate-300 disabled:opacity-50"
-                      >
-                        {diagnosing === h.id ? (
-                          <Loader2 size={10} className="animate-spin" />
-                        ) : (
-                          <Brain size={10} />
-                        )}
-                        AI 诊断
-                      </button>
-
-                      {diagnosis[h.id] && (
-                        <div className="mt-2 max-h-24 overflow-y-auto rounded bg-slate-900/50 p-2 text-[10px] leading-relaxed whitespace-pre-wrap text-slate-400">
-                          {diagnosis[h.id]}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              )
-            })}
+      {/* Host cards */}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {hosts.length === 0 && (
+          <div className="col-span-full py-8 text-center text-sm text-slate-500">
+            No hosts connected. Add a host in the SSH connection panel.
           </div>
-        </div>
-      )}
+        )}
+        {hosts.map((host) => (
+          <HostCard
+            key={host.id}
+            host={host}
+            collapsed={collapsed}
+            diagnosing={diagnosing}
+            diagnosis={diagnosis}
+            onToggle={() => setCollapsed((c) => !c)}
+            onDiagnose={() => runDiagnosis(host.id)}
+            onSelect={() => onSelectHost?.(host.id)}
+          />
+        ))}
+      </div>
     </div>
   )
 }
+
+export default memo(HostHealthOverviewInner)

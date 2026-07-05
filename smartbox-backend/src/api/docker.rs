@@ -5,6 +5,7 @@ use axum::{
 };
 use serde::Deserialize;
 
+use crate::api_types::DockerExecResponse;
 use crate::app_state::AppState;
 use crate::response::ApiResponse;
 use crate::utils::escape_sh_arg;
@@ -182,10 +183,10 @@ async fn docker_exec(
 pub async fn docker_ps(
     State(state): State<Arc<AppState>>,
     Json(req): Json<PsRequest>,
-) -> ApiResponse<serde_json::Value> {
+) -> ApiResponse<DockerExecResponse> {
     let all_flag = if req.all.unwrap_or(false) { "-a" } else { "" };
     match docker_exec(&state, &req.connection_id, &[all_flag, "ps", "--format", "json", "--no-trunc"]).await {
-        Ok(data) => ApiResponse::success(serde_json::json!({ "data": data })),
+        Ok(data) => ApiResponse::success(DockerExecResponse { data }),
         Err(e) => ApiResponse::error(-1, &e),
     }
 }
@@ -194,9 +195,9 @@ pub async fn docker_ps(
 pub async fn docker_images(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ConnRequest>,
-) -> ApiResponse<serde_json::Value> {
+) -> ApiResponse<DockerExecResponse> {
     match docker_exec(&state, &req.connection_id, &["images", "--format", "json", "--no-trunc"]).await {
-        Ok(data) => ApiResponse::success(serde_json::json!({ "data": data })),
+        Ok(data) => ApiResponse::success(DockerExecResponse { data }),
         Err(e) => ApiResponse::error(-1, &e),
     }
 }
@@ -205,12 +206,12 @@ pub async fn docker_images(
 pub async fn start_container(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ActionRequest>,
-) -> ApiResponse<serde_json::Value> {
+) -> ApiResponse<DockerExecResponse> {
     state.add_audit_log("docker_start", serde_json::json!({
         "connectionId": req.connection_id, "containerId": req.id
     }), "api");
     match docker_exec(&state, &req.connection_id, &["start", &req.id]).await {
-        Ok(data) => ApiResponse::success(serde_json::json!({ "data": data })),
+        Ok(data) => ApiResponse::success(DockerExecResponse { data }),
         Err(e) => ApiResponse::error(-1, &e),
     }
 }
@@ -219,12 +220,12 @@ pub async fn start_container(
 pub async fn stop_container(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ActionRequest>,
-) -> ApiResponse<serde_json::Value> {
+) -> ApiResponse<DockerExecResponse> {
     state.add_audit_log("docker_stop", serde_json::json!({
         "connectionId": req.connection_id, "containerId": req.id
     }), "api");
     match docker_exec(&state, &req.connection_id, &["stop", &req.id]).await {
-        Ok(data) => ApiResponse::success(serde_json::json!({ "data": data })),
+        Ok(data) => ApiResponse::success(DockerExecResponse { data }),
         Err(e) => ApiResponse::error(-1, &e),
     }
 }
@@ -233,12 +234,12 @@ pub async fn stop_container(
 pub async fn restart_container(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ActionRequest>,
-) -> ApiResponse<serde_json::Value> {
+) -> ApiResponse<DockerExecResponse> {
     state.add_audit_log("docker_restart", serde_json::json!({
         "connectionId": req.connection_id, "containerId": req.id
     }), "api");
     match docker_exec(&state, &req.connection_id, &["restart", &req.id]).await {
-        Ok(data) => ApiResponse::success(serde_json::json!({ "data": data })),
+        Ok(data) => ApiResponse::success(DockerExecResponse { data }),
         Err(e) => ApiResponse::error(-1, &e),
     }
 }
@@ -247,10 +248,10 @@ pub async fn restart_container(
 pub async fn container_logs(
     State(state): State<Arc<AppState>>,
     Json(req): Json<LogsRequest>,
-) -> ApiResponse<serde_json::Value> {
+) -> ApiResponse<DockerExecResponse> {
     let tail_flag = format!("--tail={}", req.tail.unwrap_or(100));
     match docker_exec(&state, &req.connection_id, &["logs", &tail_flag, "--timestamps", &req.id]).await {
-        Ok(data) => ApiResponse::success(serde_json::json!({ "data": data })),
+        Ok(data) => ApiResponse::success(DockerExecResponse { data }),
         Err(e) => ApiResponse::error(-1, &e),
     }
 }
@@ -259,11 +260,11 @@ pub async fn container_logs(
 pub async fn inspect_container(
     State(state): State<Arc<AppState>>,
     Json(req): Json<InspectRequest>,
-) -> ApiResponse<serde_json::Value> {
+) -> ApiResponse<crate::api_types::DockerInspectResponse> {
     match docker_exec(&state, &req.connection_id, &["inspect", &req.id]).await {
         Ok(data) => {
             let parsed: serde_json::Value = serde_json::from_str(&data).unwrap_or(serde_json::json!([data]));
-            ApiResponse::success(serde_json::json!({ "data": parsed }))
+            ApiResponse::success(crate::api_types::DockerInspectResponse { data: parsed })
         }
         Err(e) => ApiResponse::error(-1, &e),
     }
@@ -273,14 +274,14 @@ pub async fn inspect_container(
 pub async fn remove_image(
     State(state): State<Arc<AppState>>,
     Json(req): Json<RmiRequest>,
-) -> ApiResponse<serde_json::Value> {
+) -> ApiResponse<DockerExecResponse> {
     let mut args = vec!["rmi"];
     if req.force.unwrap_or(false) {
         args.push("-f");
     }
     args.push(&req.id);
     match docker_exec(&state, &req.connection_id, &args).await {
-        Ok(data) => ApiResponse::success(serde_json::json!({ "data": data })),
+        Ok(data) => ApiResponse::success(DockerExecResponse { data }),
         Err(e) => ApiResponse::error(-1, &e),
     }
 }
@@ -289,14 +290,14 @@ pub async fn remove_image(
 pub async fn remove_container(
     State(state): State<Arc<AppState>>,
     Json(req): Json<RmiRequest>,
-) -> ApiResponse<serde_json::Value> {
+) -> ApiResponse<DockerExecResponse> {
     let mut args = vec!["rm"];
     if req.force.unwrap_or(false) {
         args.push("-f");
     }
     args.push(&req.id);
     match docker_exec(&state, &req.connection_id, &args).await {
-        Ok(data) => ApiResponse::success(serde_json::json!({ "data": data })),
+        Ok(data) => ApiResponse::success(DockerExecResponse { data }),
         Err(e) => ApiResponse::error(-1, &e),
     }
 }
@@ -305,7 +306,7 @@ pub async fn remove_container(
 pub async fn exec_container(
     State(state): State<Arc<AppState>>,
     Json(req): Json<DockerExecRequest>,
-) -> ApiResponse<serde_json::Value> {
+) -> ApiResponse<crate::api_types::DockerExecResultResponse> {
     let args: Vec<String> = if let Some(shell) = &req.shell {
         vec![
             "exec".into(),
@@ -324,7 +325,7 @@ pub async fn exec_container(
     };
     let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     match docker_exec(&state, &req.connection_id, &args_ref).await {
-        Ok(data) => ApiResponse::success(serde_json::json!({ "data": data, "exitCode": 0 })),
+        Ok(data) => ApiResponse::success(crate::api_types::DockerExecResultResponse { data, exit_code: 0 }),
         Err(e) => ApiResponse::error(-1, &e),
     }
 }
@@ -333,9 +334,9 @@ pub async fn exec_container(
 pub async fn pull_image(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ImageRequest>,
-) -> ApiResponse<serde_json::Value> {
+) -> ApiResponse<DockerExecResponse> {
     match docker_exec(&state, &req.connection_id, &["pull", &req.image]).await {
-        Ok(data) => ApiResponse::success(serde_json::json!({ "data": data })),
+        Ok(data) => ApiResponse::success(DockerExecResponse { data }),
         Err(e) => ApiResponse::error(-1, &e),
     }
 }
@@ -344,9 +345,9 @@ pub async fn pull_image(
 pub async fn push_image(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ImageRequest>,
-) -> ApiResponse<serde_json::Value> {
+) -> ApiResponse<DockerExecResponse> {
     match docker_exec(&state, &req.connection_id, &["push", &req.image]).await {
-        Ok(data) => ApiResponse::success(serde_json::json!({ "data": data })),
+        Ok(data) => ApiResponse::success(DockerExecResponse { data }),
         Err(e) => ApiResponse::error(-1, &e),
     }
 }
@@ -355,9 +356,9 @@ pub async fn push_image(
 pub async fn tag_image(
     State(state): State<Arc<AppState>>,
     Json(req): Json<TagRequest>,
-) -> ApiResponse<serde_json::Value> {
+) -> ApiResponse<DockerExecResponse> {
     match docker_exec(&state, &req.connection_id, &["tag", &req.id, &req.tag]).await {
-        Ok(data) => ApiResponse::success(serde_json::json!({ "data": data })),
+        Ok(data) => ApiResponse::success(DockerExecResponse { data }),
         Err(e) => ApiResponse::error(-1, &e),
     }
 }
@@ -366,9 +367,9 @@ pub async fn tag_image(
 pub async fn prune_images(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ConnRequest>,
-) -> ApiResponse<serde_json::Value> {
+) -> ApiResponse<DockerExecResponse> {
     match docker_exec(&state, &req.connection_id, &["image", "prune", "-f"]).await {
-        Ok(data) => ApiResponse::success(serde_json::json!({ "data": data })),
+        Ok(data) => ApiResponse::success(DockerExecResponse { data }),
         Err(e) => ApiResponse::error(-1, &e),
     }
 }
@@ -377,9 +378,9 @@ pub async fn prune_images(
 pub async fn image_history(
     State(state): State<Arc<AppState>>,
     Json(req): Json<HistoryRequest>,
-) -> ApiResponse<serde_json::Value> {
+) -> ApiResponse<DockerExecResponse> {
     match docker_exec(&state, &req.connection_id, &["history", &req.id, "--format", "json", "--no-trunc"]).await {
-        Ok(data) => ApiResponse::success(serde_json::json!({ "data": data })),
+        Ok(data) => ApiResponse::success(DockerExecResponse { data }),
         Err(e) => ApiResponse::error(-1, &e),
     }
 }
@@ -388,9 +389,9 @@ pub async fn image_history(
 pub async fn container_stats(
     State(state): State<Arc<AppState>>,
     Json(req): Json<StatsRequest>,
-) -> ApiResponse<serde_json::Value> {
+) -> ApiResponse<DockerExecResponse> {
     match docker_exec(&state, &req.connection_id, &["stats", &req.id, "--no-stream", "--format", "json"]).await {
-        Ok(data) => ApiResponse::success(serde_json::json!({ "data": data })),
+        Ok(data) => ApiResponse::success(DockerExecResponse { data }),
         Err(e) => ApiResponse::error(-1, &e),
     }
 }
@@ -399,9 +400,9 @@ pub async fn container_stats(
 pub async fn compose_list(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ComposeRequest>,
-) -> ApiResponse<serde_json::Value> {
+) -> ApiResponse<DockerExecResponse> {
     match docker_exec(&state, &req.connection_id, &["compose", "ls", "--format", "json"]).await {
-        Ok(data) => ApiResponse::success(serde_json::json!({ "data": data })),
+        Ok(data) => ApiResponse::success(DockerExecResponse { data }),
         Err(e) => ApiResponse::error(-1, &e),
     }
 }
@@ -410,7 +411,7 @@ pub async fn compose_list(
 pub async fn compose_action(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ComposeActionRequest>,
-) -> ApiResponse<serde_json::Value> {
+) -> ApiResponse<DockerExecResponse> {
     let project_dir = std::path::Path::new(&req.path).parent().unwrap_or(std::path::Path::new("."));
     let project_dir_str = project_dir.to_string_lossy();
 
@@ -429,7 +430,7 @@ pub async fn compose_action(
     }
 
     match docker_exec(&state, &req.connection_id, &args).await {
-        Ok(data) => ApiResponse::success(serde_json::json!({ "data": data })),
+        Ok(data) => ApiResponse::success(DockerExecResponse { data }),
         Err(e) => ApiResponse::error(-1, &e),
     }
 }

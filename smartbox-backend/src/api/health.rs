@@ -1,23 +1,24 @@
-use axum::{extract::State};
-use serde_json::json;
+use axum::extract::State;
 use std::sync::Arc;
 
+use crate::api_types::{ConnectionsInfo, HealthResponse};
 use crate::app_state::AppState;
 use crate::response::ApiResponse;
 
 /// Enhanced health check (GET /api/health)
 pub async fn health_check(
     State(state): State<Arc<AppState>>,
-) -> ApiResponse<serde_json::Value> {
+) -> ApiResponse<HealthResponse> {
     let conn_count = state.connections.len();
-    let body = json!({
-        "status": "ok",
-        "uptime": std::time::SystemTime::now()
+    ApiResponse::success(HealthResponse {
+        status: "ok".into(),
+        uptime: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs(),
-        "version": env!("CARGO_PKG_VERSION"),
-        "connections": { "active": conn_count },
-    });
-    ApiResponse::success(body)
+        version: env!("CARGO_PKG_VERSION"),
+        connections: ConnectionsInfo {
+            active: conn_count,
+        },
+    })
 }

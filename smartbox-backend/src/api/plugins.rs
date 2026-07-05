@@ -2,12 +2,16 @@ use axum::extract::State;
 use axum::extract::Path;
 use std::sync::Arc;
 
+use crate::api_types::PluginInstallResponse;
 use crate::app_state::AppState;
 use crate::error::AppError;
+use crate::models::PluginManifest;
 use crate::response::ApiResponse;
 
 /// List installed plugins (GET /api/plugins)
-pub async fn list_plugins(State(state): State<Arc<AppState>>) -> ApiResponse<serde_json::Value> {
+pub async fn list_plugins(
+    State(state): State<Arc<AppState>>,
+) -> ApiResponse<Vec<PluginManifest>> {
     let plugins_dir = &state.config.plugins_dir;
     let mut plugins = Vec::new();
 
@@ -23,14 +27,14 @@ pub async fn list_plugins(State(state): State<Arc<AppState>>) -> ApiResponse<ser
                 continue;
             }
             if let Ok(content) = std::fs::read_to_string(&manifest_path) {
-                if let Ok(manifest) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Ok(manifest) = serde_json::from_str::<PluginManifest>(&content) {
                     plugins.push(manifest);
                 }
             }
         }
     }
 
-    ApiResponse::success(serde_json::json!(plugins))
+    ApiResponse::success(plugins)
 }
 
 /// Install a plugin (POST /api/plugins/install)
@@ -38,7 +42,7 @@ pub async fn list_plugins(State(state): State<Arc<AppState>>) -> ApiResponse<ser
 pub async fn install_plugin(
     State(state): State<Arc<AppState>>,
     axum::Json(body): axum::Json<serde_json::Value>,
-) -> Result<ApiResponse<serde_json::Value>, AppError> {
+) -> Result<ApiResponse<PluginInstallResponse>, AppError> {
     let plugin_id = body
         .get("pluginId")
         .and_then(|v| v.as_str())
@@ -107,18 +111,18 @@ pub async fn install_plugin(
         "pluginUrl": plugin_url
     }), "api");
 
-    Ok(ApiResponse::success(serde_json::json!({
-        "success": true,
-        "pluginId": plugin_id,
-        "message": format!("Plugin '{}' installed successfully", plugin_id),
-    })))
+    Ok(ApiResponse::success(PluginInstallResponse {
+        success: true,
+        plugin_id: plugin_id.to_string(),
+        message: format!("Plugin '{}' installed successfully", plugin_id),
+    }))
 }
 
 /// Uninstall a plugin (POST /api/plugins/uninstall)
 pub async fn uninstall_plugin(
     State(state): State<Arc<AppState>>,
     axum::Json(body): axum::Json<serde_json::Value>,
-) -> Result<ApiResponse<serde_json::Value>, AppError> {
+) -> Result<ApiResponse<PluginInstallResponse>, AppError> {
     let plugin_id = body
         .get("plugin_id")
         .and_then(|v| v.as_str())
@@ -146,11 +150,11 @@ pub async fn uninstall_plugin(
         "pluginId": plugin_id
     }), "api");
 
-    Ok(ApiResponse::success(serde_json::json!({
-        "success": true,
-        "pluginId": plugin_id,
-        "message": format!("Plugin '{}' uninstalled", plugin_id),
-    })))
+    Ok(ApiResponse::success(PluginInstallResponse {
+        success: true,
+        plugin_id: plugin_id.clone(),
+        message: format!("Plugin '{}' uninstalled", plugin_id),
+    }))
 }
 
 /// Get plugin JS file (GET /api/plugins/{id}/plugin.js)

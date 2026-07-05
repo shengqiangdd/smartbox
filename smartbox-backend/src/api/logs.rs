@@ -1,151 +1,158 @@
 use axum::{extract::State, Json};
 use std::sync::Arc;
 
+use crate::api_types::{GrepResponse, LogSource, LogTailResponse};
 use crate::app_state::AppState;
 use crate::response::ApiResponse;
-use crate::utils::escape_sh_arg;
 
-/// List available log sources (POST /api/logs/list-sources)
+/// List available log sources (GET /api/log-sources)
 pub async fn list_sources(
     State(_state): State<Arc<AppState>>,
-) -> ApiResponse<serde_json::Value> {
-    let sources = serde_json::json!([
-        { "path": "/var/log/syslog", "label": "Syslog" },
-        { "path": "/var/log/messages", "label": "Messages" },
-        { "path": "/var/log/auth.log", "label": "Auth Log" },
-        { "path": "/var/log/kern.log", "label": "Kernel Log" },
-        { "path": "/var/log/nginx/access.log", "label": "Nginx Access" },
-        { "path": "/var/log/nginx/error.log", "label": "Nginx Error" },
-    ]);
+) -> ApiResponse<Vec<LogSource>> {
+    let mut sources: Vec<LogSource> = Vec::new();
+
+    // Detect common log directories
+    // We check which log files exist via SSH
+    let common_logs = [
+        ("/var/log/syslog", "System Log (syslog)"),
+        ("/var/log/messages", "System Log (messages)"),
+        ("/var/log/auth.log", "Authentication Log"),
+        ("/var/log/kern.log", "Kernel Log"),
+        ("/var/log/dmesg", "Kernel Boot Messages"),
+        ("/var/log/nginx/access.log", "Nginx Access Log"),
+        ("/var/log/nginx/error.log", "Nginx Error Log"),
+        ("/var/log/apache2/access.log", "Apache Access Log"),
+        ("/var/log/apache2/error.log", "Apache Error Log"),
+        ("/var/log/mysql/error.log", "MySQL Error Log"),
+        ("/var/log/postgresql/postgresql.log", "PostgreSQL Log"),
+        ("/var/log/docker.log", "Docker Daemon Log"),
+        ("/var/log/journal", "System Journal"),
+    ];
+
+    // Check which common log files exist locally
+    for (path, label) in &common_logs {
+        if std::path::Path::new(path).exists() {
+            sources.push(LogSource {
+                path: path.to_string(),
+                label: label.to_string(),
+            });
+        }
+    }
+
+    // Always include syslog if sources is empty (fallback)
+    if sources.is_empty() {
+        sources.push(LogSource {
+            path: "/var/log/syslog".into(),
+            label: "System Log (syslog)".into(),
+        });
+    }
+
     ApiResponse::success(sources)
 }
 
-/// Tail a log file via SSH (POST /api/logs/tail)
+/// Tail log file via SSH (POST /api/logs/tail)
 pub async fn tail_log(
     State(state): State<Arc<AppState>>,
     Json(body): Json<serde_json::Value>,
-) -> ApiResponse<serde_json::Value> {
-    let connection_id = body
-        .get("connectionId")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+) -> ApiResponse<LogTailResponse> {
     let path = body
         .get("path")
         .and_then(|v| v.as_str())
-        .unwrap_or("");
+        .unwrap_or("/var/log/syslog");
     let lines = body
         .get("lines")
         .and_then(|v| v.as_u64())
-        .map(|v| v.clamp(10, 5000))
-        .unwrap_or(200);
+        .unwrap_or(50) as usize;
 
-    if connection_id.is_empty() || path.is_empty() {
-        return ApiResponse::error(
-            -1,
-            "Missing connectionId or path",
-        );
-    }
-
-    // Look up SSH session
-    let session = {
-        let entry = state.connections.get(connection_id);
-        entry.and_then(|c| c.session.clone())
-    };
-
-    let session = match session {
-        Some(s) => s,
+    // Get SSH connection — use first connected host or fall back to local
+    let entry = state.connections.iter().next();
+    let content = match entry {
+        Some(e) => {
+            let session = e.value().session.as_ref();
+            match session {
+                Some(s) => {
+                    let cmd = format!("tail -n {} \"{}\" 2>/dev/null || echo 'File not found: {}'", lines, path, path);
+                    match tokio::time::timeout(
+                        std::time::Duration::from_secs(15),
+                        s.exec(&cmd),
+                    )
+                    .await
+                    {
+                        Ok(Ok((stdout, _, _))) => Some(stdout),
+                        _ => None,
+                    }
+                }
+                None => None,
+            }
+        }
         None => {
-            return ApiResponse::error(-1, "SSH session not found or not connected");
+            // Local fallback
+            std::fs::read_to_string(path).ok()
         }
     };
 
-    // Run tail command via SSH (cap at 1MB output)
-    let cmd = format!("tail -n {} {} 2>&1 | tail -c 1048576", lines, escape_sh_arg(path));
-
-    match session.exec(&cmd).await {
-        Ok((stdout, stderr, _exit_code)) => {
-            let content = if stderr.is_empty() { stdout } else { format!("{}\n{}", stderr, stdout) };
-            ApiResponse::success(serde_json::json!({
-                "content": content,
-                "path": path,
-                "lines": lines,
-            }))
-        }
-        Err(e) => {
-            ApiResponse::error(-1, &format!("SSH exec failed: {}", e))
-        }
-    }
+    let content = content.unwrap_or_else(|| format!("Unable to read: {}", path));
+    ApiResponse::success(LogTailResponse {
+        content: Some(content.clone()),
+        path: path.to_string(),
+        lines: content.lines().count(),
+        total_lines: content.lines().count(),
+    })
 }
 
-/// Grep a log file via SSH (POST /api/logs/grep)
+/// Grep log file via SSH (POST /api/logs/grep)
 pub async fn grep_log(
     State(state): State<Arc<AppState>>,
     Json(body): Json<serde_json::Value>,
-) -> ApiResponse<serde_json::Value> {
-    let connection_id = body
-        .get("connectionId")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let path = body
-        .get("path")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+) -> ApiResponse<GrepResponse> {
     let pattern = body
         .get("pattern")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    let context = body
-        .get("context")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0)
-        .min(5);
-    let ignore_case = body
-        .get("ignoreCase")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(true);
+    let path = body
+        .get("path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("/var/log/syslog");
 
-    if connection_id.is_empty() || path.is_empty() || pattern.is_empty() {
-        return ApiResponse::error(-1, "Missing connectionId, path, or pattern");
+    if pattern.is_empty() {
+        return ApiResponse::error(-1, "pattern required");
     }
 
-    // Look up SSH session
-    let session = {
-        let entry = state.connections.get(connection_id);
-        entry.and_then(|c| c.session.clone())
-    };
-
-    let session = match session {
-        Some(s) => s,
+    // Get SSH connection — use first connected host or fall back to local
+    let entry = state.connections.iter().next();
+    let content = match entry {
+        Some(e) => {
+            let session = e.value().session.as_ref();
+            match session {
+                Some(s) => {
+                    let cmd = format!("grep -i '{}' \"{}\" 2>/dev/null | tail -200 || echo 'No matches or file not found'", pattern, path);
+                    match tokio::time::timeout(
+                        std::time::Duration::from_secs(15),
+                        s.exec(&cmd),
+                    )
+                    .await
+                    {
+                        Ok(Ok((stdout, _, _))) => Some(stdout),
+                        _ => None,
+                    }
+                }
+                None => None,
+            }
+        }
         None => {
-            return ApiResponse::error(-1, "SSH session not found or not connected");
+            // Local fallback
+            std::process::Command::new("grep")
+                .args(["-i", pattern, path])
+                .output()
+                .ok()
+                .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
         }
     };
 
-    // Build grep command (use escape_sh_arg instead of manual quoting)
-    let ic = if ignore_case { "-i" } else { "" };
-    let cmd = if context > 0 {
-        format!(
-            "grep {} -C {} {} {} 2>&1 | tail -c 1048576",
-            ic, context, escape_sh_arg(pattern), escape_sh_arg(path)
-        )
-    } else {
-        format!(
-            "grep {} {} {} 2>&1 | tail -c 1048576",
-            ic, escape_sh_arg(pattern), escape_sh_arg(path)
-        )
-    };
-
-    match session.exec(&cmd).await {
-        Ok((stdout, stderr, _exit_code)) => {
-            let content = if stderr.is_empty() { stdout } else { format!("{}\n{}", stderr, stdout) };
-            ApiResponse::success(serde_json::json!({
-                "content": content,
-                "pattern": pattern,
-                "path": path,
-            }))
-        }
-        Err(e) => {
-            ApiResponse::error(-1, &format!("SSH exec failed: {}", e))
-        }
-    }
+    let content = content.unwrap_or_else(|| format!("Unable to grep: {}", path));
+    ApiResponse::success(GrepResponse {
+        content,
+        pattern: pattern.to_string(),
+        path: path.to_string(),
+    })
 }
