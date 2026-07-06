@@ -144,7 +144,8 @@ export default function AuditLogPage() {
     if (filter !== 'all' && entry.action !== filter) return false
     if (search) {
       const q = search.toLowerCase()
-      const detailStr = typeof entry.detail === 'string' ? entry.detail : JSON.stringify(entry.detail)
+      const detailStr =
+        typeof entry.detail === 'string' ? entry.detail : JSON.stringify(entry.detail)
       const text = `${entry.action} ${detailStr} ${entry.timestamp}`.toLowerCase()
       if (!text.includes(q)) return false
     }

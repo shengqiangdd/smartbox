@@ -28,20 +28,20 @@ pub struct SshHandler;
 impl client::Handler for SshHandler {
     type Error = russh::Error;
 
-    fn check_server_key(
+    async fn check_server_key(
         &mut self,
         _server_public_key: &russh_keys::PublicKey,
-    ) -> impl std::future::Future<Output = Result<bool, Self::Error>> + Send {
-        async { Ok(true) }
+    ) -> Result<bool, Self::Error> {
+        Ok(true)
     }
 
-    fn auth_banner(
+    async fn auth_banner(
         &mut self,
         banner: &str,
         _session: &mut client::Session,
-    ) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send {
-        tracing::debug!("SSH auth banner: {}", banner);
-        async { Ok(()) }
+    ) -> Result<(), Self::Error> {
+        tracing::debug!("SSH auth banner: {banner}");
+        Ok(())
     }
 }
 

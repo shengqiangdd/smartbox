@@ -82,16 +82,19 @@ export default function SshPlaceholder() {
         // 🔐 解密存储的密码/私钥后再发送
         const decryptedConn = await decryptConnection(conn)
         const ws = wsClientRef.current || (await getWsClient())
-        await ws.request({
-          type: 'connect',
-          connectionId: sessionId,
-          host: conn.host,
-          port: conn.port,
-          username: conn.username,
-          password: decryptedConn.password,
-          privateKey: decryptedConn.privateKey,
-          sudoPassword: decryptedConn.sudoPassword || decryptedConn.password,
-        }, 30000)
+        await ws.request(
+          {
+            type: 'connect',
+            connectionId: sessionId,
+            host: conn.host,
+            port: conn.port,
+            username: conn.username,
+            password: decryptedConn.password,
+            privateKey: decryptedConn.privateKey,
+            sudoPassword: decryptedConn.sudoPassword || decryptedConn.password,
+          },
+          30000,
+        )
 
         const session: SshSession = {
           id: sessionId,
