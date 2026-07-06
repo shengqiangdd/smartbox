@@ -45,12 +45,13 @@ export default function SshPlaceholder() {
   // 用 ref 追踪连接状态，防止闭包过期
   const wsClientRef = useRef<WsClient | null>(null)
 
-  // 监听 WebSocket 状态
+  // 监听 WebSocket 状态（确保 UI 始终反映实际连接状态）
   useEffect(() => {
-    // 异步获取带 token 的 WS 客户端
     getWsClient().then((client) => {
       wsClientRef.current = client
       client.connect()
+      // 立即同步当前状态（当 onStatus 注册时 WS 可能已连接）
+      setWsStatus(client.status)
       client.onStatus((status) => {
         setWsStatus(status)
       })

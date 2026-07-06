@@ -86,6 +86,7 @@ export class WsClient {
       this.stopHeartbeat()
       this.setStatus('disconnected')
       this.rejectAllPending(new Error('连接已关闭'))
+      this.ws = null
       this.scheduleReconnect()
     }
 
@@ -144,13 +145,49 @@ export class WsClient {
   send(data: Record<string, unknown>) {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(data))
+      return true
     }
+    return false
+  }
+
+  /**
+   * 等待 WebSocket 进入 OPEN 状态（用于连接尚未就绪时排队发送）。
+   * 超时或断开连接时拒绝 Promise。
+   */
+  private waitForOpen(timeout: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (this.ws?.readyState === WebSocket.OPEN) return resolve()
+      if (this._status === 'disconnected' && (!this.ws || this.ws.readyState === WebSocket.CLOSED)) {
+        // 已断开 → 尝试重连
+        this.connect()
+      }
+      const unsub = this.onStatus((status) => {
+        if (status === 'connected') {
+          unsub()
+          resolve()
+        } else if (status === 'disconnected') {
+          unsub()
+          reject(new Error('连接已断开'))
+        }
+      })
+      setTimeout(() => {
+        unsub()
+        reject(new Error('连接等待超时'))
+      }, timeout)
+    })
   }
 
   /**
    * 发送请求并等待响应（requestId 匹配模式）
+   *
+   * 如果 WebSocket 尚未就绪，会自动等待连接完成后再发送。
    */
-  request(data: Record<string, unknown>, timeout = 10000): Promise<Record<string, unknown>> {
+  async request(data: Record<string, unknown>, timeout = 10000): Promise<Record<string, unknown>> {
+    // 确保连接就绪
+    if (this.ws?.readyState !== WebSocket.OPEN) {
+      await this.waitForOpen(timeout)
+    }
+
     return new Promise((resolve, reject) => {
       const requestId = `req_${++this.requestIdCounter}_${Date.now()}`
       const payload = { ...data, requestId }
@@ -161,7 +198,11 @@ export class WsClient {
       }, timeout)
 
       this.pendingRequests.set(requestId, { resolve, reject, timer })
-      this.send(payload)
+      if (!this.send(payload)) {
+        clearTimeout(timer)
+        this.pendingRequests.delete(requestId)
+        reject(new Error('无法发送请求：WebSocket 不可用'))
+      }
     })
   }
 
@@ -185,6 +226,8 @@ export class WsClient {
 
   onStatus(handler: StatusHandler) {
     this.statusHandlers.push(handler)
+    // 立即用当前状态通知新注册的 handler，避免因注册时连接已就绪而错过状态更新
+    handler(this._status)
     return () => {
       this.statusHandlers = this.statusHandlers.filter((h) => h !== handler)
     }
