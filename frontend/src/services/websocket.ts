@@ -157,7 +157,10 @@ export class WsClient {
   private waitForOpen(timeout: number): Promise<void> {
     return new Promise((resolve, reject) => {
       if (this.ws?.readyState === WebSocket.OPEN) return resolve()
-      if (this._status === 'disconnected' && (!this.ws || this.ws.readyState === WebSocket.CLOSED)) {
+      if (
+        this._status === 'disconnected' &&
+        (!this.ws || this.ws.readyState === WebSocket.CLOSED)
+      ) {
         // 已断开 → 尝试重连
         this.connect()
       }
