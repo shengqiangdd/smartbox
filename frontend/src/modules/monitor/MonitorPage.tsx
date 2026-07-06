@@ -19,16 +19,10 @@ import HostHealthOverview from './HostHealthOverview'
 // ─── 类型定义 ───
 
 interface HealthData {
+  status: string
   uptime: number
   version: string
-  memory: {
-    rss: number
-    heapUsed: number
-    heapTotal: number
-    systemFree: number
-    systemTotal: number
-  }
-  connections: { active: number; loadavg: number[] }
+  connections: { active: number }
 }
 
 interface HostStats {
@@ -676,7 +670,8 @@ export default function MonitorPage() {
     try {
       const res = await fetch('/api/health')
       if (res.ok) {
-        setHealth(await res.json())
+        const body = await res.json()
+        setHealth(body.data ?? body)
         setHealthError(false)
       } else {
         setHealthError(true)
@@ -791,26 +786,7 @@ export default function MonitorPage() {
             <Network size={12} className="text-amber-400" />
             <span className="text-[10px] text-slate-500">连接</span>
             <span className="font-mono text-[11px] text-slate-300">
-              {health.connections.active}
-            </span>
-          </div>
-          {/* 系统内存 */}
-          <div className="flex shrink-0 items-center gap-1.5">
-            <MemoryStick size={12} className="text-violet-400" />
-            <span className="text-[10px] text-slate-500">内存</span>
-            <span className="font-mono text-[11px] text-slate-300">
-              {health.memory.systemTotal > 0
-                ? Math.round((1 - health.memory.systemFree / health.memory.systemTotal) * 100)
-                : 0}
-              %
-            </span>
-          </div>
-          {/* 负载均值 */}
-          <div className="flex shrink-0 items-center gap-1.5">
-            <Cpu size={12} className="text-cyan-400" />
-            <span className="text-[10px] text-slate-500">负载</span>
-            <span className="font-mono text-[11px] text-slate-300">
-              {health.connections.loadavg.map((v) => v.toFixed(2)).join(' / ')}
+              {health.connections?.active ?? 'N/A'}
             </span>
           </div>
           {/* 最近告警 */}
