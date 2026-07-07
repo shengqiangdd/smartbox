@@ -1,5 +1,5 @@
 use aes_gcm::{
-    aead::{Aead, KeyInit, OsRng},
+    aead::{Aead, KeyInit, OsRng, generate_nonce},
     Aes256Gcm, Key, Nonce,
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
@@ -10,7 +10,7 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 pub fn encrypt(plaintext: &str, key: &[u8; 32]) -> Result<String, String> {
     let key = Key::<Aes256Gcm>::from_slice(key);
     let cipher = Aes256Gcm::new(key);
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+    let nonce = generate_nonce(&mut OsRng);
 
     let ciphertext = cipher
         .encrypt(&nonce, plaintext.as_bytes())
@@ -48,9 +48,9 @@ pub fn decrypt(encrypted: &str, key: &[u8; 32]) -> Result<String, String> {
 
 /// Generate a random 256-bit encryption key.
 pub fn generate_key() -> [u8; 32] {
-    use rand::RngCore;
+    use rand::rngs::OsRng;
     let mut key = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut key);
+    OsRng.fill_bytes(&mut key);
     key
 }
 
