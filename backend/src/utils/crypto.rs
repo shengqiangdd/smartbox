@@ -3,6 +3,7 @@ use aes_gcm::{
     Aes256Gcm,
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use rand::TryRngCore;
 
 /// Encrypt sensitive data (SSH passwords, private keys) using AES-256-GCM.
 ///
@@ -53,7 +54,6 @@ pub fn decrypt(encrypted: &str, key: &[u8; 32]) -> Result<String, String> {
 
 /// Generate a random 256-bit encryption key.
 pub fn generate_key() -> [u8; 32] {
-    use rand::TryRngCore;
     let mut key = [0u8; 32];
     rand::rngs::OsRng.try_fill_bytes(&mut key).expect("Failed to generate random key");
     key
