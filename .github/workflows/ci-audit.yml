@@ -37,13 +37,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install cargo-audit (pre-built binary)
-        run: |
-          curl -sSL https://github.com/rustsec/rustsec/releases/latest/download/cargo-audit-x86_64-unknown-linux-gnu.tar.gz | tar xz
-          sudo mv cargo-audit /usr/local/bin/
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
 
-      - name: Run cargo audit
-        run: cargo audit
+      - name: Install and run cargo-audit
+        run: |
+          cargo install cargo-audit
+          cargo audit
         working-directory: backend
         continue-on-error: true
 
@@ -64,26 +66,28 @@ jobs:
         working-directory: frontend
 
       - name: Build and measure
+        working-directory: frontend
         run: |
           npm run build
           echo "=== Bundle Size Report ==="
           echo ""
           echo "--- JavaScript ---"
-          ls -lhS frontend/dist/assets/*.js 2>/dev/null | awk '{print $5, $9}'
+          ls -lhS dist/assets/*.js 2>/dev/null | awk '{print $5, $9}'
           echo ""
           echo "--- CSS ---"
-          ls -lhS frontend/dist/assets/*.css 2>/dev/null | awk '{print $5, $9}'
+          ls -lhS dist/assets/*.css 2>/dev/null | awk '{print $5, $9}'
           echo ""
           echo "--- Total ---"
-          du -sh frontend/dist/
+          du -sh dist/
           echo ""
           echo "--- Gzipped ---"
-          ls -lhS frontend/dist/assets/*.js.gz 2>/dev/null | awk '{print $5, $9}'
-          ls -lhS frontend/dist/assets/*.css.gz 2>/dev/null | awk '{print $5, $9}'
+          ls -lhS dist/assets/*.js.gz 2>/dev/null | awk '{print $5, $9}'
+          ls -lhS dist/assets/*.css.gz 2>/dev/null | awk '{print $5, $9}'
 
       - name: Check size threshold
+        working-directory: frontend
         run: |
-          TOTAL=$(du -sb frontend/dist/ | cut -f1)
+          TOTAL=$(du -sb dist/ | cut -f1)
           THRESHOLD=10485760  # 10MB
           if [ "$TOTAL" -gt "$THRESHOLD" ]; then
             echo "❌ Bundle size ($TOTAL bytes) exceeds threshold ($THRESHOLD bytes)"
