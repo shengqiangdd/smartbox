@@ -1,5 +1,5 @@
 #!/bin/bash
-# SmartBox CI 自动测试
+# Wrench CI 自动测试
 # 在 CI 中运行（仅 vite preview，无 bridge）
 
 BRIDGE_PORT=${1:-3100}
@@ -12,7 +12,7 @@ green() { echo -e "\033[32m✓ $1\033[0m"; }
 red()   { echo -e "\033[31m✗ $1\033[0m"; }
 info()  { echo -e "\033[36m→ $1\033[0m"; }
 
-info "============ SmartBox CI 测试 ============"
+info "============ Wrench CI 测试 ============"
 
 # 等待服务就绪
 SERVICE_OK=false

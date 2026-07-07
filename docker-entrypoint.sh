@@ -17,7 +17,7 @@ log "FRONTEND_DIST=${FRONTEND_DIST:-/app/frontend/dist}"
 
 # ── 3. 启动后端 ──
 log "Entrypoint PID=$$, about to exec /app/wrench $*"
-log "Starting SmartBox backend (Rust Axum)..."
+log "Starting Wrench backend (Rust Axum)..."
 
 # exec: 替换当前 shell 进程为 Rust 二进制
 # - tini (PID 1) → docker-entrypoint.sh → wrench (exec)
