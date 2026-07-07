@@ -27,7 +27,7 @@ FROM rust:1.96-slim-bookworm AS rust-builder
 ENV CARGO_NET_RETRY=5
 ENV CARGO_HTTP_TIMEOUT=120
 # Limit parallelism to prevent OOM on memory-constrained runners
-ENV CARGO_BUILD_JOBS=4
+ENV CARGO_BUILD_JOBS=8
 # Use sparse protocol for crates.io (much faster than default git)
 ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
 
@@ -35,30 +35,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libssl-dev && \
     rm -rf /var/lib/apt/lists/*
 
+# Install cargo-chef for better dependency caching
+RUN cargo install cargo-chef
+
 WORKDIR /app
 
-# Copy Cargo manifests for dependency caching
+# ── Step 1: Create recipe (analyze dependencies) ──
 COPY backend/Cargo.toml backend/Cargo.lock* ./
-
-# Create dummy source files so cargo can cache dependencies
 RUN mkdir -p src && cat > src/main.rs << 'EOF'
 fn main() {}
 EOF
-# Empty lib.rs — module stubs not needed; cargo resolves deps from Cargo.toml only
 RUN echo "" > src/lib.rs
-
-# Ensure Cargo.lock exists (for reproducible builds)
 RUN if [ ! -f Cargo.lock ]; then cargo generate-lockfile; fi
+RUN cargo chef prepare --recipe-path recipe.json
 
-# ── 关键优化：先用 dummy 源码编译依赖缓存层 ──
-# 此步骤编译所有第三方依赖，只有 Cargo.lock 变化时才失效
-# 注意：不使用 `|| true` 避免静默吞掉编译失败
-RUN cargo build --release
+# ── Step 2: Build dependencies (cached) ──
+RUN cargo chef cook --release --recipe-path recipe.json
 
-# ── 然后覆盖真实源码，只重新编译 app 代码 ──
+# ── Step 3: Build actual application ──
 COPY backend/src/ ./src/
-
-# 增量编译：依赖已缓存，只编译 app 自身的代码
 RUN cargo build --release
 
 # ============================================
@@ -93,28 +88,24 @@ COPY --from=rust-builder /app/target/release/wrench-backend /app/wrench
 COPY --from=frontend-builder /app/frontend/dist/ /app/frontend/dist/
 
 # Copy plugins
-COPY plugins/ ./plugins/
+COPY plugins/ ./plugins
 
-# Copy entrypoint wrapper script.
-# The script exec's directly into the Rust binary so that tini (PID 1)
-# sends signals straight to the app, which already has proper
-# SIGINT/SIGTERM handlers installed. This avoids the shell-in-the-middle
-# signal forwarding that caused the exit-code-0 restart loop.
-COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+# Copy entrypoint
+COPY docker-entrypoint.sh /app/
 RUN chmod +x /app/docker-entrypoint.sh
 
-# Copy default env config
-COPY backend/.env.example /app/.env.example
+# ── Health check ──
+# 每 30s 检查一次 API 响应，确保容器健康运行
+# 返回 200 表示正常，其他表示异常
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -sf http://localhost:3000/api/health || exit 1
 
-# Set ownership — must include all copied files
-RUN chown -R wrench:wrench /app
+# Use tini as PID 1 for proper signal handling
+ENTRYPOINT ["tini", "--"]
 
+# Run as non-root user
 USER wrench
 
-EXPOSE 3001
+EXPOSE 3000
 
-# Use tini as PID 1 (proper signal forwarding + zombie reaping).
-# tini → docker-entrypoint.sh (exec) → wrench
-# Signals (SIGTERM/SIGINT) go directly to the Rust binary.
-ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["/app/docker-entrypoint.sh"]
