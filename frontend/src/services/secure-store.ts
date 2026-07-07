@@ -49,10 +49,6 @@ export function getDeviceKey(): string {
   if (!_deviceKey) {
     const fingerprint = getDeviceFingerprint()
     // 应用种子 + 指纹 = 派生密钥
-    const seed = 'SMARTBOX_SECURE_STORE_v1'
-    _deviceKey = seed + ':' + fingerprint + ':'
-    // 实际使用 PBKDF2 在 encrypt/decrypt 中迭代，这里只是组合字符串
-    // 注意：这只是为了生成一个确定性密码，真正的安全性来自 PBKDF2 迭代
     _deviceKey = fingerprint + ':wrench-secure-v1'
   }
   return _deviceKey

@@ -45,7 +45,7 @@ src/
 │   ├── crypto.rs     # AES-256-GCM 加密
 │   ├── path.rs       # 路径穿越防护
 │   └── validator.rs  # 输入校验
-└── db/               # 数据库（可选 PostgreSQL）
+└── db/               # SQLite 数据库
 ```
 
 ## 快速启动
@@ -78,12 +78,13 @@ docker run -p 3001:3001 wrench-backend
 | CORS_ORIGINS | (空) | 允许的跨域来源，逗号分隔 |
 | FRONTEND_DIST | ./frontend/dist | 前端构建产物目录 |
 | PLUGINS_DIR | ./plugins | 插件目录 |
-| JWT_SECRET | (自动) | JWT 密钥 |
+| JWT_SECRET | (随机生成) | JWT 密钥，生产环境必须显式配置 |
 | OPENROUTER_API_KEY | (空) | OpenRouter API Key |
+| DATABASE_URL | (内存数据库) | SQLite 数据库路径，Docker 默认 /data/wrench.db |
 
 ## API 端点
 
-与原 Node.js 后端100%兼容，参见原 `bridge/` 目录的 API 文档。
+参见 `docs/PLUGIN_API.md` 和 `docs/ARCHITECTURE.md` 了解完整的 API 设计。
 
 ## 技术栈
 

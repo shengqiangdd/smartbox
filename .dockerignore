@@ -1,0 +1,38 @@
+# Git
+.git/
+.gitignore
+.github/
+
+# Dependencies (rebuilt in container)
+node_modules/
+frontend/node_modules/
+frontend/test-results/
+
+# Build artifacts (rebuilt in container)
+frontend/dist/
+backend/target/
+
+# Documentation
+*.md
+!README.md
+LICENSE
+CHANGELOG.md
+PROGRESS.md
+TODO.md
+CONTRIBUTING.md
+DEPLOY.md
+AGENTS.md
+
+# Development files
+.vscode/
+.idea/
+.githooks/
+.env
+.env.*
+*.log
+screenshots/
+memory/
+tests/
+bridge/
+_push.py
+editorconfig

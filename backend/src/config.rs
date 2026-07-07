@@ -40,7 +40,11 @@ impl AppConfig {
             .collect();
 
         let openrouter_api_key = std::env::var("OPENROUTER_API_KEY").ok();
-        let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| uuid::Uuid::new_v4().to_string());
+        let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| {
+            eprintln!("⚠️  WARNING: JWT_SECRET not set — generating random key. This will invalidate all tokens on restart.");
+            eprintln!("   Set JWT_SECRET in your environment for persistent authentication.");
+            uuid::Uuid::new_v4().to_string()
+        });
 
         let vault_key = std::env::var("VAULT_KEY").ok();
 

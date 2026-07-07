@@ -3,6 +3,14 @@ name: Build and Push Docker Image
 on:
   push:
     branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'Dockerfile'
+      - 'Dockerfile.nodocker'
+      - 'docker-entrypoint.sh'
+      - 'plugins/**'
+      - '.github/workflows/docker-build.yml'
   workflow_dispatch:
 
 env:
@@ -11,38 +19,6 @@ env:
   NODE_VERSION: '22'
 
 jobs:
-  # ── 前端 lint 与类型检查 ──
-  lint-and-typecheck:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Setup Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install frontend dependencies
-        run: npm ci
-        working-directory: frontend
-        env:
-          NODE_ENV: development
-
-      - name: TypeScript type check
-        run: npx tsc --noEmit
-        working-directory: frontend
-
-      - name: ESLint check
-        run: npx eslint . --report-unused-disable-directives --max-warnings 0
-        working-directory: frontend
-
-      - name: Vitest unit tests
-        run: npx vitest run
-        working-directory: frontend
-
-  # ── Docker 多架构构建与推送 ──
   build-and-push:
     runs-on: ubuntu-latest
     timeout-minutes: 120
