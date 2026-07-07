@@ -107,7 +107,7 @@ export const usePluginStore = create<PluginState>()(
       },
     }),
     {
-      name: 'smartbox-plugins',
+      name: 'wrench-plugins',
       partialize: (state) => ({
         plugins: state.plugins.map((p) => ({
           manifest: p.manifest,
@@ -120,7 +120,7 @@ export const usePluginStore = create<PluginState>()(
 
 /** 触发 store 重新从 localStorage 读取 */
 export const refreshPluginStore = () => {
-  const raw = localStorage.getItem('smartbox-plugins')
+  const raw = localStorage.getItem('wrench-plugins')
   if (!raw) return
   try {
     const parsed = JSON.parse(raw)

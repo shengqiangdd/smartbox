@@ -1,5 +1,5 @@
 /**
- * SmartBox 全局 fetch 认证拦截器
+ * Wrench 全局 fetch 认证拦截器
  *
  * 在应用启动时自动拦截所有 `/api/` 请求，添加 `Authorization: Bearer <token>` 头部。
  * 这样所有模块中的 `fetch('/api/...') 调用无需手动修改即可获得认证。

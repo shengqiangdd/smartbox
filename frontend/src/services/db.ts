@@ -1,5 +1,5 @@
 /**
- * SmartBox IndexedDB 通用数据库层
+ * Wrench IndexedDB 通用数据库层
  *
  * 基于 idb 封装，提供类型安全的 CRUD 操作。
  * 数据库版本管理 + 自动迁移。
@@ -7,7 +7,7 @@
 
 import { openDB, type IDBPDatabase } from 'idb'
 
-const DB_NAME = 'smartbox'
+const DB_NAME = 'wrench'
 const DB_VERSION = 1
 
 export type StoreName = 'connections' | 'plugin_data' | 'settings' | 'ai_sessions'

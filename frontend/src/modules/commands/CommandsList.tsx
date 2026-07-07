@@ -77,12 +77,12 @@ export default function CommandsList({
             placeholder="搜索命令..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="focus:border-smartbox-500/50 min-h-[44px] w-full rounded-md border border-slate-700/50 bg-slate-800/50 py-1.5 pr-3 pl-8 text-xs text-slate-300 placeholder-slate-500 transition-colors outline-none"
+            className="focus:border-wrench-500/50 min-h-[44px] w-full rounded-md border border-slate-700/50 bg-slate-800/50 py-1.5 pr-3 pl-8 text-xs text-slate-300 placeholder-slate-500 transition-colors outline-none"
           />
         </div>
         <button
           onClick={onAdd}
-          className="bg-smartbox-600/20 text-smartbox-400 hover:bg-smartbox-600/30 flex min-h-[44px] items-center gap-1 rounded-md px-2.5 py-1.5 text-xs transition-colors"
+          className="bg-wrench-600/20 text-wrench-400 hover:bg-wrench-600/30 flex min-h-[44px] items-center gap-1 rounded-md px-2.5 py-1.5 text-xs transition-colors"
           title="新建自定义命令"
         >
           <Plus size={14} />
@@ -97,7 +97,7 @@ export default function CommandsList({
             <p className="text-sm">没有找到匹配的命令</p>
             <button
               onClick={onAdd}
-              className="text-smartbox-500 hover:text-smartbox-400 text-xs transition-colors"
+              className="text-wrench-500 hover:text-wrench-400 text-xs transition-colors"
             >
               + 新建自定义命令
             </button>

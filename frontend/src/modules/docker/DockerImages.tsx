@@ -3,7 +3,7 @@ import { Trash2, Search, Download, Upload, Tag as TagIcon, Layers, X } from 'luc
 import type { DockerImage } from './index'
 
 function notify(message: string, type: 'success' | 'error' | 'info' = 'info') {
-  const ev = new CustomEvent('smartbox-toast', { detail: { message, type } })
+  const ev = new CustomEvent('wrench-toast', { detail: { message, type } })
   window.dispatchEvent(ev)
 }
 
@@ -209,7 +209,7 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="搜索镜像名称 / 标签 / ID..."
-            className="focus:border-smartbox-500/50 w-full rounded-md border border-slate-700/50 bg-slate-800/60 py-1.5 pr-3 pl-8 text-xs text-slate-300 placeholder-slate-500 outline-none"
+            className="focus:border-wrench-500/50 w-full rounded-md border border-slate-700/50 bg-slate-800/60 py-1.5 pr-3 pl-8 text-xs text-slate-300 placeholder-slate-500 outline-none"
           />
         </div>
         <button
@@ -255,14 +255,14 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
                       key={key}
                       onClick={() => showDetails(img)}
                       className={`flex cursor-pointer items-center gap-3 px-4 py-2.5 transition-colors ${
-                        isActive ? 'bg-smartbox-900/20' : 'hover:bg-slate-800/40'
+                        isActive ? 'bg-wrench-900/20' : 'hover:bg-slate-800/40'
                       }`}
                     >
                       {/* 镜像信息 */}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <span
-                            className={`truncate text-sm font-medium ${isActive ? 'text-smartbox-300' : 'text-slate-200'}`}
+                            className={`truncate text-sm font-medium ${isActive ? 'text-wrench-300' : 'text-slate-200'}`}
                           >
                             {isDangling(img) ? '<none>:<none>' : `${img.Repository}:${img.Tag}`}
                           </span>
@@ -349,7 +349,7 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
                 onClick={() => setDetailTab('history')}
                 className={`flex items-center gap-1 border-b-2 px-3 py-2 text-xs transition-colors ${
                   detailTab === 'history'
-                    ? 'border-smartbox-400 text-slate-200'
+                    ? 'border-wrench-400 text-slate-200'
                     : 'border-transparent text-slate-500 hover:text-slate-300'
                 }`}
               >
@@ -362,7 +362,7 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
                 }}
                 className={`flex items-center gap-1 border-b-2 px-3 py-2 text-xs transition-colors ${
                   detailTab === 'inspect'
-                    ? 'border-smartbox-400 text-slate-200'
+                    ? 'border-wrench-400 text-slate-200'
                     : 'border-transparent text-slate-500 hover:text-slate-300'
                 }`}
               >
@@ -449,7 +449,7 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
                     value={modalInput}
                     onChange={(e) => setModalInput(e.target.value)}
                     placeholder="例如: nginx:latest 或 ubuntu:22.04"
-                    className="focus:border-smartbox-500/50 w-full rounded-md border border-slate-700/50 bg-slate-800 px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none"
+                    className="focus:border-wrench-500/50 w-full rounded-md border border-slate-700/50 bg-slate-800 px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none"
                     autoFocus
                     onKeyDown={(e) => e.key === 'Enter' && doAction()}
                   />
@@ -467,7 +467,7 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
                     value={modalInput}
                     onChange={(e) => setModalInput(e.target.value)}
                     placeholder="registry.example.com/myimage:latest"
-                    className="focus:border-smartbox-500/50 w-full rounded-md border border-slate-700/50 bg-slate-800 px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none"
+                    className="focus:border-wrench-500/50 w-full rounded-md border border-slate-700/50 bg-slate-800 px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none"
                     autoFocus
                     onKeyDown={(e) => e.key === 'Enter' && doAction()}
                   />
@@ -485,7 +485,7 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
                       type="text"
                       value={modalInput}
                       onChange={(e) => setModalInput(e.target.value)}
-                      className="focus:border-smartbox-500/50 w-full rounded-md border border-slate-700/50 bg-slate-800 px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none"
+                      className="focus:border-wrench-500/50 w-full rounded-md border border-slate-700/50 bg-slate-800 px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none"
                     />
                   </div>
                   <div>
@@ -495,7 +495,7 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
                       value={modalInput2}
                       onChange={(e) => setModalInput2(e.target.value)}
                       placeholder="例如: myrepo/myimage:v2"
-                      className="focus:border-smartbox-500/50 w-full rounded-md border border-slate-700/50 bg-slate-800 px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none"
+                      className="focus:border-wrench-500/50 w-full rounded-md border border-slate-700/50 bg-slate-800 px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none"
                       autoFocus
                       onKeyDown={(e) => e.key === 'Enter' && doAction()}
                     />
@@ -523,7 +523,7 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
               <button
                 onClick={doAction}
                 disabled={modalLoading || (modal.type !== 'prune' && !modalInput.trim())}
-                className="bg-smartbox-600 hover:bg-smartbox-500 flex items-center gap-1 rounded-md px-3 py-1.5 text-xs text-white transition-colors disabled:opacity-50"
+                className="bg-wrench-600 hover:bg-wrench-500 flex items-center gap-1 rounded-md px-3 py-1.5 text-xs text-white transition-colors disabled:opacity-50"
               >
                 {modalLoading && (
                   <div className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" />

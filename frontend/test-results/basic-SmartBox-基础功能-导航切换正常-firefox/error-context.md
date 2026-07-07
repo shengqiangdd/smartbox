@@ -6,7 +6,7 @@
 
 # Test info
 
-- Name: basic.spec.ts >> SmartBox 基础功能 >> 导航切换正常
+- Name: basic.spec.ts >> Wrench 基础功能 >> 导航切换正常
 - Location: e2e/basic.spec.ts:12:3
 
 # Error details

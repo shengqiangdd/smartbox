@@ -275,7 +275,7 @@ function LogViewerInner({ connectionId, logPath, onClose }: LogViewerProps) {
           onClick={() => setSearchResult((prev) => (prev ? '' : ' '))}
           className={`rounded px-2 py-0.5 transition-colors ${
             searchResult
-              ? 'bg-smartbox-600/20 text-smartbox-400'
+              ? 'bg-wrench-600/20 text-wrench-400'
               : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
           }`}
           title="搜索"
@@ -287,7 +287,7 @@ function LogViewerInner({ connectionId, logPath, onClose }: LogViewerProps) {
         <button
           onClick={() => setAutoScroll(!autoScroll)}
           className={`rounded px-1.5 py-0.5 transition-colors ${
-            autoScroll ? 'text-smartbox-400' : 'text-slate-500 hover:text-slate-300'
+            autoScroll ? 'text-wrench-400' : 'text-slate-500 hover:text-slate-300'
           }`}
           title="自动滚动"
         >
@@ -319,12 +319,12 @@ function LogViewerInner({ connectionId, logPath, onClose }: LogViewerProps) {
             onChange={(e) => setSearchTerm(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
             placeholder="搜索关键词..."
-            className="focus:border-smartbox-500 flex-1 rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-200 placeholder-slate-500 outline-none"
+            className="focus:border-wrench-500 flex-1 rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-200 placeholder-slate-500 outline-none"
           />
           <button
             onClick={handleSearch}
             disabled={searching || !searchTerm.trim()}
-            className="bg-smartbox-600/80 hover:bg-smartbox-500 rounded px-2 py-1 text-xs text-white transition-colors disabled:opacity-50"
+            className="bg-wrench-600/80 hover:bg-wrench-500 rounded px-2 py-1 text-xs text-white transition-colors disabled:opacity-50"
           >
             {searching ? '搜索中...' : '搜索'}
           </button>

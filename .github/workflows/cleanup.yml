@@ -114,7 +114,7 @@ jobs:
           if [ -z "$PACKAGES" ]; then
             echo "没有找到 Docker 包，尝试从 ghcr.io 查询..."
             OWNER="${{ github.repository_owner }}"
-            for PKG in "cloudhub"; do
+            for PKG in "wrench"; do
               echo "检查包: ${PKG}"
               VERSIONS=$(gh api "/users/${OWNER}/packages/container/${PKG}/versions" --jq '.[] | {id: .id, tags: .metadata.container.tags, created: .created_at}' 2>/dev/null || echo "")
               if [ -z "$VERSIONS" ]; then

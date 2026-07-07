@@ -3,7 +3,7 @@
   "name": "ADB 远程控制",
   "version": "1.0.0",
   "description": "通过 ADB 远程连接和控制 Android 设备，支持设备列表、截屏、投屏预览、应用管理",
-  "author": "SmartBox",
+  "author": "Wrench",
   "icon": "smartphone",
   "commands": [
     {

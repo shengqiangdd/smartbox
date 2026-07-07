@@ -55,7 +55,7 @@ export default function Sidebar() {
               onClick={() => setActiveNav(item.id)}
               className={`flex h-10 w-10 items-center justify-center rounded-lg transition-colors ${
                 activeNav === item.id
-                  ? 'text-smartbox-400 bg-slate-800'
+                  ? 'text-wrench-400 bg-slate-800'
                   : 'text-slate-500 hover:bg-slate-800/50 hover:text-slate-300'
               }`}
               title={item.label}
@@ -71,8 +71,8 @@ export default function Sidebar() {
   return (
     <nav className="flex w-56 flex-col gap-0.5 border-r border-slate-700/50 bg-slate-900/50 p-3">
       <div className="mb-4 flex items-center gap-2 px-2">
-        <Server size={20} className="text-smartbox-400" />
-        <span className="flex-1 text-sm font-semibold text-slate-200">智盒 SmartBox</span>
+        <Server size={20} className="text-wrench-400" />
+        <span className="flex-1 text-sm font-semibold text-slate-200">棘轮工具箱 Wrench</span>
         <button
           onClick={toggleSidebar}
           className="flex h-6 w-6 items-center justify-center rounded text-slate-500 hover:bg-slate-800 hover:text-slate-300"
@@ -93,7 +93,7 @@ export default function Sidebar() {
             <Icon size={16} />
             <span>{item.label}</span>
             {item.id === 'ssh' && sshSessions.length > 0 && (
-              <span className="bg-smartbox-600/20 text-smartbox-400 ml-auto rounded-full px-1.5 py-0.5 text-xs">
+              <span className="bg-wrench-600/20 text-wrench-400 ml-auto rounded-full px-1.5 py-0.5 text-xs">
                 {sshSessions.length}
               </span>
             )}

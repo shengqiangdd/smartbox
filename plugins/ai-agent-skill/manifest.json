@@ -3,7 +3,7 @@
   "name": "AI Agent 技能生成器",
   "version": "1.0.0",
   "description": "根据自然语言描述自动生成 AI Agent 技能脚本，支持自定义提示词和命令生成",
-  "author": "SmartBox",
+  "author": "Wrench",
   "icon": "wand",
   "commands": [
     {

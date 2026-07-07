@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test'
 
-test.describe('SmartBox 基础功能', () => {
+test.describe('Wrench 基础功能', () => {
   test('首页正常加载', async ({ page }) => {
     await page.goto('/')
     // 页面应该加载并显示标题
-    await expect(page).toHaveTitle(/智盒/)
+    await expect(page).toHaveTitle(/棘轮工具箱/)
     // 等待 React 挂载完成
     await expect(page.locator('#root')).not.toBeEmpty()
   })

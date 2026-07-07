@@ -56,7 +56,7 @@ describe('Sidebar (expanded)', () => {
   it('renders brand name and all nav items', () => {
     const { container } = render(<Sidebar />)
     const text = container.textContent!
-    expect(text).toContain('智盒 SmartBox')
+    expect(text).toContain('棘轮工具箱 Wrench')
     expect(text).toContain('SSH 连接')
     expect(text).toContain('常用命令')
     expect(text).toContain('Docker 管理')
@@ -154,7 +154,7 @@ describe('Sidebar (collapsed)', () => {
   it('renders icons only when collapsed', () => {
     const { container } = render(<Sidebar />)
     // Should not have brand name
-    expect(container.textContent).not.toContain('智盒 SmartBox')
+    expect(container.textContent).not.toContain('棘轮工具箱 Wrench')
     // Should have 10 icon buttons
     const buttons = container.querySelectorAll('nav button')
     expect(buttons.length).toBe(12) // 11 nav + 1 expand toggle
@@ -171,12 +171,12 @@ describe('Sidebar (collapsed)', () => {
   it('highlights active nav in collapsed mode', () => {
     setAppState({ activeNav: 'docker' })
     const { container } = render(<Sidebar />)
-    // In collapsed mode, active button has bg-slate-800 + text-smartbox-400
+    // In collapsed mode, active button has bg-slate-800 + text-wrench-400
     const buttons = container.querySelectorAll('nav button')
     let foundActive = false
     buttons.forEach((btn) => {
       const classes = btn.getAttribute('class') || ''
-      if (classes.includes('smartbox-400')) {
+      if (classes.includes('wrench-400')) {
         foundActive = true
       }
     })

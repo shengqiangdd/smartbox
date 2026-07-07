@@ -3,7 +3,7 @@
   "name": "Base64 编解码",
   "version": "1.0.0",
   "description": "Base64 编码与解码工具",
-  "author": "SmartBox",
+  "author": "Wrench",
   "icon": "file-digit",
   "commands": [
     {

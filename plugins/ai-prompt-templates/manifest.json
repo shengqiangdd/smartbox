@@ -3,7 +3,7 @@
   "name": "AI 提示词模板库",
   "version": "1.0.0",
   "description": "内置多种 AI 提示词模板，一键插入：代码审查、重构建议、性能优化、安全审计、文档生成等",
-  "author": "SmartBox",
+  "author": "Wrench",
   "icon": "file-text",
   "commands": [
     {

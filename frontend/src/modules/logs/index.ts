@@ -50,4 +50,4 @@ export const PRESET_LOG_PATTERNS = [
 ]
 
 /** 本地存储 key */
-export const STORAGE_KEY = 'smartbox-log-config'
+export const STORAGE_KEY = 'wrench-log-config'

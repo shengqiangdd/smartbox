@@ -1,5 +1,5 @@
 /**
- * SmartBox 安全存储层
+ * Wrench 安全存储层
  *
  * 对 IndexedDB / localStorage 中存储的敏感字段（密码、密钥）进行
  * 透明 AES-GCM 加密。使用设备级密钥（基于 navigator 特征衍生），
@@ -53,7 +53,7 @@ export function getDeviceKey(): string {
     _deviceKey = seed + ':' + fingerprint + ':'
     // 实际使用 PBKDF2 在 encrypt/decrypt 中迭代，这里只是组合字符串
     // 注意：这只是为了生成一个确定性密码，真正的安全性来自 PBKDF2 迭代
-    _deviceKey = fingerprint + ':smartbox-secure-v1'
+    _deviceKey = fingerprint + ':wrench-secure-v1'
   }
   return _deviceKey
 }

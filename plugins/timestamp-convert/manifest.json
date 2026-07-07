@@ -3,7 +3,7 @@
   "name": "时间戳转换",
   "version": "1.0.0",
   "description": "Unix 时间戳与日期字符串互转",
-  "author": "SmartBox",
+  "author": "Wrench",
   "icon": "clock",
   "commands": [
     {

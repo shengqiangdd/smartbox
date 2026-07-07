@@ -4,7 +4,7 @@ import type { DockerInspectInfo } from './index'
 import DockerTerminal from './DockerTerminal'
 
 function notify(message: string, type: 'success' | 'error' | 'info' = 'info') {
-  const ev = new CustomEvent('smartbox-toast', { detail: { message, type } })
+  const ev = new CustomEvent('wrench-toast', { detail: { message, type } })
   window.dispatchEvent(ev)
 }
 
@@ -51,7 +51,7 @@ export default function DockerDetail({ connectionId, containerId, onClose }: Pro
       <div className="mx-4 flex h-[85vh] w-full max-w-3xl flex-col rounded-lg border border-slate-700 bg-slate-900 shadow-2xl">
         {/* 标题 */}
         <div className="flex shrink-0 items-center border-b border-slate-700/50 px-4 py-3">
-          <Box size={16} className="text-smartbox-400 mr-2" />
+          <Box size={16} className="text-wrench-400 mr-2" />
           <h2 className="text-sm font-semibold text-slate-200">容器详情 — {containerId}</h2>
           <div className="ml-auto flex items-center gap-1">
             <button

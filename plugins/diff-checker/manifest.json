@@ -3,7 +3,7 @@
   "name": "文本对比工具",
   "version": "1.0.0",
   "description": "行级文本差异对比，高亮显示新增/删除/修改的行",
-  "author": "SmartBox",
+  "author": "Wrench",
   "icon": "git-compare",
   "commands": [
     {

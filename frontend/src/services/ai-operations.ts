@@ -121,7 +121,7 @@ export async function aiCodeAction(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
       'HTTP-Referer': window.location.origin,
-      'X-Title': 'SmartBox',
+      'X-Title': 'Wrench',
     },
     body: JSON.stringify({
       model,

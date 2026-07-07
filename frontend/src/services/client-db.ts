@@ -16,7 +16,7 @@ import initSqlJs, { type Database } from 'sql.js'
 
 // ─── 常量 ───
 
-const DB_NAME = 'smartbox_client_db'
+const DB_NAME = 'wrench_client_db'
 const DB_STORE = 'sqlite'
 const DB_KEY = 'main'
 const SAVE_DEBOUNCE_MS = 500
@@ -210,7 +210,7 @@ function initSchema(database: Database): void {
 function migrateFromLocalStorage(database: Database): void {
   // 迁移 SSH 连接
   try {
-    const raw = localStorage.getItem('smartbox-ssh')
+    const raw = localStorage.getItem('wrench-ssh')
     if (raw) {
       const parsed = JSON.parse(raw)
       const state = parsed?.state || parsed
@@ -263,7 +263,7 @@ function migrateFromLocalStorage(database: Database): void {
 
   // 迁移告警规则
   try {
-    const raw = localStorage.getItem('smartbox-alerts')
+    const raw = localStorage.getItem('wrench-alerts')
     if (raw) {
       const parsed = JSON.parse(raw)
       const state = parsed?.state || parsed
@@ -661,15 +661,15 @@ export function importDbJson(data: Record<string, unknown>): void {
 /** 迁移完成后清理旧的 localStorage 数据 */
 export function cleanupOldLocalStorage(): void {
   try {
-    // 保留 smartbox-app（主题/UI 状态）和 smartbox-ai（AI 配置）和 smartbox-plugins（插件状态）
+    // 保留 wrench-app（主题/UI 状态）和 wrench-ai（AI 配置）和 wrench-plugins（插件状态）
     // 清理已迁移到 SQLite 的 store
-    if (localStorage.getItem('smartbox-ssh')) {
-      localStorage.removeItem('smartbox-ssh')
-      console.log('[ClientDB] Cleaned up old smartbox-ssh from localStorage')
+    if (localStorage.getItem('wrench-ssh')) {
+      localStorage.removeItem('wrench-ssh')
+      console.log('[ClientDB] Cleaned up old wrench-ssh from localStorage')
     }
-    if (localStorage.getItem('smartbox-alerts')) {
-      localStorage.removeItem('smartbox-alerts')
-      console.log('[ClientDB] Cleaned up old smartbox-alerts from localStorage')
+    if (localStorage.getItem('wrench-alerts')) {
+      localStorage.removeItem('wrench-alerts')
+      console.log('[ClientDB] Cleaned up old wrench-alerts from localStorage')
     }
   } catch {
     /* localStorage 不可用时静默失败 */

@@ -709,7 +709,7 @@ export default function MonitorPage() {
     <div className="flex h-full flex-col">
       {/* 头部 */}
       <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-700/50 px-4 py-3">
-        <Activity size={18} className="text-smartbox-400" />
+        <Activity size={18} className="text-wrench-400" />
         <h2 className="text-sm font-semibold text-slate-200">主机性能看板</h2>
 
         <div className="ml-auto flex items-center gap-3">
@@ -825,7 +825,7 @@ export default function MonitorPage() {
               onClick={() => toggleHost(h.id)}
               className={`shrink-0 rounded-full px-3 py-1 text-[11px] transition-colors ${
                 selected.includes(h.id)
-                  ? 'bg-smartbox-600/30 text-smartbox-300 border-smartbox-500/40 border'
+                  ? 'bg-wrench-600/30 text-wrench-300 border-wrench-500/40 border'
                   : 'border border-slate-700/30 bg-slate-800 text-slate-500 hover:text-slate-300'
               }`}
             >

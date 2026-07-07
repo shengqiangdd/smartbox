@@ -28,7 +28,7 @@ async function render(el: React.ReactElement) {
 
 function fireNotification(message: string, type: 'success' | 'error' | 'info' = 'info') {
   window.dispatchEvent(
-    new CustomEvent('smartbox-notification', {
+    new CustomEvent('wrench-notification', {
       detail: { message, type },
     }),
   )
@@ -64,7 +64,7 @@ describe('Toast', () => {
   it('ignores events without message', async () => {
     await render(<Toast />)
     window.dispatchEvent(
-      new CustomEvent('smartbox-notification', {
+      new CustomEvent('wrench-notification', {
         detail: { message: '', type: 'info' },
       }),
     )

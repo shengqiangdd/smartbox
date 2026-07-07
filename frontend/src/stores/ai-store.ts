@@ -105,7 +105,7 @@ export const useAiStore = create<AiState>()(
       }),
     }),
     {
-      name: 'smartbox-ai',
+      name: 'wrench-ai',
       partialize: (state) => ({
         config: state.config,
       }),
@@ -124,7 +124,7 @@ export const useAiStore = create<AiState>()(
 
 /** 触发 store 重新从 localStorage 读取 */
 export const refreshAiStore = () => {
-  const raw = localStorage.getItem('smartbox-ai')
+  const raw = localStorage.getItem('wrench-ai')
   if (!raw) return
   try {
     const parsed = JSON.parse(raw)

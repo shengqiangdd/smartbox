@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 
 function notify(message: string, type: 'success' | 'error' | 'info' = 'info') {
-  const ev = new CustomEvent('smartbox-toast', { detail: { message, type } })
+  const ev = new CustomEvent('wrench-toast', { detail: { message, type } })
   window.dispatchEvent(ev)
 }
 
@@ -364,7 +364,7 @@ function DockerComposeInner({ connectionId }: Props) {
                 ) : (
                   <ChevronRight size={16} className="shrink-0 text-slate-500" />
                 )}
-                <Layers size={16} className="text-smartbox-400 shrink-0" />
+                <Layers size={16} className="text-wrench-400 shrink-0" />
                 <div className="min-w-0 flex-1 text-left">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-slate-200">{project.name}</span>

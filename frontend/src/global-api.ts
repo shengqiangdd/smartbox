@@ -1,7 +1,7 @@
 /**
- * SmartBox 全局 API
+ * Wrench 全局 API
  *
- * 暴露在 window.SmartBox 上，供插件 plugin.js 调用。
+ * 暴露在 window.Wrench 上，供插件 plugin.js 调用。
  * 为插件提供注册命令、面板、访问编辑器内容、显示通知等能力。
  */
 
@@ -70,7 +70,7 @@ function getPluginAPI(): PluginAPIReturn {
     showNotification: (message: string, type: 'info' | 'success' | 'error') => {
       // 使用自定义事件触发通知
       window.dispatchEvent(
-        new CustomEvent('smartbox-notification', {
+        new CustomEvent('wrench-notification', {
           detail: { message, type },
         }),
       )
@@ -98,11 +98,11 @@ export function getPluginPanelComponent(panelId: string): React.ComponentType | 
 }
 
 /**
- * 初始化全局 SmartBox API
+ * 初始化全局 Wrench API
  */
 export function initGlobalAPI() {
   if (typeof window !== 'undefined') {
-    ;(window as unknown as Record<string, unknown>).SmartBox = {
+    ;(window as unknown as Record<string, unknown>).Wrench = {
       getPluginAPI,
       getCommandHandlers: () => commandHandlers,
       getPanelComponents: () => panelComponents,

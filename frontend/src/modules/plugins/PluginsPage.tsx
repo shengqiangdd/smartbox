@@ -338,7 +338,7 @@ export default function PluginsPage() {
                                       pluginSandboxManager.executeCommand(plugin.id, cmd.id)
                                       // 触发全局通知 - 引导用户查看沙箱输出
                                       window.dispatchEvent(
-                                        new CustomEvent('smartbox-notification', {
+                                        new CustomEvent('wrench-notification', {
                                           detail: {
                                             message: `已执行: ${plugin.name} → ${cmd.label || cmd.id}（查看下方沙箱输出）`,
                                             type: 'info',

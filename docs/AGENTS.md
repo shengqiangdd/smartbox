@@ -1,4 +1,4 @@
-# AGENTS.md — SmartBox AI Development Guide
+# AGENTS.md — Wrench AI Development Guide
 
 > **必读**：本文件是给 AI 编程助手（包括你自己）的系统级指令。修改代码前必须先读完，违反以下规则的代码将被拒绝合并。
 
@@ -159,10 +159,10 @@ docker compose up -d         # 服务健康检查通过
 
 ## 8. 部署与运维要点
 
-- **Docker 镜像**：三阶段构建（Node → Rust builder → Debian slim），最终二进制 **8.8MB**，非 root 用户 `cloudhub:10001` 运行
+- **Docker 镜像**：三阶段构建（Node → Rust builder → Debian slim），最终二进制 **8.8MB**，非 root 用户 `wrench:10001` 运行
 - **多架构**：GitHub Actions `matrix.platform: [linux/amd64, linux/arm64]`，QEMU + ARM 原生 runner 并行
-- **数据持久化**：`docker-compose.yml` 绑定 `cloudhub-data:/data`，`DATABASE_URL=/data/cloudhub.db`，`JWT_SECRET` 必须固定
-- **备份/恢复**：`cloudhub --db-backup /path/backup.db` / `--db-restore /path/backup.db`（需 `rusqlite` `backup` feature）
+- **数据持久化**：`docker-compose.yml` 绑定 `wrench-data:/data`，`DATABASE_URL=/data/wrench.db`，`JWT_SECRET` 必须固定
+- **备份/恢复**：`wrench --db-backup /path/backup.db` / `--db-restore /path/backup.db`（需 `rusqlite` `backup` feature）
 - **健康检查**：`GET /api/health` 返回 `{status: "ok", version, uptime}`
 
 ---

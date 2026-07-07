@@ -3,7 +3,7 @@
   "name": "命名风格转换",
   "version": "1.0.0",
   "description": "变量/函数/文件名在 camelCase / PascalCase / snake_case / kebab-case / UPPER_CASE 之间互转",
-  "author": "SmartBox",
+  "author": "Wrench",
   "icon": "text-aa",
   "commands": [
     {

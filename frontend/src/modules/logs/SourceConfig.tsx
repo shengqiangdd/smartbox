@@ -135,7 +135,7 @@ export default function SourceConfig({
                   onClick={() => onSelectPath(src.path)}
                   className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs transition-colors ${
                     currentPath === src.path
-                      ? 'bg-smartbox-600/20 text-smartbox-400'
+                      ? 'bg-wrench-600/20 text-wrench-400'
                       : 'text-slate-400 hover:bg-slate-800 hover:text-slate-300'
                   }`}
                 >
@@ -166,7 +166,7 @@ export default function SourceConfig({
                     onClick={() => onSelectPath(src.path)}
                     className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs transition-colors ${
                       currentPath === src.path
-                        ? 'bg-smartbox-600/20 text-smartbox-400'
+                        ? 'bg-wrench-600/20 text-wrench-400'
                         : 'text-slate-400 hover:bg-slate-800 hover:text-slate-300'
                     }`}
                   >
@@ -199,20 +199,20 @@ export default function SourceConfig({
                 value={newLabel}
                 onChange={(e) => setNewLabel(e.target.value)}
                 placeholder="名称（如: app-prod）"
-                className="focus:border-smartbox-500 mb-1.5 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-200 placeholder-slate-500 outline-none"
+                className="focus:border-wrench-500 mb-1.5 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-200 placeholder-slate-500 outline-none"
               />
               <input
                 type="text"
                 value={newPath}
                 onChange={(e) => setNewPath(e.target.value)}
                 placeholder="路径（如: /var/log/myapp/app.log）"
-                className="focus:border-smartbox-500 mb-1.5 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-200 placeholder-slate-500 outline-none"
+                className="focus:border-wrench-500 mb-1.5 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-200 placeholder-slate-500 outline-none"
               />
               <div className="flex gap-1">
                 <button
                   onClick={handleAddCustom}
                   disabled={!newLabel.trim() || !newPath.trim()}
-                  className="bg-smartbox-600/80 hover:bg-smartbox-500 flex-1 rounded px-2 py-1 text-xs text-white transition-colors disabled:opacity-50"
+                  className="bg-wrench-600/80 hover:bg-wrench-500 flex-1 rounded px-2 py-1 text-xs text-white transition-colors disabled:opacity-50"
                 >
                   添加
                 </button>
@@ -237,7 +237,7 @@ export default function SourceConfig({
                 key={i}
                 className={`flex items-center gap-2 rounded px-2 py-1 text-xs transition-colors ${
                   currentPath === src.path
-                    ? 'bg-smartbox-600/20 text-smartbox-400'
+                    ? 'bg-wrench-600/20 text-wrench-400'
                     : 'text-slate-400 hover:bg-slate-800'
                 }`}
               >

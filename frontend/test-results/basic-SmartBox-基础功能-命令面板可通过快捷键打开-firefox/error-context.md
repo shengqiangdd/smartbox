@@ -6,7 +6,7 @@
 
 # Test info
 
-- Name: basic.spec.ts >> SmartBox 基础功能 >> 命令面板可通过快捷键打开
+- Name: basic.spec.ts >> Wrench 基础功能 >> 命令面板可通过快捷键打开
 - Location: e2e/basic.spec.ts:24:3
 
 # Error details

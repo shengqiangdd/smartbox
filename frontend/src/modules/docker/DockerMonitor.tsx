@@ -3,7 +3,7 @@ import { RefreshCw, Cpu, MemoryStick, Activity } from 'lucide-react'
 import type { DockerContainer } from './index'
 
 function notify(message: string, type: 'success' | 'error' | 'info' = 'info') {
-  const ev = new CustomEvent('smartbox-toast', { detail: { message, type } })
+  const ev = new CustomEvent('wrench-toast', { detail: { message, type } })
   window.dispatchEvent(ev)
 }
 
@@ -284,7 +284,7 @@ export default function DockerMonitor({ connectionId, containers }: Props) {
     <div className="flex h-full flex-col">
       {/* 控制栏 */}
       <div className="flex shrink-0 items-center border-b border-slate-700/30 px-4 py-2">
-        <Activity size={14} className="text-smartbox-400 mr-1.5" />
+        <Activity size={14} className="text-wrench-400 mr-1.5" />
         <span className="text-xs font-medium text-slate-400">实时监控</span>
         <div className="ml-auto flex items-center gap-2">
           {/* 自动刷新开关 */}
@@ -293,7 +293,7 @@ export default function DockerMonitor({ connectionId, containers }: Props) {
               type="checkbox"
               checked={autoRefresh}
               onChange={(e) => setAutoRefresh(e.target.checked)}
-              className="text-smartbox-500 h-3 w-3 rounded border-slate-600 bg-slate-700"
+              className="text-wrench-500 h-3 w-3 rounded border-slate-600 bg-slate-700"
             />
             实时
           </label>
@@ -333,7 +333,7 @@ export default function DockerMonitor({ connectionId, containers }: Props) {
                 onClick={() => toggleSelect(c.ID)}
                 className={`rounded-full px-2 py-0.5 text-[10px] transition-colors ${
                   isSelected
-                    ? 'bg-smartbox-500/20 text-smartbox-300 ring-smartbox-500/40 ring-1'
+                    ? 'bg-wrench-500/20 text-wrench-300 ring-wrench-500/40 ring-1'
                     : 'bg-slate-800 text-slate-500 hover:text-slate-300'
                 }`}
               >

@@ -1,4 +1,4 @@
-# TESTING_STRATEGY.md — SmartBox 测试策略
+# TESTING_STRATEGY.md — Wrench 测试策略
 
 > 本文档规定前端（Vitest）和后端（Rust）的测试规范、Mock 方法与隔离原则。
 

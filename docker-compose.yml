@@ -1,5 +1,5 @@
 services:
-  cloudhub:
+  wrench:
     build:
       context: .
       dockerfile: Dockerfile
@@ -8,20 +8,20 @@ services:
       # 不传时由 COPY frontend/ 文件变更自动 bust 缓存
       args:
         BUILD_HASH: "${BUILD_HASH:-}"
-    image: ghcr.io/shengqiangdd/cloudhub:latest
-    container_name: cloudhub
+    image: ghcr.io/shengqiangdd/wrench:latest
+    container_name: wrench
     ports:
       - "3001:3001"   # 后端 API + WebSocket
     volumes:
       # SQLite 持久化数据卷（审计日志、告警、Vault、通知渠道、SSH 连接配置）
-      - cloudhub-data:/data
+      - wrench-data:/data
       # 可选：挂载本地 SSH 密钥供容器内的 SSH 客户端使用
-      # - ~/.ssh:/home/cloudhub/.ssh:ro
+      # - ~/.ssh:/home/wrench/.ssh:ro
     restart: "no"
     environment:
       - NODE_ENV=production
       # SQLite 数据库路径（留空则使用内存数据库）
-      - DATABASE_URL=/data/cloudhub.db
+      - DATABASE_URL=/data/wrench.db
       # JWT 密钥（必填，用于认证令牌签发和 Vault 加密密钥派生）
       # 请替换为随机字符串： openssl rand -hex 32
       - JWT_SECRET=${JWT_SECRET:-9c42491a5e21e47ab4b46c5b81096b058882248d98b51095e7285358e53d8258}
@@ -35,4 +35,4 @@ services:
       start_period: 15s
 
 volumes:
-  cloudhub-data:
+  wrench-data:

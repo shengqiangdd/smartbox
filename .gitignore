@@ -1,0 +1,57 @@
+# 依赖
+node_modules/
+.nodeenv/
+
+# 构建产物
+dist/
+build/
+out/
+frontend/dist/
+frontend/public/assets/
+frontend/public/index.html
+frontend/public/manifest.webmanifest
+frontend/public/registerSW.js
+frontend/public/sw.js
+frontend/public/workbox-*.js
+
+# Rust build artifacts
+backend/target/
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# SQLite database files (WASM creates these)
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# 日志
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
+# 测试/截图/临时文件
+frontend/test-results/
+screenshots/
+screenshot.png
+_push.py
+bridge/
+memory/
+tests/

@@ -44,8 +44,8 @@ export default function BatchExecPanel({ onClose }: { onClose: () => void }) {
         setCommand(e.detail.command)
       }
     }
-    window.addEventListener('smartbox:send-to-batch', handler as EventListener)
-    return () => window.removeEventListener('smartbox:send-to-batch', handler as EventListener)
+    window.addEventListener('wrench:send-to-batch', handler as EventListener)
+    return () => window.removeEventListener('wrench:send-to-batch', handler as EventListener)
   }, [])
 
   const selectAll = () => {
@@ -183,7 +183,7 @@ export default function BatchExecPanel({ onClose }: { onClose: () => void }) {
       <div className="mx-2 flex h-[85vh] w-full max-w-4xl flex-col rounded-lg border border-slate-700 bg-slate-900 shadow-2xl">
         {/* 标题 */}
         <div className="flex shrink-0 items-center border-b border-slate-700/50 px-4 py-3">
-          <Play size={16} className="text-smartbox-400 mr-2" />
+          <Play size={16} className="text-wrench-400 mr-2" />
           <h2 className="text-sm font-semibold text-slate-200">批量命令执行</h2>
           <button
             onClick={onClose}
@@ -200,7 +200,7 @@ export default function BatchExecPanel({ onClose }: { onClose: () => void }) {
               <span className="text-xs font-medium text-slate-400">选择服务器</span>
               <button
                 onClick={selectAll}
-                className="text-smartbox-400 hover:text-smartbox-300 text-[10px] transition-colors"
+                className="text-wrench-400 hover:text-wrench-300 text-[10px] transition-colors"
               >
                 {selectedIds.size === filteredConnections.length
                   ? '取消全选'
@@ -217,14 +217,14 @@ export default function BatchExecPanel({ onClose }: { onClose: () => void }) {
                   <label
                     key={conn.id}
                     className={`flex cursor-pointer items-center gap-2 border-b border-slate-800/30 px-3 py-2 transition-colors hover:bg-slate-800/40 ${
-                      selectedIds.has(conn.id) ? 'bg-smartbox-500/5' : ''
+                      selectedIds.has(conn.id) ? 'bg-wrench-500/5' : ''
                     }`}
                   >
                     <input
                       type="checkbox"
                       checked={selectedIds.has(conn.id)}
                       onChange={() => toggleSelect(conn.id)}
-                      className="accent-smartbox-500 h-3.5 w-3.5"
+                      className="accent-wrench-500 h-3.5 w-3.5"
                     />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-xs font-medium text-slate-200">{conn.name}</div>

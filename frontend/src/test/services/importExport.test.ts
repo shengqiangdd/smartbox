@@ -95,12 +95,12 @@ describe('importExport service', () => {
   })
 
   it('rejects import of invalid file', async () => {
-    const file = new File(['not-json'], 'config.smartbox', { type: 'application/json' })
+    const file = new File(['not-json'], 'config.wrench', { type: 'application/json' })
     await expect(importConfigFromFile(file)).rejects.toThrow()
   })
 
   it('rejects import of corrupted file', async () => {
-    const file = new File(['{invalid json}'], 'config.smartbox', { type: 'application/json' })
+    const file = new File(['{invalid json}'], 'config.wrench', { type: 'application/json' })
     await expect(importConfigFromFile(file)).rejects.toThrow()
   })
 })

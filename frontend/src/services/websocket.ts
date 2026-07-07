@@ -1,5 +1,5 @@
 /**
- * SmartBox WebSocket 客户端
+ * Wrench WebSocket 客户端
  *
  * 与前端的 WebSocket 服务通信。
  * 消息协议: JSON 格式，requestId 匹配请求-响应。

@@ -214,7 +214,7 @@ export default function ConnectionForm({ onClose, editId }: Props) {
                     onClick={() => setAuthType(type)}
                     className={`flex-1 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
                       authType === type
-                        ? 'border-smartbox-500 bg-smartbox-500/10 text-smartbox-400'
+                        ? 'border-wrench-500 bg-wrench-500/10 text-wrench-400'
                         : 'border-slate-700 text-slate-400 hover:border-slate-600'
                     }`}
                   >

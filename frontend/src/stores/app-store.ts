@@ -23,7 +23,7 @@ export const useAppStore = create<AppState>()(
       ...createFileManagerSlice(...a),
     }),
     {
-      name: 'smartbox-app',
+      name: 'wrench-app',
       partialize: (state) => ({
         // 只持久化需要跨会话保留的状态
         activeNav: state.activeNav,

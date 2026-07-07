@@ -157,7 +157,7 @@ export default function ResizablePanel({
       <div
         className={`absolute ${
           isHorizontal ? 'top-0 w-1 cursor-col-resize' : 'left-0 h-1 cursor-row-resize'
-        } hover:bg-smartbox-500/30 active:bg-smartbox-500/50 z-20 transition-colors ${handleClassName}`}
+        } hover:bg-wrench-500/30 active:bg-wrench-500/50 z-20 transition-colors ${handleClassName}`}
         style={{
           [isHorizontal ? (isBefore ? 'right' : 'left') : isBefore ? 'bottom' : 'top']: -4,
           [isHorizontal ? 'height' : 'width']: '100%',
@@ -171,7 +171,7 @@ export default function ResizablePanel({
             isHorizontal
               ? 'top-1/2 left-1/2 h-10 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full'
               : 'top-1/2 left-1/2 h-4 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full'
-          } group-hover:bg-smartbox-400/50 bg-slate-600/50 transition-colors`}
+          } group-hover:bg-wrench-400/50 bg-slate-600/50 transition-colors`}
         />
       </div>
 

@@ -1,4 +1,4 @@
-# 智盒 (SmartBox) — 项目规划书
+# 棘轮工具箱 (Wrench) — 项目规划书
 
 > 一个可插拔、AI增强的网页版生产力工具箱
 > 版本: v1.0 | 状态: 规划中
@@ -7,7 +7,7 @@
 
 ## 一、项目愿景
 
-**智盒 (SmartBox)** 是一个纯浏览器端的智能工具集合平台，解决移动端缺乏好用 SSH 客户端和文件管理工具的核心痛点，同时通过热插拔插件系统承载丰富的生产力工具。所有用户数据仅存储在本地 IndexedDB，隐私至上。
+**棘轮工具箱 (Wrench)** 是一个纯浏览器端的智能工具集合平台，解决移动端缺乏好用 SSH 客户端和文件管理工具的核心痛点，同时通过热插拔插件系统承载丰富的生产力工具。所有用户数据仅存储在本地 IndexedDB，隐私至上。
 
 > "你的口袋里的运维工作站。"
 
@@ -106,7 +106,7 @@
 ### 📁 模块 D: 插件系统 (MVP)
 
 - 自动扫描 `plugins/` 目录，读取 manifest.json
-- 插件 API：`SmartBox.registerPanel()`, `SmartBox.registerCommand()`, `SmartBox.getFileContent()`
+- 插件 API：`Wrench.registerPanel()`, `Wrench.registerCommand()`, `Wrench.getFileContent()`
 - 插件沙箱：iframe + postMessage 隔离
 - 内置 5 示例插件
 
@@ -128,7 +128,7 @@
 ## 五、目录结构
 
 ```
-cloudhub/
+wrench/
 ├── package.json
 ├── vite.config.ts
 ├── tsconfig.json

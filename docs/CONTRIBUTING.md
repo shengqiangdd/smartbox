@@ -1,10 +1,10 @@
 # 🤝 贡献指南
 
-感谢您对智盒 SmartBox 的关注！欢迎参与贡献。
+感谢您对棘轮工具箱 Wrench 的关注！欢迎参与贡献。
 
 ## 🐛 报告问题
 
-1. 使用 [GitHub Issues](https://github.com/shengqiangdd/cloudhub/issues) 提交
+1. 使用 [GitHub Issues](https://github.com/shengqiangdd/wrench/issues) 提交
 2. 使用模板描述问题，包括：
    - 环境信息（操作系统、Node.js 版本、浏览器版本）
    - 复现步骤

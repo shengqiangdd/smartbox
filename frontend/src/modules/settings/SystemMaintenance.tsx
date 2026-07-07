@@ -87,7 +87,7 @@ export default function SystemMaintenance() {
         <div className="rounded-lg border border-slate-700/50 bg-slate-900/50 px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Database size={16} className="text-smartbox-400" />
+              <Database size={16} className="text-wrench-400" />
               <span className="text-xs font-medium text-slate-300">客户端 SQLite</span>
             </div>
             <button
@@ -114,7 +114,7 @@ export default function SystemMaintenance() {
               <div className="col-span-2 rounded bg-slate-800/60 px-3 py-2">
                 <p className="text-[10px] text-slate-500">存储位置</p>
                 <p className="font-mono text-[10px] text-slate-500">
-                  IndexedDB → smartbox_client_db
+                  IndexedDB → wrench_client_db
                 </p>
               </div>
             </div>

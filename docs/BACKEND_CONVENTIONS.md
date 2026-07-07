@@ -1,6 +1,6 @@
 # BACKEND_CONVENTIONS.md — Rust 后端开发规范
 
-> 本文档规定 SmartBox Rust 后端的代码风格、模式与约束。**必须遵循**，违反将导致 CI 失败。
+> 本文档规定 Wrench Rust 后端的代码风格、模式与约束。**必须遵循**，违反将导致 CI 失败。
 
 ---
 

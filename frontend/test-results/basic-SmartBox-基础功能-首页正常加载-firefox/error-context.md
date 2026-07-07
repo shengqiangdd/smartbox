@@ -6,7 +6,7 @@
 
 # Test info
 
-- Name: basic.spec.ts >> SmartBox 基础功能 >> 首页正常加载
+- Name: basic.spec.ts >> Wrench 基础功能 >> 首页正常加载
 - Location: e2e/basic.spec.ts:4:3
 
 # Error details

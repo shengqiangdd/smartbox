@@ -33,7 +33,7 @@ async function* streamChat(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
       'HTTP-Referer': window.location.origin,
-      'X-Title': 'SmartBox',
+      'X-Title': 'Wrench',
     },
     body: JSON.stringify({
       model,
@@ -287,7 +287,7 @@ export default function AiSidebar({ sessionId, connectionId, onClose }: Props) {
       {/* 头部 */}
       <div className="flex items-center justify-between border-b border-slate-700/50 px-3 py-2">
         <span className="flex items-center gap-1.5 text-xs font-medium text-slate-400">
-          <Brain size={14} className="text-smartbox-400" />
+          <Brain size={14} className="text-wrench-400" />
           AI Agent
           <span className="ml-1 text-[10px] text-slate-600">{aiConfig.model.split('/').pop()}</span>
         </span>
@@ -334,7 +334,7 @@ export default function AiSidebar({ sessionId, connectionId, onClose }: Props) {
             <div
               className={`max-w-[90%] rounded-lg px-3 py-2 text-xs ${
                 msg.role === 'user'
-                  ? 'bg-smartbox-600/20 border-smartbox-600/30 border text-slate-200'
+                  ? 'bg-wrench-600/20 border-wrench-600/30 border text-slate-200'
                   : 'border border-slate-700/30 bg-slate-800/50 text-slate-300'
               }`}
             >
@@ -356,7 +356,7 @@ export default function AiSidebar({ sessionId, connectionId, onClose }: Props) {
                     if (!r) return
                     analyzeResult(r.command, r.stdout || '', r.stderr || '')
                   }}
-                  className="text-smartbox-400 hover:bg-smartbox-500/10 border-smartbox-500/20 mt-2 flex items-center gap-1 rounded border px-2 py-1 text-[10px]"
+                  className="text-wrench-400 hover:bg-wrench-500/10 border-wrench-500/20 mt-2 flex items-center gap-1 rounded border px-2 py-1 text-[10px]"
                 >
                   <Brain size={10} /> 发送给 AI 分析
                 </button>

@@ -520,7 +520,7 @@ export const BUILTIN_COMMANDS: QuickCommand[] = [
   },
 ]
 
-export const STORAGE_KEY = 'smartbox-quick-commands'
+export const STORAGE_KEY = 'wrench-quick-commands'
 
 /** 默认的自定义命令展示 */
 export const DEFAULT_CUSTOM: QuickCommand[] = []

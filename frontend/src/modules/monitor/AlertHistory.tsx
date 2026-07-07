@@ -120,7 +120,7 @@ function exportToCsv(history: AlertEvent[]) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `smartbox-alerts-${new Date().toISOString().slice(0, 10)}.csv`
+  a.download = `wrench-alerts-${new Date().toISOString().slice(0, 10)}.csv`
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
@@ -143,7 +143,7 @@ function exportToJson(history: AlertEvent[]) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `smartbox-alerts-${new Date().toISOString().slice(0, 10)}.json`
+  a.download = `wrench-alerts-${new Date().toISOString().slice(0, 10)}.json`
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
@@ -174,7 +174,7 @@ export default function AlertHistory() {
         ) : (
           <ChevronRight size={14} className="text-slate-500" />
         )}
-        <History size={14} className="text-smartbox-400" />
+        <History size={14} className="text-wrench-400" />
         <span className="text-xs font-medium text-slate-300">告警历史</span>
         <span className="ml-1 text-[10px] text-slate-600">{history.length} 条记录</span>
         {recentCount > 0 && (
@@ -191,7 +191,7 @@ export default function AlertHistory() {
                 e.stopPropagation()
                 exportToCsv(history)
               }}
-              className="hover:bg-smartbox-900/20 hover:text-smartbox-400 flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-slate-600 transition-colors"
+              className="hover:bg-wrench-900/20 hover:text-wrench-400 flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-slate-600 transition-colors"
               title="导出 CSV"
             >
               <FileSpreadsheet size={10} />
@@ -202,7 +202,7 @@ export default function AlertHistory() {
                 e.stopPropagation()
                 exportToJson(history)
               }}
-              className="hover:bg-smartbox-900/20 hover:text-smartbox-400 flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-slate-600 transition-colors"
+              className="hover:bg-wrench-900/20 hover:text-wrench-400 flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-slate-600 transition-colors"
               title="导出 JSON"
             >
               <FileJson size={10} />

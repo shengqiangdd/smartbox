@@ -228,8 +228,8 @@ export default function SettingsPanel() {
         }),
       )
     }
-    window.addEventListener('smartbox-import-needs-password', handler)
-    return () => window.removeEventListener('smartbox-import-needs-password', handler)
+    window.addEventListener('wrench-import-needs-password', handler)
+    return () => window.removeEventListener('wrench-import-needs-password', handler)
   }, [])
 
   return (
@@ -255,7 +255,7 @@ export default function SettingsPanel() {
                   onClick={() => setTheme(opt.value)}
                   className={`flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-lg border px-3 text-sm transition-colors ${
                     theme === opt.value
-                      ? 'border-smartbox-500 bg-smartbox-500/10 text-smartbox-400'
+                      ? 'border-wrench-500 bg-wrench-500/10 text-wrench-400'
                       : 'border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-300'
                   }`}
                 >
@@ -316,7 +316,7 @@ export default function SettingsPanel() {
                         onClick={() => handleSelectProvider(provider)}
                         className={`flex w-full items-center gap-2 px-3 py-2.5 text-xs transition-colors hover:bg-slate-700 ${
                           aiConfig.provider === provider.id
-                            ? 'text-smartbox-400 bg-slate-700/50'
+                            ? 'text-wrench-400 bg-slate-700/50'
                             : 'text-slate-300'
                         }`}
                       >
@@ -348,7 +348,7 @@ export default function SettingsPanel() {
                 onClick={() => setAiConfig({ customBaseUrl: !aiConfig.customBaseUrl })}
                 className={`ml-2 inline-flex items-center gap-1 text-[10px] transition-colors ${
                   aiConfig.customBaseUrl
-                    ? 'text-smartbox-400'
+                    ? 'text-wrench-400'
                     : 'text-slate-600 hover:text-slate-400'
                 }`}
               >
@@ -394,7 +394,7 @@ export default function SettingsPanel() {
                 }
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-smartbox-400 hover:text-smartbox-300 ml-1 inline-flex min-h-[44px] items-center gap-0.5 px-2"
+                className="text-wrench-400 hover:text-wrench-300 ml-1 inline-flex min-h-[44px] items-center gap-0.5 px-2"
               >
                 获取 <ExternalLink size={12} />
               </a>
@@ -440,7 +440,7 @@ export default function SettingsPanel() {
               <button
                 onClick={() => fetchModels(currentProvider.id)}
                 disabled={isFetchingModels}
-                className="hover:text-smartbox-400 ml-auto flex min-h-[44px] items-center gap-1 px-2 text-xs text-slate-500 transition-colors disabled:opacity-50"
+                className="hover:text-wrench-400 ml-auto flex min-h-[44px] items-center gap-1 px-2 text-xs text-slate-500 transition-colors disabled:opacity-50"
                 title={
                   formattedFetchTime ? `上次更新: ${formattedFetchTime}` : '从 API 获取最新模型'
                 }
@@ -514,7 +514,7 @@ export default function SettingsPanel() {
                                   onClick={() => handleSelectModel(model.value)}
                                   className={`flex w-full items-center gap-2 px-3 py-2 text-xs transition-colors hover:bg-slate-700 ${
                                     aiConfig.model === model.value
-                                      ? 'text-smartbox-400 bg-slate-700/50'
+                                      ? 'text-wrench-400 bg-slate-700/50'
                                       : 'text-slate-300'
                                   }`}
                                 >
@@ -553,7 +553,7 @@ export default function SettingsPanel() {
                                         onClick={() => handleSelectModel(model.value)}
                                         className={`flex w-full items-center gap-2 px-3 py-2 text-xs transition-colors hover:bg-slate-700 ${
                                           aiConfig.model === model.value
-                                            ? 'text-smartbox-400 bg-slate-700/50'
+                                            ? 'text-wrench-400 bg-slate-700/50'
                                             : 'text-slate-300'
                                         }`}
                                       >
@@ -585,7 +585,7 @@ export default function SettingsPanel() {
                                         onClick={() => handleSelectModel(model.value)}
                                         className={`flex w-full items-center gap-2 px-3 py-2 text-xs transition-colors hover:bg-slate-700 ${
                                           aiConfig.model === model.value
-                                            ? 'text-smartbox-400 bg-slate-700/50'
+                                            ? 'text-wrench-400 bg-slate-700/50'
                                             : 'text-slate-300'
                                         }`}
                                       >
@@ -630,7 +630,7 @@ export default function SettingsPanel() {
                 onChange={(e) => {
                   setAiConfig({ enabled: e.target.checked })
                 }}
-                className="text-smartbox-500 focus:ring-smartbox-500 h-5 w-5 cursor-pointer rounded border-slate-600 bg-slate-700"
+                className="text-wrench-500 focus:ring-wrench-500 h-5 w-5 cursor-pointer rounded border-slate-600 bg-slate-700"
               />
               <div>
                 <span className="text-xs text-slate-400">启用 AI Agent 功能</span>
@@ -650,7 +650,7 @@ export default function SettingsPanel() {
           </h3>
           <div className="rounded-lg border border-slate-700/50 bg-slate-900/50 px-4 py-3">
             <p className="text-xs text-slate-400">
-              连接配置管理在 <span className="text-smartbox-400">SSH 连接</span> 页面中
+              连接配置管理在 <span className="text-wrench-400">SSH 连接</span> 页面中
             </p>
             <p className="mt-1 text-[11px] text-slate-500">
               支持密码和密钥认证，连接后可使用终端、文件管理和 AI Agent
@@ -691,7 +691,7 @@ export default function SettingsPanel() {
                 <div>
                   <p className="text-xs font-medium text-slate-300">导入配置</p>
                   <p className="mt-0.5 text-[11px] text-slate-500">
-                    导入 .smartbox 文件，现有连接不会被覆盖
+                    导入 .wrench 文件，现有连接不会被覆盖
                   </p>
                 </div>
                 <button
@@ -731,7 +731,7 @@ export default function SettingsPanel() {
             关于
           </h3>
           <div className="rounded-lg border border-slate-700/50 bg-slate-900/50 px-4 py-3 text-xs text-slate-500">
-            <p className="font-medium text-slate-400">智盒 SmartBox v0.3.0</p>
+            <p className="font-medium text-slate-400">棘轮工具箱 Wrench v0.3.0</p>
             <p className="mt-1">可插拔 AI 增强的网页版工具箱</p>
             <p className="mt-1">
               技术栈: React 19 + Vite 8 + CodeMirror 6 + xterm.js + Express 5 + SSH2
@@ -764,7 +764,7 @@ export default function SettingsPanel() {
           />
           <div className="relative z-10 w-full max-w-sm rounded-lg border border-slate-700/50 bg-slate-900 p-5 shadow-2xl">
             <h3 className="flex items-center gap-2 text-sm font-medium text-slate-200">
-              <Lock size={14} className="text-smartbox-400" />
+              <Lock size={14} className="text-wrench-400" />
               设置导出密码
             </h3>
             <p className="mt-2 text-xs text-slate-400">导入此文件时需要输入此密码</p>
@@ -791,7 +791,7 @@ export default function SettingsPanel() {
               </button>
               <button
                 onClick={handleExportWithPassword}
-                className="bg-smartbox-600 hover:bg-smartbox-500 rounded-md px-3 py-1.5 text-xs font-medium text-white transition-colors"
+                className="bg-wrench-600 hover:bg-wrench-500 rounded-md px-3 py-1.5 text-xs font-medium text-white transition-colors"
               >
                 确认导出
               </button>
@@ -812,7 +812,7 @@ export default function SettingsPanel() {
           />
           <div className="relative z-10 w-full max-w-sm rounded-lg border border-slate-700/50 bg-slate-900 p-5 shadow-2xl">
             <h3 className="flex items-center gap-2 text-sm font-medium text-slate-200">
-              <Unlock size={14} className="text-smartbox-400" />
+              <Unlock size={14} className="text-wrench-400" />
               输入解密密码
             </h3>
             <p className="mt-2 text-xs text-slate-400">此配置文件已加密，请输入导出时设置的密码</p>
@@ -841,7 +841,7 @@ export default function SettingsPanel() {
               </button>
               <button
                 onClick={handleConfirmImport}
-                className="bg-smartbox-600 hover:bg-smartbox-500 rounded-md px-3 py-1.5 text-xs font-medium text-white transition-colors"
+                className="bg-wrench-600 hover:bg-wrench-500 rounded-md px-3 py-1.5 text-xs font-medium text-white transition-colors"
               >
                 确认导入
               </button>

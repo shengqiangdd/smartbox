@@ -87,7 +87,7 @@ export default function GroupManageModal({
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="focus:border-smartbox-500/50 flex-1 rounded border border-slate-700/50 bg-slate-800 px-2 py-1 text-xs text-slate-200 outline-none"
+                    className="focus:border-wrench-500/50 flex-1 rounded border border-slate-700/50 bg-slate-800 px-2 py-1 text-xs text-slate-200 outline-none"
                     autoFocus
                   />
                   <button
@@ -145,7 +145,7 @@ export default function GroupManageModal({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="输入分组名称..."
-                className="focus:border-smartbox-500/50 flex-1 rounded border border-slate-700/50 bg-slate-800 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-600 outline-none"
+                className="focus:border-wrench-500/50 flex-1 rounded border border-slate-700/50 bg-slate-800 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-600 outline-none"
                 autoFocus
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleCreate()
@@ -155,7 +155,7 @@ export default function GroupManageModal({
               <button
                 onClick={handleCreate}
                 disabled={!name.trim()}
-                className="bg-smartbox-600/30 text-smartbox-400 hover:bg-smartbox-600/40 rounded-md px-3 py-1.5 text-xs transition-colors disabled:opacity-40"
+                className="bg-wrench-600/30 text-wrench-400 hover:bg-wrench-600/40 rounded-md px-3 py-1.5 text-xs transition-colors disabled:opacity-40"
               >
                 创建
               </button>

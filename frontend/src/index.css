@@ -1,22 +1,22 @@
 @import 'tailwindcss';
 
 /* ============================================
-   Tailwind v4 自定义主题 — smartbox 品牌色
+   Tailwind v4 自定义主题 — wrench 品牌色
    Tailwind v4 用 @theme 替代 tailwind.config.js
    语义色通过 CSS 变量实现深浅主题切换
    ============================================ */
 @theme {
-  --color-smartbox-50: #f0f9ff;
-  --color-smartbox-100: #e0f2fe;
-  --color-smartbox-200: #bae6fd;
-  --color-smartbox-300: #7dd3fc;
-  --color-smartbox-400: #38bdf8;
-  --color-smartbox-500: #0ea5e9;
-  --color-smartbox-600: #0284c7;
-  --color-smartbox-700: #0369a1;
-  --color-smartbox-800: #075985;
-  --color-smartbox-900: #0c4a6e;
-  --color-smartbox-950: #082f49;
+  --color-wrench-50: #f0f9ff;
+  --color-wrench-100: #e0f2fe;
+  --color-wrench-200: #bae6fd;
+  --color-wrench-300: #7dd3fc;
+  --color-wrench-400: #38bdf8;
+  --color-wrench-500: #0ea5e9;
+  --color-wrench-600: #0284c7;
+  --color-wrench-700: #0369a1;
+  --color-wrench-800: #075985;
+  --color-wrench-900: #0c4a6e;
+  --color-wrench-950: #082f49;
 }
 
 /* ============================================

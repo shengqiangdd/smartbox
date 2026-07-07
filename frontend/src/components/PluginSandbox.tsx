@@ -83,7 +83,7 @@ export default function PluginSandbox({
   function sendToHost(type, payload) {
     var seq = ++messageSeq;
     window.parent.postMessage({
-      source: 'smartbox-plugin-sandbox',
+      source: 'wrench-plugin-sandbox',
       pluginId: ${safeId},
       seq: seq,
       type: type,
@@ -93,7 +93,7 @@ export default function PluginSandbox({
   }
 
   window.addEventListener('message', function(event) {
-    if (event.data && event.data.source === 'smartbox-host') {
+    if (event.data && event.data.source === 'wrench-host') {
       var msg = event.data;
       if (msg.seq && pendingCalls[msg.seq]) {
         var pending = pendingCalls[msg.seq];
@@ -106,7 +106,7 @@ export default function PluginSandbox({
   });
 
   // ── 受限 localStorage ──
-  var STORAGE_PREFIX = 'smartbox_plugin_' + ${safeId} + '_';
+  var STORAGE_PREFIX = 'wrench_plugin_' + ${safeId} + '_';
   var MAX_STORAGE = 51200;
 
   function getStorageUsage() {
@@ -201,13 +201,13 @@ export default function PluginSandbox({
     getPluginInfo: function() { return Object.freeze(JSON.parse('${safeManifest.replace(/'/g, "\\\\'")}')); }
   });
 
-  window.SmartBox = Object.freeze({
+  window.Wrench = Object.freeze({
     getPluginAPI: function() { return pluginAPI; }
   });
 
   // ── 接受主应用消息 ──
   window.addEventListener('message', function(event) {
-    if (event.data && event.data.source === 'smartbox-host') {
+    if (event.data && event.data.source === 'wrench-host') {
       var msg = event.data;
       if (msg.type === 'executeCommand') {
         var handler = __commandHandlers__[msg.commandId];
@@ -272,7 +272,7 @@ export default function PluginSandbox({
       // 验证消息来源和类型
       const data = event.data
       if (!data || typeof data !== 'object') return
-      if (data.source !== 'smartbox-plugin-sandbox') return
+      if (data.source !== 'wrench-plugin-sandbox') return
       if (typeof data.pluginId !== 'string') return
       if (typeof data.type !== 'string') return
       if (!data.payload || typeof data.payload !== 'object') return
@@ -327,7 +327,7 @@ export default function PluginSandbox({
             if (iframeEl?.contentWindow) {
               iframeEl.contentWindow.postMessage(
                 {
-                  source: 'smartbox-host',
+                  source: 'wrench-host',
                   type: 'editorContentUpdate',
                   content: activeTab?.content ?? null,
                   language: activeTab?.language ?? null,
@@ -355,7 +355,7 @@ export default function PluginSandbox({
         const iframe = iframeRef.current
         iframe?.contentWindow?.postMessage(
           {
-            source: 'smartbox-host',
+            source: 'wrench-host',
             type: 'executeCommand',
             commandId,
             args: args || [],
@@ -367,7 +367,7 @@ export default function PluginSandbox({
         const iframe = iframeRef.current
         iframe?.contentWindow?.postMessage(
           {
-            source: 'smartbox-host',
+            source: 'wrench-host',
             type: 'editorContentUpdate',
             content,
             language,

@@ -355,7 +355,7 @@ export default function CommandPalette() {
                     key={cmd.id}
                     className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
                       isSelected
-                        ? 'bg-smartbox-500/20 text-smartbox-300'
+                        ? 'bg-wrench-500/20 text-wrench-300'
                         : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
                     }`}
                     onClick={() => cmd.action()}
@@ -364,7 +364,7 @@ export default function CommandPalette() {
                     {/* 图标 */}
                     <span
                       className={`flex h-7 w-7 items-center justify-center rounded-md ${
-                        isSelected ? 'bg-smartbox-500/20' : 'bg-slate-800'
+                        isSelected ? 'bg-wrench-500/20' : 'bg-slate-800'
                       }`}
                     >
                       <CommandIcon name={cmd.icon || 'Command'} />

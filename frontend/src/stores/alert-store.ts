@@ -162,7 +162,7 @@ function playAlertSound(severity: AlertSeverity, enabled: boolean) {
 // ─── Toast 通知辅助 ───
 
 function notify(message: string, type: 'error' | 'info') {
-  window.dispatchEvent(new CustomEvent('smartbox-notification', { detail: { message, type } }))
+  window.dispatchEvent(new CustomEvent('wrench-notification', { detail: { message, type } }))
 }
 
 const METRIC_LABELS: Record<AlertMetric, string> = {

@@ -1,7 +1,7 @@
 /**
  * Toast.tsx
  *
- * 全局通知组件，监听 smartbox-notification 自定义事件，
+ * 全局通知组件，监听 wrench-notification 自定义事件，
  * 以浮动 Toast 形式展示通知信息。
  */
 
@@ -42,8 +42,8 @@ export default function Toast() {
       setTimeout(() => removeToast(id), 3500)
     }
 
-    window.addEventListener('smartbox-notification', handler)
-    return () => window.removeEventListener('smartbox-notification', handler)
+    window.addEventListener('wrench-notification', handler)
+    return () => window.removeEventListener('wrench-notification', handler)
   }, [removeToast])
 
   if (toasts.length === 0) return null

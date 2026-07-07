@@ -172,7 +172,7 @@ export const useSshStore = create<SshState>()(
       setCurrentSftpEntries: (entries) => set({ currentSftpEntries: entries }),
     }),
     {
-      name: 'smartbox-ssh',
+      name: 'wrench-ssh',
       partialize: (state) => ({
         connections: state.connections,
         selectedConnectionId: state.selectedConnectionId,

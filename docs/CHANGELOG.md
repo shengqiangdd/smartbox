@@ -40,7 +40,7 @@
   - CI 硬性门槛：`--max-warnings 0` 强制执行，任何新增警告导致构建失败
 
 ### 🧪 浏览器功能测试 (Playwright + Chromium headless)
-- **22/22 项测试全部通过** — 使用 Playwright 对 SmartBox 应用进行真实浏览器环境功能验证
+- **22/22 项测试全部通过** — 使用 Playwright 对 Wrench 应用进行真实浏览器环境功能验证
 - **扩展测试 21/21 通过** — SSH 全生命周期、Vault CRUD、通知渠道、导入导出、审计日志
 - **App 加载与初始化** — 页面加载正常，无关键错误
 - **Client DB (sql.js WASM) 初始化** — 浏览器端 SQLite 数据库正常创建
@@ -137,7 +137,7 @@
 - **CodeMirror 6 编辑器组件** — 支持 8 种语言语法高亮、IndexedDB 自动保存、文件树集成
 - **AI 侧边栏** — OpenRouter API 集成（默认 `google/gemma-4-27b-it:free`），选中代码一键 AI 优化
 - **完善的插件系统** — 5 个示例插件（JSON 格式化、Base64 编解码、时间戳转换、正则测试器、二维码生成）
-- **全局 SmartBox API** — `SmartBox.getPluginAPI()` 供插件调用
+- **全局 Wrench API** — `Wrench.getPluginAPI()` 供插件调用
 
 ### 🐛 修复
 - **插件页面** — 替换静态占位组件为真实 PluginsPage，从后端加载插件清单
@@ -161,7 +161,7 @@
 
 ### 🚀 新增
 - **后端 HTTP API** — `/api/plugins`、`/api/health` 路由
-- **全局 API** — `SmartBox.getPluginAPI()` 实现
+- **全局 API** — `Wrench.getPluginAPI()` 实现
 - **插件管理器** — `pluginManager.ts` 加载器
 - **插件页面** — 真实组件替换
 

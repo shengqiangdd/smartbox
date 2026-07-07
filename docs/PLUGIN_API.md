@@ -1,7 +1,7 @@
-# SmartBox 插件开发文档
+# Wrench 插件开发文档
 
-> SmartBox 插件运行在 **iframe 沙箱** 中，代码与主应用完全隔离，通过 `postMessage` 异步通信。  
-> 所有插件必须通过 `SmartBox.getPluginAPI()` 获取 API 对象，**不能访问主应用 DOM、全局变量或 Node.js API**。
+> Wrench 插件运行在 **iframe 沙箱** 中，代码与主应用完全隔离，通过 `postMessage` 异步通信。  
+> 所有插件必须通过 `Wrench.getPluginAPI()` 获取 API 对象，**不能访问主应用 DOM、全局变量或 Node.js API**。
 
 ---
 
@@ -31,7 +31,7 @@ plugins/
 | 文件 | 说明 |
 |---|---|
 | `manifest.json` | 插件名称、版本、命令列表等元信息 |
-| `plugin.js` | 用 IIFE 包裹的 JS 代码，通过 `SmartBox.getPluginAPI()` 操作 |
+| `plugin.js` | 用 IIFE 包裹的 JS 代码，通过 `Wrench.getPluginAPI()` 操作 |
 
 ---
 
@@ -106,7 +106,7 @@ plugins/
 (function () {
   'use strict'
 
-  const api = SmartBox.getPluginAPI()
+  const api = Wrench.getPluginAPI()
 
   // 注册命令
   api.registerCommand(
@@ -133,7 +133,7 @@ plugins/
 
 ## 4. PluginAPI 参考
 
-通过 `SmartBox.getPluginAPI()` 获取 API 对象，所有方法如下：
+通过 `Wrench.getPluginAPI()` 获取 API 对象，所有方法如下：
 
 ### 4.1 注册命令
 
@@ -229,7 +229,7 @@ api.getPluginInfo()        // 完整 manifest 对象（只读）
   "name": "你好世界",
   "version": "1.0.0",
   "description": "一个打招呼的示例插件",
-  "author": "SmartBox",
+  "author": "Wrench",
   "commands": [
     {
       "id": "say-hello",
@@ -250,7 +250,7 @@ api.getPluginInfo()        // 完整 manifest 对象（只读）
 (function () {
   'use strict'
 
-  const api = SmartBox.getPluginAPI()
+  const api = Wrench.getPluginAPI()
 
   api.registerCommand(
     { id: 'say-hello', label: '打招呼', description: '在通知栏显示问候语' },
@@ -301,16 +301,16 @@ api.getPluginInfo()        // 完整 manifest 对象（只读）
 |---|---|---|
 | 插件不显示 | manifest.json 格式错误 | 检查 JSON 格式，确保 `id`/`name` 字段存在 |
 | 命令点不动 | 沙箱未就绪 | 检查 iframe 是否成功加载，查看控制台有无错误 |
-| `SmartBox is not defined` | 插件代码直接执行而非通过沙箱 | 确保用 `SmartBox.getPluginAPI()` 而非直接引用 |
+| `Wrench is not defined` | 插件代码直接执行而非通过沙箱 | 确保用 `Wrench.getPluginAPI()` 而非直接引用 |
 | 存储没有生效 | 超出 50KB 配额 | 使用 `storage.remove` 清理不再需要的数据 |
 
 ---
 
 ## 7. 发布到插件市场
 
-要将插件发布到 SmartBox 官方市场：
+要将插件发布到 Wrench 官方市场：
 
-1. **Fork 仓库**：`github.com/shengqiangdd/smartbox-plugins`
+1. **Fork 仓库**：`github.com/shengqiangdd/wrench-plugins`
 2. **创建插件目录**：`plugins/your-plugin/`
 3. **添加文件**：
    - `manifest.json`
@@ -330,8 +330,8 @@ api.getPluginInfo()        // 完整 manifest 对象（只读）
       "description": "功能描述",
       "author": "作者",
       "tags": ["工具"],
-      "manifestUrl": "https://raw.githubusercontent.com/shengqiangdd/smartbox-plugins/main/plugins/your-plugin/manifest.json",
-      "pluginUrl": "https://raw.githubusercontent.com/shengqiangdd/smartbox-plugins/main/plugins/your-plugin/plugin.js"
+      "manifestUrl": "https://raw.githubusercontent.com/shengqiangdd/wrench-plugins/main/plugins/your-plugin/manifest.json",
+      "pluginUrl": "https://raw.githubusercontent.com/shengqiangdd/wrench-plugins/main/plugins/your-plugin/plugin.js"
     }
   ]
 }
@@ -347,8 +347,8 @@ api.getPluginInfo()        // 完整 manifest 对象（只读）
 
 | 对象 | 说明 |
 |---|---|
-| `SmartBox` | 插件 API 入口，唯一全局对象 |
-| `SmartBox.getPluginAPI()` | 返回 `PluginAPI` 对象 |
+| `Wrench` | 插件 API 入口，唯一全局对象 |
+| `Wrench.getPluginAPI()` | 返回 `PluginAPI` 对象 |
 | `document` | 受限 DOM，仅能操作 `#plugin-root` 内部 |
 | `console` | 受限控制台（仅 debug 级别） |
 | `localStorage` | 受前缀隔离的存储（不建议直接使用，用 `api.storage` 代替） |

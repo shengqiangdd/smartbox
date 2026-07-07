@@ -163,7 +163,7 @@ export default function DockerTerminal({
         <div className="flex shrink-0 items-center border-b border-slate-700/50 px-4 py-2.5">
           <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
           <span className="ml-2 font-mono text-sm text-slate-200">
-            Docker: <span className="text-smartbox-400">{containerId.slice(0, 12)}</span>
+            Docker: <span className="text-wrench-400">{containerId.slice(0, 12)}</span>
           </span>
           <span className="ml-2 text-xs text-slate-500">
             {shell} — {connectionId}

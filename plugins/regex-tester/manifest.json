@@ -3,7 +3,7 @@
   "name": "正则测试器",
   "version": "1.0.0",
   "description": "正则表达式在线测试与调试工具",
-  "author": "SmartBox",
+  "author": "Wrench",
   "icon": "search-code",
   "commands": [
     {

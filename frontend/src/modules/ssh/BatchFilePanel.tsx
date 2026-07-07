@@ -346,7 +346,7 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
     <div className="flex h-full flex-col bg-slate-900">
       {/* 头部 */}
       <div className="flex shrink-0 items-center border-b border-slate-700/50 px-4 py-2">
-        <Upload size={16} className="text-smartbox-400 mr-2" />
+        <Upload size={16} className="text-wrench-400 mr-2" />
         <h2 className="text-sm font-semibold text-slate-200">批量文件分发</h2>
         <button
           onClick={onClose}
@@ -362,7 +362,7 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
           onClick={() => setMode('upload')}
           className={`flex items-center gap-1 border-b-2 px-4 py-2 text-xs transition-colors ${
             mode === 'upload'
-              ? 'border-smartbox-400 text-slate-200'
+              ? 'border-wrench-400 text-slate-200'
               : 'border-transparent text-slate-500 hover:text-slate-300'
           }`}
         >
@@ -372,7 +372,7 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
           onClick={() => setMode('command')}
           className={`flex items-center gap-1 border-b-2 px-4 py-2 text-xs transition-colors ${
             mode === 'command'
-              ? 'border-smartbox-400 text-slate-200'
+              ? 'border-wrench-400 text-slate-200'
               : 'border-transparent text-slate-500 hover:text-slate-300'
           }`}
         >
@@ -427,7 +427,7 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
                     {t.status === 'transferring' && (
                       <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-slate-700">
                         <div
-                          className="bg-smartbox-500 h-full rounded-full transition-all duration-300"
+                          className="bg-wrench-500 h-full rounded-full transition-all duration-300"
                           style={{ width: `${t.progress}%` }}
                         />
                       </div>
@@ -440,7 +440,7 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
                         value={t.path}
                         onChange={(e) => setTargetPath(i, e.target.value)}
                         placeholder="/root/"
-                        className="focus:border-smartbox-500/50 mt-1 w-full rounded border border-slate-700/50 bg-slate-800/60 px-2 py-1 text-[11px] text-slate-400 outline-none"
+                        className="focus:border-wrench-500/50 mt-1 w-full rounded border border-slate-700/50 bg-slate-800/60 px-2 py-1 text-[11px] text-slate-400 outline-none"
                       />
                     )}
 
@@ -474,7 +474,7 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="hover:border-smartbox-500/50 flex items-center gap-1.5 rounded-md border border-dashed border-slate-600 px-3 py-2 text-xs text-slate-400 transition-colors hover:text-slate-200"
+                    className="hover:border-wrench-500/50 flex items-center gap-1.5 rounded-md border border-dashed border-slate-600 px-3 py-2 text-xs text-slate-400 transition-colors hover:text-slate-200"
                   >
                     <File size={14} />
                     {selectedFile ? selectedFile.name : '选择文件...'}
@@ -496,7 +496,7 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
                     value={destPath}
                     onChange={(e) => setAllDestPath(e.target.value)}
                     placeholder="/root/"
-                    className="focus:border-smartbox-500/50 flex-1 rounded-md border border-slate-700/50 bg-slate-800 px-3 py-1.5 text-xs text-slate-200 outline-none"
+                    className="focus:border-wrench-500/50 flex-1 rounded-md border border-slate-700/50 bg-slate-800 px-3 py-1.5 text-xs text-slate-200 outline-none"
                   />
                 </div>
               </div>
@@ -506,7 +506,7 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
                 <button
                   onClick={startUpload}
                   disabled={!selectedFile || targets.length === 0 || running}
-                  className="bg-smartbox-600 hover:bg-smartbox-500 flex w-full items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs text-white transition-colors disabled:opacity-50"
+                  className="bg-wrench-600 hover:bg-wrench-500 flex w-full items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs text-white transition-colors disabled:opacity-50"
                 >
                   {running ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
                   {running
@@ -525,7 +525,7 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
                   onChange={(e) => setRemoteCommand(e.target.value)}
                   placeholder="例如: rm -rf /tmp/cache/*"
                   rows={3}
-                  className="focus:border-smartbox-500/50 w-full resize-none rounded-md border border-slate-700/50 bg-slate-800 px-3 py-2 font-mono text-xs text-slate-200 placeholder-slate-500 outline-none"
+                  className="focus:border-wrench-500/50 w-full resize-none rounded-md border border-slate-700/50 bg-slate-800 px-3 py-2 font-mono text-xs text-slate-200 placeholder-slate-500 outline-none"
                 />
               </div>
 

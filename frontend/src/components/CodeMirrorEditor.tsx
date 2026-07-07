@@ -359,7 +359,7 @@ export default function CodeMirrorEditor() {
             <div className="relative">
               <button
                 onClick={openAiMenu}
-                className="btn-icon text-smartbox-400 hover:text-smartbox-300 disabled:opacity-30"
+                className="btn-icon text-wrench-400 hover:text-wrench-300 disabled:opacity-30"
                 title="AI 代码操作"
               >
                 <Sparkles size={14} />
@@ -449,12 +449,12 @@ export default function CodeMirrorEditor() {
               <span className="flex items-center gap-2 text-sm font-medium text-slate-200">
                 {aiProcessing ? (
                   <>
-                    <Loader2 size={16} className="text-smartbox-400 animate-spin" />
+                    <Loader2 size={16} className="text-wrench-400 animate-spin" />
                     AI 处理中...
                   </>
                 ) : (
                   <>
-                    <Sparkles size={16} className="text-smartbox-400" />
+                    <Sparkles size={16} className="text-wrench-400" />
                     {aiResult && aiActionName && ACTION_LABELS[aiActionName]}
                   </>
                 )}
@@ -473,7 +473,7 @@ export default function CodeMirrorEditor() {
             <div className="p-4">
               {aiProcessing && !aiResult && !aiError && (
                 <div className="flex flex-col items-center py-8">
-                  <Loader2 size={32} className="text-smartbox-400 animate-spin" />
+                  <Loader2 size={32} className="text-wrench-400 animate-spin" />
                   <p className="mt-3 text-sm text-slate-500">正在调用 AI API...</p>
                 </div>
               )}

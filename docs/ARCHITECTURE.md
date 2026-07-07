@@ -1,12 +1,12 @@
-# 智盒 (SmartBox) 架构文档
+# 棘轮工具箱 (Wrench) 架构文档
 
-> 本文档描述 SmartBox 的整体架构、技术选型、模块划分和关键设计决策。
+> 本文档描述 Wrench 的整体架构、技术选型、模块划分和关键设计决策。
 
 ---
 
 ## 1. 整体架构概览
 
-SmartBox 采用 **前后端分离 + WebSocket 实时通道** 的架构模式。
+Wrench 采用 **前后端分离 + WebSocket 实时通道** 的架构模式。
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -111,7 +111,7 @@ frontend/src/
 │   └── ai.ts
 ├── App.tsx              # 应用入口（主题管理/路由/全局组件）
 ├── main.tsx             # 渲染入口
-├── global-api.ts        # 插件全局 API (SmartBox.getPluginAPI)
+├── global-api.ts        # 插件全局 API (Wrench.getPluginAPI)
 └── index.css            # 全局样式 + Tailwind
 ```
 
@@ -119,7 +119,7 @@ frontend/src/
 
 #### SSH 模块 (`modules/ssh/`)
 
-SmartBox 最核心的模块，包含：
+Wrench 最核心的模块，包含：
 - **ConnectionList** — 连接管理 CRUD、分组、搜索、快速连接
 - **ConnectionForm** — 新建/编辑连接的弹窗表单
 - **Terminal** — xterm.js 终端 + WebSocket 通道（含分屏、同步命令）
@@ -390,7 +390,7 @@ bridge/
 详细部署文档见 [DEPLOY.md](../DEPLOY.md)。
 
 ```
-nginx/proxy → SmartBox (Express) → SSH Server
+nginx/proxy → Wrench (Express) → SSH Server
                    │
             static files
             (frontend/dist)

@@ -1,5 +1,5 @@
 /**
- * SmartBox 插件管理器 (沙箱版)
+ * Wrench 插件管理器 (沙箱版)
  *
  * 使用 iframe 沙箱隔离执行插件代码，替代原有的 new Function() 方式。
  *
@@ -146,7 +146,7 @@ export function createSandboxHandlers(pluginId: string) {
     },
     onNotification: (message: string, type: 'info' | 'success' | 'error') => {
       window.dispatchEvent(
-        new CustomEvent('smartbox-notification', {
+        new CustomEvent('wrench-notification', {
           detail: { message, type },
         }),
       )

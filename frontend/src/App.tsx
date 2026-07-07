@@ -110,8 +110,8 @@ function AppContent() {
       refreshAlertStore()
       refreshPluginStore()
     }
-    window.addEventListener('smartbox-config-imported', handler)
-    return () => window.removeEventListener('smartbox-config-imported', handler)
+    window.addEventListener('wrench-config-imported', handler)
+    return () => window.removeEventListener('wrench-config-imported', handler)
   }, [])
 
   // 主题同步

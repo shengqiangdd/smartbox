@@ -57,7 +57,7 @@ export default function CommandFormModal({ editCmd, onSave, onClose }: CommandFo
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="例如：查看 Nginx 状态"
-              className="focus:border-smartbox-500/50 w-full rounded-md border border-slate-700/50 bg-slate-800/50 px-3 py-2 text-xs text-slate-200 placeholder-slate-600 transition-colors outline-none"
+              className="focus:border-wrench-500/50 w-full rounded-md border border-slate-700/50 bg-slate-800/50 px-3 py-2 text-xs text-slate-200 placeholder-slate-600 transition-colors outline-none"
               autoFocus
             />
           </div>
@@ -69,7 +69,7 @@ export default function CommandFormModal({ editCmd, onSave, onClose }: CommandFo
               onChange={(e) => setCommand(e.target.value)}
               placeholder="例如：systemctl status nginx"
               rows={3}
-              className="focus:border-smartbox-500/50 w-full resize-none rounded-md border border-slate-700/50 bg-slate-800/50 px-3 py-2 font-mono text-xs text-slate-200 placeholder-slate-600 transition-colors outline-none"
+              className="focus:border-wrench-500/50 w-full resize-none rounded-md border border-slate-700/50 bg-slate-800/50 px-3 py-2 font-mono text-xs text-slate-200 placeholder-slate-600 transition-colors outline-none"
             />
           </div>
 
@@ -82,7 +82,7 @@ export default function CommandFormModal({ editCmd, onSave, onClose }: CommandFo
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="简单说明这个命令的用途"
-              className="focus:border-smartbox-500/50 w-full rounded-md border border-slate-700/50 bg-slate-800/50 px-3 py-2 text-xs text-slate-200 placeholder-slate-600 transition-colors outline-none"
+              className="focus:border-wrench-500/50 w-full rounded-md border border-slate-700/50 bg-slate-800/50 px-3 py-2 text-xs text-slate-200 placeholder-slate-600 transition-colors outline-none"
             />
           </div>
 
@@ -91,7 +91,7 @@ export default function CommandFormModal({ editCmd, onSave, onClose }: CommandFo
             <select
               value={groupId}
               onChange={(e) => setGroupId(e.target.value)}
-              className="focus:border-smartbox-500/50 w-full rounded-md border border-slate-700/50 bg-slate-800/50 px-3 py-2 text-xs text-slate-200 transition-colors outline-none"
+              className="focus:border-wrench-500/50 w-full rounded-md border border-slate-700/50 bg-slate-800/50 px-3 py-2 text-xs text-slate-200 transition-colors outline-none"
             >
               {COMMAND_GROUPS.map((g) => (
                 <option key={g.id} value={g.id}>
@@ -113,7 +113,7 @@ export default function CommandFormModal({ editCmd, onSave, onClose }: CommandFo
             <button
               type="submit"
               disabled={!name.trim() || !command.trim()}
-              className="bg-smartbox-600/30 text-smartbox-400 hover:bg-smartbox-600/40 rounded-md px-4 py-2 text-xs font-medium transition-colors disabled:opacity-40"
+              className="bg-wrench-600/30 text-wrench-400 hover:bg-wrench-600/40 rounded-md px-4 py-2 text-xs font-medium transition-colors disabled:opacity-40"
             >
               {editCmd ? '保存' : '创建'}
             </button>

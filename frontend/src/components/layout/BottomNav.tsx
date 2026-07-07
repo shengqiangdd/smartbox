@@ -50,10 +50,10 @@ export default function BottomNav() {
           >
             <Icon
               size={20}
-              className={activeNav === item.id ? 'text-smartbox-400' : 'text-slate-500'}
+              className={activeNav === item.id ? 'text-wrench-400' : 'text-slate-500'}
             />
             <span
-              className={activeNav === item.id ? 'text-smartbox-400' : 'text-slate-500'}
+              className={activeNav === item.id ? 'text-wrench-400' : 'text-slate-500'}
               style={{ fontSize: '9px', lineHeight: '1' }}
             >
               {item.label}

@@ -77,7 +77,7 @@ describe('BottomNav', () => {
         // Active button should have the primary color class
         const svg = btn.querySelector('svg')
         if (svg) {
-          expect(svg.getAttribute('class')).toContain('smartbox')
+          expect(svg.getAttribute('class')).toContain('wrench')
           foundActive = true
         }
       }

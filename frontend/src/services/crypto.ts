@@ -1,5 +1,5 @@
 /**
- * SmartBox 加密层
+ * Wrench 加密层
  *
  * 使用 Web Crypto API 实现 AES-GCM 加密/解密。
  * 主密码保护敏感的 SSH 私钥、API Key 等数据。

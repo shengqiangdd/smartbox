@@ -29,7 +29,7 @@ assignees: ''
 - 操作系统: [e.g. macOS 14, Ubuntu 22.04]
 - 浏览器: [e.g. Chrome 120, Firefox 121]
 - Node.js 版本: [e.g. 18, 20]
-- SmartBox 版本: [e.g. 0.1.2]
+- Wrench 版本: [e.g. 0.1.2]
 
 ## 补充信息
 

@@ -2,7 +2,7 @@
  * NotificationsPage.tsx — Notification Channel Management
  *
  * 配置外部通知渠道（Discord、Slack、Telegram、Email），
- * 用于接收 SmartBox 的告警通知。
+ * 用于接收 Wrench 的告警通知。
  * 数据存储在客户端 SQLite 中，每个浏览器独立隔离。
  */
 
@@ -130,13 +130,13 @@ export default function NotificationsPage() {
       {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-700/50 px-6 py-4">
         <div className="flex items-center gap-3">
-          <Bell size={22} className="text-smartbox-400" />
+          <Bell size={22} className="text-wrench-400" />
           <h1 className="text-lg font-semibold text-slate-200">通知渠道</h1>
           <span className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-400">本地配置</span>
         </div>
         <button
           onClick={() => setShowAddModal(true)}
-          className="bg-smartbox-600 hover:bg-smartbox-500 flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white"
+          className="bg-wrench-600 hover:bg-wrench-500 flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white"
         >
           <Plus size={16} />
           添加渠道
@@ -155,7 +155,7 @@ export default function NotificationsPage() {
             <p className="text-sm">加载失败：{error}</p>
             <button
               onClick={loadChannels}
-              className="text-smartbox-400 mt-2 text-sm hover:underline"
+              className="text-wrench-400 mt-2 text-sm hover:underline"
             >
               重试
             </button>
@@ -166,7 +166,7 @@ export default function NotificationsPage() {
             <p className="text-sm">还没有配置任何通知渠道</p>
             <button
               onClick={() => setShowAddModal(true)}
-              className="text-smartbox-400 mt-2 text-sm hover:underline"
+              className="text-wrench-400 mt-2 text-sm hover:underline"
             >
               添加第一个渠道
             </button>
@@ -316,7 +316,7 @@ function AddChannelModal({
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="focus:border-smartbox-500 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none"
+              className="focus:border-wrench-500 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none"
               placeholder="例如：DevOps 报警群"
               autoFocus
             />
@@ -326,7 +326,7 @@ function AddChannelModal({
             <select
               value={type}
               onChange={(e) => setType(e.target.value)}
-              className="focus:border-smartbox-500 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 focus:outline-none"
+              className="focus:border-wrench-500 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 focus:outline-none"
             >
               <option value="webhook">Webhook</option>
               <option value="discord">Discord</option>
@@ -340,7 +340,7 @@ function AddChannelModal({
             <textarea
               value={configStr}
               onChange={(e) => setConfigStr(e.target.value)}
-              className="focus:border-smartbox-500 h-24 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 font-mono text-xs text-slate-200 placeholder-slate-500 focus:outline-none"
+              className="focus:border-wrench-500 h-24 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 font-mono text-xs text-slate-200 placeholder-slate-500 focus:outline-none"
               placeholder='{"url": "https://hooks.example.com/..."}'
             />
           </div>
@@ -356,7 +356,7 @@ function AddChannelModal({
             <button
               type="submit"
               disabled={saving}
-              className="bg-smartbox-600 hover:bg-smartbox-500 flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              className="bg-wrench-600 hover:bg-wrench-500 flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
               {saving && (
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />

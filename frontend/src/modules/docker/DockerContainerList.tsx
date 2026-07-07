@@ -16,7 +16,7 @@ const DockerContainerLogs = lazy(() => import('./DockerContainerLogs'))
 const DockerDetail = lazy(() => import('./DockerDetail'))
 
 function notify(message: string, type: 'success' | 'error' | 'info' = 'info') {
-  const ev = new CustomEvent('smartbox-toast', { detail: { message, type } })
+  const ev = new CustomEvent('wrench-toast', { detail: { message, type } })
   window.dispatchEvent(ev)
 }
 
@@ -46,7 +46,7 @@ const ContainerRow = memo(function ContainerRow({
   const shortId = c.ID.length > 12 ? c.ID.slice(0, 12) : c.ID
   const isRunning = c.State === 'running'
   const isLoading = actionLoading === shortId || actionLoading === c.Names
-  const isSelfContainer = c.Names.includes('smartbox') || c.Names.includes('bridge')
+  const isSelfContainer = c.Names.includes('wrench') || c.Names.includes('bridge')
 
   return (
     <div
@@ -216,7 +216,7 @@ export default function DockerContainerList({
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="搜索容器名称 / 镜像 / ID..."
-            className="focus:border-smartbox-500/50 w-full rounded-md border border-slate-700/50 bg-slate-800/60 py-1.5 pr-3 pl-8 text-xs text-slate-300 placeholder-slate-500 outline-none"
+            className="focus:border-wrench-500/50 w-full rounded-md border border-slate-700/50 bg-slate-800/60 py-1.5 pr-3 pl-8 text-xs text-slate-300 placeholder-slate-500 outline-none"
           />
         </div>
       </div>

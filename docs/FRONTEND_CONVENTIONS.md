@@ -1,6 +1,6 @@
 # FRONTEND_CONVENTIONS.md — React 前端开发规范
 
-> 本文档规定 SmartBox 前端（React + TypeScript + Vite 8）的代码风格、模式与约束。
+> 本文档规定 Wrench 前端（React + TypeScript + Vite 8）的代码风格、模式与约束。
 
 ---
 
@@ -350,7 +350,7 @@ export const useSshStore = create<SshState>()(
       syncFromServer: async () => { /* ... */ },
     }),
     {
-      name: 'cloudhub-ssh-storage', // localStorage key
+      name: 'wrench-ssh-storage', // localStorage key
       partialize: (s) => ({ connections: s.connections }),
     }
   )

@@ -198,7 +198,7 @@ export default function DockerPage() {
         )}
         <button
           onClick={() => setActiveNav('ssh')}
-          className="bg-smartbox-600 hover:bg-smartbox-500 mt-2 rounded-md px-4 py-2 text-xs text-white transition-colors"
+          className="bg-wrench-600 hover:bg-wrench-500 mt-2 rounded-md px-4 py-2 text-xs text-white transition-colors"
         >
           前往 SSH 页面
         </button>
@@ -210,7 +210,7 @@ export default function DockerPage() {
     <div className="flex h-full flex-col overflow-hidden">
       {/* 头部 */}
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-700/50 bg-slate-900/80 px-4 py-2">
-        <Container size={18} className="text-smartbox-400 mr-1" />
+        <Container size={18} className="text-wrench-400 mr-1" />
         <h1 className="text-sm font-semibold text-slate-200">Docker 管理</h1>
         <div className="ml-auto flex items-center gap-2">
           {/* 自动刷新开关 */}
@@ -219,7 +219,7 @@ export default function DockerPage() {
               type="checkbox"
               checked={autoRefresh}
               onChange={(e) => setAutoRefresh(e.target.checked)}
-              className="text-smartbox-500 h-3 w-3 rounded border-slate-600 bg-slate-700"
+              className="text-wrench-500 h-3 w-3 rounded border-slate-600 bg-slate-700"
             />
             自动刷新
           </label>
@@ -240,7 +240,7 @@ export default function DockerPage() {
           onClick={() => setTab('containers')}
           className={`border-b-2 px-4 py-2 text-xs transition-colors ${
             tab === 'containers'
-              ? 'border-smartbox-400 text-slate-200'
+              ? 'border-wrench-400 text-slate-200'
               : 'border-transparent text-slate-500 hover:text-slate-300'
           }`}
         >
@@ -250,7 +250,7 @@ export default function DockerPage() {
           onClick={() => setTab('images')}
           className={`border-b-2 px-4 py-2 text-xs transition-colors ${
             tab === 'images'
-              ? 'border-smartbox-400 text-slate-200'
+              ? 'border-wrench-400 text-slate-200'
               : 'border-transparent text-slate-500 hover:text-slate-300'
           }`}
         >
@@ -260,7 +260,7 @@ export default function DockerPage() {
           onClick={() => setTab('compose')}
           className={`border-b-2 px-4 py-2 text-xs transition-colors ${
             tab === 'compose'
-              ? 'border-smartbox-400 text-slate-200'
+              ? 'border-wrench-400 text-slate-200'
               : 'border-transparent text-slate-500 hover:text-slate-300'
           }`}
         >
@@ -270,7 +270,7 @@ export default function DockerPage() {
           onClick={() => setTab('monitor')}
           className={`flex items-center gap-1 border-b-2 px-4 py-2 text-xs transition-colors ${
             tab === 'monitor'
-              ? 'border-smartbox-400 text-slate-200'
+              ? 'border-wrench-400 text-slate-200'
               : 'border-transparent text-slate-500 hover:text-slate-300'
           }`}
         >

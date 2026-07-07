@@ -3,7 +3,7 @@
   "name": "YAML 格式化",
   "version": "1.0.0",
   "description": "格式化、压缩和验证 YAML 数据",
-  "author": "SmartBox",
+  "author": "Wrench",
   "icon": "file-code",
   "commands": [
     {

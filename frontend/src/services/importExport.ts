@@ -1,11 +1,11 @@
 /**
- * SmartBox 配置导入导出服务
+ * Wrench 配置导入导出服务
  *
  * 功能：
  * - 导出所有可迁移数据（SSH 连接、AI 配置、插件状态、App 设置、凭据、通知渠道）
  * - 导入并合并到当前 store / 客户端 SQLite
  * - 支持 AES-GCM 密码加密（复用 crypto.ts）
- * - 导出文件格式：.smartbox 加密 JSON
+ * - 导出文件格式：.wrench 加密 JSON
  *
  * 导出的数据范围：
  * - SSH 连接配置（含密码/私钥）
@@ -83,12 +83,12 @@ const EXPORT_VERSION = 2
 const EXPORT_MAGIC = 'SMARTBOX_EXPORT'
 const APP_VERSION = 'v0.3.0'
 
-export const EXPORT_EXTENSION = '.smartbox'
+export const EXPORT_EXTENSION = '.wrench'
 
 // ─── 辅助 ───
 
 function notify(message: string, type: 'success' | 'error' | 'info' = 'info') {
-  window.dispatchEvent(new CustomEvent('smartbox-notification', { detail: { message, type } }))
+  window.dispatchEvent(new CustomEvent('wrench-notification', { detail: { message, type } }))
 }
 
 function getStore(name: string): unknown {
@@ -185,17 +185,17 @@ export function collectExportData(): ExportData['data'] {
   }))
 
   // AI 配置：从 localStorage（不迁移到 SQLite）
-  const aiStore = getStore('smartbox-ai') as {
+  const aiStore = getStore('wrench-ai') as {
     config?: ExportData['data']['aiConfig']
   } | null
 
   // 插件状态：从 localStorage
-  const pluginStore = getStore('smartbox-plugins') as {
+  const pluginStore = getStore('wrench-plugins') as {
     plugins?: Array<{ manifest: { id: string }; enabled: boolean }>
   } | null
 
   // App 状态：从 localStorage
-  const appStore = getStore('smartbox-app') as {
+  const appStore = getStore('wrench-app') as {
     theme?: string
     sidebarCollapsed?: boolean
     activeNav?: string
@@ -260,14 +260,14 @@ export function exportConfig(password?: string): void {
       .then((encrypted) => {
         const magic = EXPORT_MAGIC + '|'
         const content = magic + encrypted
-        performDownload(content, `smartbox-backup${EXPORT_EXTENSION}`)
+        performDownload(content, `wrench-backup${EXPORT_EXTENSION}`)
         notify('配置已加密导出', 'success')
       })
       .catch((err) => {
         notify('加密失败: ' + (err instanceof Error ? err.message : '未知错误'), 'error')
       })
   } else {
-    performDownload(jsonStr, `smartbox-backup.json`)
+    performDownload(jsonStr, `wrench-backup.json`)
     notify('配置已导出', 'success')
   }
 }
@@ -317,7 +317,7 @@ export async function importConfig(content: string): Promise<void> {
       connectionsUpsert(localToRow(conn))
     }
     // 触发 ssh-store 刷新
-    window.dispatchEvent(new Event('smartbox-config-imported'))
+    window.dispatchEvent(new Event('wrench-config-imported'))
   }
 
   // 导入告警规则到 SQLite
@@ -358,15 +358,15 @@ export async function importConfig(content: string): Promise<void> {
 
   // 导入 AI 配置到 localStorage
   if (data.aiConfig) {
-    const aiStore = getStore('smartbox-ai') as { config?: Record<string, unknown> } | null
+    const aiStore = getStore('wrench-ai') as { config?: Record<string, unknown> } | null
     const merged = { ...((aiStore?.config as Record<string, unknown>) || {}), ...data.aiConfig }
-    localStorage.setItem('smartbox-ai', JSON.stringify({ state: { config: merged } }))
+    localStorage.setItem('wrench-ai', JSON.stringify({ state: { config: merged } }))
   }
 
   // 导入插件状态
   if (data.enabledPlugins) {
     localStorage.setItem(
-      'smartbox-plugins',
+      'wrench-plugins',
       JSON.stringify({
         state: {
           plugins: (data.enabledPlugins as string[]).map((id) => ({
@@ -380,7 +380,7 @@ export async function importConfig(content: string): Promise<void> {
 
   // 导入 App 状态
   if (data.appState) {
-    localStorage.setItem('smartbox-app', JSON.stringify({ state: data.appState }))
+    localStorage.setItem('wrench-app', JSON.stringify({ state: data.appState }))
   }
 
   notify('配置导入成功，页面将刷新', 'success')

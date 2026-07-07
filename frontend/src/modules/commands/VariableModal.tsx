@@ -82,7 +82,7 @@ export default function VariableModal({ cmd, onConfirm, onCancel }: VariableModa
                 value={values[v.name] || ''}
                 onChange={(e) => setValues((prev) => ({ ...prev, [v.name]: e.target.value }))}
                 placeholder={v.placeholder || `输入 ${v.name}`}
-                className="focus:border-smartbox-500/50 w-full rounded-md border border-slate-700/50 bg-slate-800/50 px-3 py-2 font-mono text-xs text-slate-200 placeholder-slate-600 transition-colors outline-none"
+                className="focus:border-wrench-500/50 w-full rounded-md border border-slate-700/50 bg-slate-800/50 px-3 py-2 font-mono text-xs text-slate-200 placeholder-slate-600 transition-colors outline-none"
                 autoFocus={!v.defaultValue}
               />
             </div>
@@ -108,7 +108,7 @@ export default function VariableModal({ cmd, onConfirm, onCancel }: VariableModa
           <button
             onClick={handleConfirm}
             disabled={!allFilled}
-            className="bg-smartbox-600 hover:bg-smartbox-500 rounded-md px-3 py-1.5 text-xs text-white transition-colors disabled:opacity-50"
+            className="bg-wrench-600 hover:bg-wrench-500 rounded-md px-3 py-1.5 text-xs text-white transition-colors disabled:opacity-50"
           >
             执行
           </button>

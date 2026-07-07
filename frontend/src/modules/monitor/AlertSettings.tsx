@@ -62,7 +62,7 @@ function RuleRow({
         title={rule.enabled ? '点击禁用' : '点击启用'}
       >
         {rule.enabled ? (
-          <Bell size={14} className="text-smartbox-400" />
+          <Bell size={14} className="text-wrench-400" />
         ) : (
           <BellOff size={14} className="text-slate-600" />
         )}
@@ -91,7 +91,7 @@ function RuleRow({
           onChange={(e) =>
             onUpdate({ threshold: Math.min(100, Math.max(1, Number(e.target.value) || 1)) })
           }
-          className="focus:border-smartbox-500/50 w-14 rounded border border-slate-700/50 bg-slate-900 px-1.5 py-0.5 text-center text-[11px] text-slate-300 outline-none"
+          className="focus:border-wrench-500/50 w-14 rounded border border-slate-700/50 bg-slate-900 px-1.5 py-0.5 text-center text-[11px] text-slate-300 outline-none"
         />
         <span className="text-[10px] text-slate-600">%</span>
       </div>
@@ -107,7 +107,7 @@ function RuleRow({
           onChange={(e) =>
             onUpdate({ consecutive: Math.min(20, Math.max(1, Number(e.target.value) || 1)) })
           }
-          className="focus:border-smartbox-500/50 w-10 rounded border border-slate-700/50 bg-slate-900 px-1.5 py-0.5 text-center text-[11px] text-slate-300 outline-none"
+          className="focus:border-wrench-500/50 w-10 rounded border border-slate-700/50 bg-slate-900 px-1.5 py-0.5 text-center text-[11px] text-slate-300 outline-none"
         />
         <span className="text-[10px] text-slate-600">次</span>
       </div>
@@ -126,7 +126,7 @@ function RuleRow({
 
 function notify(message: string, type: 'error' | 'info') {
   window.dispatchEvent(
-    new CustomEvent('smartbox-notification', {
+    new CustomEvent('wrench-notification', {
       detail: { message, type },
     }),
   )
@@ -155,7 +155,7 @@ function AddRuleForm({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="border-smartbox-500/30 bg-smartbox-900/10 rounded-lg border p-3">
+    <div className="border-wrench-500/30 bg-wrench-900/10 rounded-lg border p-3">
       <div className="flex flex-wrap items-center gap-3">
         {/* 指标 */}
         <div className="flex items-center gap-1">
@@ -198,7 +198,7 @@ function AddRuleForm({ onClose }: { onClose: () => void }) {
             max={100}
             value={threshold}
             onChange={(e) => setThreshold(Math.min(100, Math.max(1, Number(e.target.value) || 1)))}
-            className="focus:border-smartbox-500/50 w-14 rounded border border-slate-700/50 bg-slate-900 px-1.5 py-0.5 text-center text-[11px] text-slate-300 outline-none"
+            className="focus:border-wrench-500/50 w-14 rounded border border-slate-700/50 bg-slate-900 px-1.5 py-0.5 text-center text-[11px] text-slate-300 outline-none"
           />
           <span className="text-[10px] text-slate-600">%</span>
         </div>
@@ -212,7 +212,7 @@ function AddRuleForm({ onClose }: { onClose: () => void }) {
             max={20}
             value={consecutive}
             onChange={(e) => setConsecutive(Math.min(20, Math.max(1, Number(e.target.value) || 1)))}
-            className="focus:border-smartbox-500/50 w-10 rounded border border-slate-700/50 bg-slate-900 px-1.5 py-0.5 text-center text-[11px] text-slate-300 outline-none"
+            className="focus:border-wrench-500/50 w-10 rounded border border-slate-700/50 bg-slate-900 px-1.5 py-0.5 text-center text-[11px] text-slate-300 outline-none"
           />
           <span className="text-[10px] text-slate-600">次</span>
         </div>
@@ -221,7 +221,7 @@ function AddRuleForm({ onClose }: { onClose: () => void }) {
         <div className="flex items-center gap-1.5">
           <button
             onClick={handleAdd}
-            className="bg-smartbox-600 hover:bg-smartbox-500 flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium text-white transition-colors"
+            className="bg-wrench-600 hover:bg-wrench-500 flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium text-white transition-colors"
           >
             <Save size={11} />
             添加
@@ -339,7 +339,7 @@ export default function AlertSettings() {
             <div className="flex items-center gap-2 pt-1">
               <button
                 onClick={() => setShowAdd(true)}
-                className="hover:border-smartbox-500/40 hover:text-smartbox-300 flex items-center gap-1 rounded-md border border-slate-600/50 px-2.5 py-1.5 text-[11px] text-slate-400 transition-colors"
+                className="hover:border-wrench-500/40 hover:text-wrench-300 flex items-center gap-1 rounded-md border border-slate-600/50 px-2.5 py-1.5 text-[11px] text-slate-400 transition-colors"
               >
                 <Plus size={12} />
                 添加规则

@@ -1,6 +1,6 @@
-# SmartBox Backend (Rust)
+# Wrench Backend (Rust)
 
-Rust 重写的 SmartBox 后端服务，替代原 Node.js/Express 实现。
+Rust 重写的 Wrench 后端服务，替代原 Node.js/Express 实现。
 
 ## 架构概览
 
@@ -64,8 +64,8 @@ curl http://localhost:3001/api/health
 ## Docker 构建
 
 ```bash
-docker build -t cloudhub-backend .
-docker run -p 3001:3001 cloudhub-backend
+docker build -t wrench-backend .
+docker run -p 3001:3001 wrench-backend
 ```
 
 ## 环境变量

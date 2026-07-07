@@ -384,7 +384,7 @@ function FileManagerInner() {
         )}
         <button
           onClick={() => useAppStore.getState().setActiveNav('ssh')}
-          className="bg-smartbox-600 hover:bg-smartbox-500 mt-2 rounded-md px-4 py-2 text-xs text-white transition-colors"
+          className="bg-wrench-600 hover:bg-wrench-500 mt-2 rounded-md px-4 py-2 text-xs text-white transition-colors"
         >
           前往 SSH 页面
         </button>

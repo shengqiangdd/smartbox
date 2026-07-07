@@ -65,13 +65,13 @@ export default function CommandsPage() {
   /** 发送命令到终端 */
   const handleSendToTerminal = useCallback((cmdStr: string) => {
     window.dispatchEvent(
-      new CustomEvent('smartbox:send-to-terminal', { detail: { command: cmdStr } }),
+      new CustomEvent('wrench:send-to-terminal', { detail: { command: cmdStr } }),
     )
   }, [])
 
   /** 发送到批量执行面板 */
   const handleSendToBatch = useCallback((cmdStr: string) => {
-    window.dispatchEvent(new CustomEvent('smartbox:send-to-batch', { detail: { command: cmdStr } }))
+    window.dispatchEvent(new CustomEvent('wrench:send-to-batch', { detail: { command: cmdStr } }))
   }, [])
 
   /** 新建命令 */
@@ -107,7 +107,7 @@ export default function CommandsPage() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `smartbox-commands-${Date.now()}.json`
+    a.download = `wrench-commands-${Date.now()}.json`
     a.click()
     URL.revokeObjectURL(url)
   }, [customCommands])

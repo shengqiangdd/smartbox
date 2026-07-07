@@ -1,5 +1,5 @@
 /**
- * SmartBox 认证服务 (JWT + 一次性令牌兼容)
+ * Wrench 认证服务 (JWT + 一次性令牌兼容)
  *
  * 管理与后端通信的访问令牌（WS 和 REST API）。
  *

@@ -74,7 +74,7 @@ export function ConfirmModal({
             className={`rounded-md px-3 py-1.5 text-xs font-medium text-white transition-colors ${
               variant === 'danger'
                 ? 'bg-red-600 hover:bg-red-500'
-                : 'bg-smartbox-600 hover:bg-smartbox-500'
+                : 'bg-wrench-600 hover:bg-wrench-500'
             }`}
           >
             {confirmText}
@@ -130,7 +130,7 @@ export function AlertModal({ open, title, message, onClose }: AlertModalProps) {
         <div className="mt-4 flex justify-end">
           <button
             onClick={onClose}
-            className="bg-smartbox-600 hover:bg-smartbox-500 rounded-md px-3 py-1.5 text-xs font-medium text-white transition-colors"
+            className="bg-wrench-600 hover:bg-wrench-500 rounded-md px-3 py-1.5 text-xs font-medium text-white transition-colors"
           >
             确定
           </button>

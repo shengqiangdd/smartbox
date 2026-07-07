@@ -143,13 +143,13 @@ export default function VaultPage() {
       {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-700/50 px-6 py-4">
         <div className="flex items-center gap-3">
-          <KeyRound size={22} className="text-smartbox-400" />
+          <KeyRound size={22} className="text-wrench-400" />
           <h1 className="text-lg font-semibold text-slate-200">凭据保险箱</h1>
           <span className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-400">本地存储</span>
         </div>
         <button
           onClick={() => setShowAddModal(true)}
-          className="bg-smartbox-600 hover:bg-smartbox-500 flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white"
+          className="bg-wrench-600 hover:bg-wrench-500 flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white"
         >
           <Plus size={16} />
           新增凭据
@@ -164,7 +164,7 @@ export default function VaultPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="搜索凭据..."
-            className="focus:border-smartbox-500 w-full rounded-lg border border-slate-700 bg-slate-800/50 py-2 pr-3 pl-9 text-sm text-slate-200 placeholder-slate-500 focus:outline-none"
+            className="focus:border-wrench-500 w-full rounded-lg border border-slate-700 bg-slate-800/50 py-2 pr-3 pl-9 text-sm text-slate-200 placeholder-slate-500 focus:outline-none"
           />
         </div>
         <div className="flex gap-1">
@@ -174,7 +174,7 @@ export default function VaultPage() {
               onClick={() => setKindFilter(k)}
               className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                 kindFilter === k
-                  ? 'bg-smartbox-600 text-white'
+                  ? 'bg-wrench-600 text-white'
                   : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
               }`}
             >
@@ -196,7 +196,7 @@ export default function VaultPage() {
             <p className="text-sm">加载失败：{error}</p>
             <button
               onClick={loadEntries}
-              className="text-smartbox-400 mt-2 text-sm hover:underline"
+              className="text-wrench-400 mt-2 text-sm hover:underline"
             >
               重试
             </button>
@@ -208,7 +208,7 @@ export default function VaultPage() {
             {!search && (
               <button
                 onClick={() => setShowAddModal(true)}
-                className="text-smartbox-400 mt-2 text-sm hover:underline"
+                className="text-wrench-400 mt-2 text-sm hover:underline"
               >
                 添加第一个凭据
               </button>
@@ -361,7 +361,7 @@ function AddEntryModal({
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="focus:border-smartbox-500 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none"
+              className="focus:border-wrench-500 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none"
               placeholder="例如：生产服务器 SSH Key"
               autoFocus
             />
@@ -371,7 +371,7 @@ function AddEntryModal({
             <select
               value={kind}
               onChange={(e) => setKind(e.target.value)}
-              className="focus:border-smartbox-500 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 focus:outline-none"
+              className="focus:border-wrench-500 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 focus:outline-none"
             >
               <option value="ssh_key">SSH Key</option>
               <option value="api_key">API Key</option>
@@ -384,7 +384,7 @@ function AddEntryModal({
             <textarea
               value={value}
               onChange={(e) => setValue(e.target.value)}
-              className="focus:border-smartbox-500 h-24 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 font-mono text-sm text-slate-200 placeholder-slate-500 focus:outline-none"
+              className="focus:border-wrench-500 h-24 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 font-mono text-sm text-slate-200 placeholder-slate-500 focus:outline-none"
               placeholder="粘贴 SSH 私钥、API Key 或密码..."
             />
           </div>
@@ -395,7 +395,7 @@ function AddEntryModal({
             <input
               value={tagsStr}
               onChange={(e) => setTagsStr(e.target.value)}
-              className="focus:border-smartbox-500 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none"
+              className="focus:border-wrench-500 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none"
               placeholder="production, web, devops"
             />
           </div>
@@ -411,7 +411,7 @@ function AddEntryModal({
             <button
               type="submit"
               disabled={saving}
-              className="bg-smartbox-600 hover:bg-smartbox-500 flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              className="bg-wrench-600 hover:bg-wrench-500 flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
               {saving && (
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />

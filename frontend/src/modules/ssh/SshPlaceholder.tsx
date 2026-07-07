@@ -480,7 +480,7 @@ export default function SshPlaceholder() {
                     }}
                     className={`flex items-center gap-1 px-3 py-2 text-xs transition-colors ${
                       aiOpen
-                        ? 'bg-smartbox-600/20 text-smartbox-400'
+                        ? 'bg-wrench-600/20 text-wrench-400'
                         : 'text-slate-500 hover:text-slate-300'
                     }`}
                     title={aiOpen ? '关闭 AI' : '打开 AI Agent'}
