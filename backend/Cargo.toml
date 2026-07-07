@@ -62,7 +62,7 @@ reqwest = { version = "0.12", features = ["json"] }
 rusqlite = { version = "0.34", features = ["bundled", "backup"] }
 
 # Auth
-jsonwebtoken = "9"
+jsonwebtoken = "10"
 
 # Helpers
 bytes = "1.0"
