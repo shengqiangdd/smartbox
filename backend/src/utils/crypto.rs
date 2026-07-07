@@ -1,6 +1,6 @@
 use aes_gcm::{
     aead::{Aead, KeyInit},
-    Aes256Gcm, Key, Nonce,
+    Aes256Gcm,
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 
@@ -8,16 +8,14 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 ///
 /// Returns base64-encoded ciphertext with nonce prepended.
 pub fn encrypt(plaintext: &str, key: &[u8; 32]) -> Result<String, String> {
-    let key = Key::<Aes256Gcm>::try_from(key.as_slice())
-        .map_err(|e| format!("Invalid key: {:?}", e))?;
-    let cipher = Aes256Gcm::new(&key);
+    let key = aes_gcm::Key::<Aes256Gcm>::from_slice(key);
+    let cipher = Aes256Gcm::new(key);
     
     // Generate random 12-byte nonce
     let mut nonce_bytes = [0u8; 12];
     rand::rngs::OsRng.try_fill_bytes(&mut nonce_bytes)
         .map_err(|e| format!("Failed to generate nonce: {:?}", e))?;
-    let nonce = Nonce::<Aes256Gcm>::try_from(nonce_bytes.as_slice())
-        .map_err(|e| format!("Invalid nonce: {:?}", e))?;
+    let nonce = aes_gcm::Nonce::from_slice(&nonce_bytes);
 
     let ciphertext = cipher
         .encrypt(&nonce, plaintext.as_bytes())
@@ -42,12 +40,10 @@ pub fn decrypt(encrypted: &str, key: &[u8; 32]) -> Result<String, String> {
     }
 
     let (nonce_bytes, ciphertext) = combined.split_at(12);
-    let nonce = Nonce::<Aes256Gcm>::try_from(nonce_bytes)
-        .map_err(|e| format!("Invalid nonce: {:?}", e))?;
-    let key = Key::<Aes256Gcm>::try_from(key.as_slice())
-        .map_err(|e| format!("Invalid key: {:?}", e))?;
+    let nonce = aes_gcm::Nonce::from_slice(nonce_bytes);
+    let key = aes_gcm::Key::<Aes256Gcm>::from_slice(key);
 
-    let cipher = Aes256Gcm::new(&key);
+    let cipher = Aes256Gcm::new(key);
     let plaintext = cipher
         .decrypt(&nonce, ciphertext)
         .map_err(|e| format!("Decryption failed: {:?}", e))?;
