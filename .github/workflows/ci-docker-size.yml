@@ -17,13 +17,14 @@ on:
 jobs:
   docker-size:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image (amd64 only)
+      - name: Build Docker image (amd64 only, with cache)
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -31,6 +32,10 @@ jobs:
           load: true
           tags: wrench:size-check
           platforms: linux/amd64
+          cache-from: |
+            type=gha,scope=docker-size
+            type=registry,ref=ghcr.io/${{ github.repository }}:cache
+          cache-to: type=gha,mode=max,scope=docker-size
           build-args: |
             BUILD_HASH=${{ github.sha }}
 

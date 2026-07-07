@@ -12,6 +12,7 @@ on:
 jobs:
   rust-backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -21,6 +22,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: backend
+          cache-targets: false
       - run: cargo check
         working-directory: backend
       - run: cargo clippy -- -D warnings

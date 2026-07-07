@@ -16,12 +16,11 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  NODE_VERSION: '22'
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 60
     permissions:
       contents: read
       packages: write
@@ -61,9 +60,9 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: |
-            type=gha
+            type=gha,scope=docker-build
             type=registry,ref=ghcr.io/${{ github.repository }}:cache
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=max,scope=docker-build
           build-args: |
             BUILD_HASH=${{ github.sha }}
 
