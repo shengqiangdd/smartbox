@@ -77,12 +77,12 @@ const visitedKeepAlivePages = new Set<string>()
 
 export default function MainContent() {
   const activeNav = useAppStore((s) => s.activeNav)
-  
+
   // 在渲染时更新模块级别的 Set（不在组件状态中，避免触发重渲染）
   if (KEEP_ALIVE_PAGES.has(activeNav)) {
     visitedKeepAlivePages.add(activeNav)
   }
-  
+
   // 使用 useMemo 计算当前应该渲染的页面列表
   const pagesToRender = useMemo(() => {
     const pages = new Set<string>()
