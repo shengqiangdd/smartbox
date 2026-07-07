@@ -43,7 +43,7 @@ sha2 = "0.11"
 rand = "0.9"
 
 # SSH client
-russh = "0.50"
+russh = "0.62"
 russh-sftp = "2"
 
 # Docker
