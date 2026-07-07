@@ -23,12 +23,9 @@ RUN cd frontend && npm run build
 # ============================================
 FROM rust:1.96-slim-bookworm AS rust-builder
 
-# Prevent cargo from hanging on network issues
 ENV CARGO_NET_RETRY=5
 ENV CARGO_HTTP_TIMEOUT=120
-# Limit parallelism to prevent OOM on memory-constrained runners
 ENV CARGO_BUILD_JOBS=8
-# Use sparse protocol for crates.io (much faster than default git)
 ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -37,31 +34,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# ── Step 1: Copy manifests for dependency caching ──
-COPY backend/Cargo.toml backend/Cargo.lock* ./
+# ── Step 1: Copy all source code ──
+COPY backend/ ./
 
-# Create dummy source files so cargo can cache dependencies
-RUN mkdir -p src && cat > src/main.rs << 'EOF'
-fn main() {}
-EOF
-RUN echo "" > src/lib.rs
-
-# Ensure Cargo.lock exists (for reproducible builds)
-RUN if [ ! -f Cargo.lock ]; then cargo generate-lockfile; fi
-
-# ── Step 2: Build dependencies (cached) ──
+# ── Step 2: Build release binary ──
 RUN cargo build --release
 
-# ── Step 3: Build actual application ──
-COPY backend/src/ ./src/
-RUN cargo build --release
+# ── 验证二进制不是 dummy ──
+RUN BINARY_SIZE=$(stat -c%s target/release/wrench-backend) && \
+    echo "Binary size: ${BINARY_SIZE} bytes" && \
+    if [ "$BINARY_SIZE" -lt 1000000 ]; then \
+        echo "❌ Binary too small (${BINARY_SIZE} bytes), likely dummy build!" && \
+        exit 1; \
+    fi && \
+    echo "✅ Binary size OK"
 
 # ============================================
 # Stage 3: Runtime image
 # ============================================
 FROM debian:12-slim
 
-# 显式设置运行时路径和环境
 ENV FRONTEND_DIST=/app/frontend/dist \
     RUST_LOG=backend=info,tower_http=info \
     DATABASE_URL=/data/wrench.db
@@ -75,9 +67,6 @@ RUN groupadd -r wrench && useradd -r -g wrench -m -d /app wrench
 
 WORKDIR /app
 
-# ── 创建运行时数据目录 ──
-# Docker compose 的 data 卷挂载到 /data，
-# 必须确保 wrench 用户有写权限（否则 SQLite 无法写入）
 RUN mkdir -p /data plugins && \
     chown wrench:wrench /app /app/plugins /data
 
@@ -97,18 +86,13 @@ COPY backend/.env.example /app/.env.example
 COPY docker-entrypoint.sh /app/
 RUN chmod +x /app/docker-entrypoint.sh
 
-# ── Health check ──
-# 每 30s 检查一次 API 响应，确保容器健康运行
-# 返回 200 表示正常，其他表示异常
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -sf http://localhost:3000/api/health || exit 1
+    CMD curl -sf http://localhost:3001/api/health || exit 1
 
-# Use tini as PID 1 for proper signal handling
 ENTRYPOINT ["tini", "--"]
 
-# Run as non-root user
 USER wrench
 
-EXPOSE 3000
+EXPOSE 3001
 
 CMD ["/app/docker-entrypoint.sh"]
