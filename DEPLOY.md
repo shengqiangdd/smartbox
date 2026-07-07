@@ -23,39 +23,39 @@ docker compose up -d
 ```
 
 `docker-compose.yml` 已预配置：
-- 命名数据卷 `smartbox-data` 自动挂载到 `/data`，SQLite 数据库持久化不丢失
+- 命名数据卷 `cloudhub-data` 自动挂载到 `/data`，SQLite 数据库持久化不丢失
 - `JWT_SECRET` 从环境变量注入（必填，用于令牌签发和 Vault 加密）
 - 健康检查每 30s 探测 `/api/health`
 
 ### 数据持久化（SQLite）
 
 SmartBox 使用 SQLite 存储审计日志、告警、凭据保险箱、通知渠道和 SSH 连接配置。
-使用 `docker-compose.yml` 中的命名数据卷 `smartbox-data`，重启或升级容器后数据不丢失。
+使用 `docker-compose.yml` 中的命名数据卷 `cloudhub-data`，重启或升级容器后数据不丢失。
 
 备份 SQLite 数据库：
 
 ```bash
-docker run --rm -v smartbox_smartbox-data:/data -v $(pwd):/backup alpine cp /data/smartbox.db /backup/smartbox-$(date +%Y%m%d).db
+docker run --rm -v cloudhub_cloudhub-data:/data -v $(pwd):/backup alpine cp /data/cloudhub.db /backup/cloudhub-$(date +%Y%m%d).db
 ```
 
 手动运行（不依赖 docker-compose）：
 
 ```bash
 # 创建持久化目录
-mkdir -p /data/smartbox
+mkdir -p /data/cloudhub
 
 # 运行容器并挂载数据卷
 docker run -d \
   -p 3001:3001 \
-  --name smartbox \
+  --name cloudhub \
   --restart unless-stopped \
-  -v /data/smartbox:/data \
-  -e DATABASE_URL=/data/smartbox.db \
+  -v /data/cloudhub:/data \
+  -e DATABASE_URL=/data/cloudhub.db \
   -e JWT_SECRET=$(openssl rand -hex 32) \
-  ghcr.io/shengqiangdd/smartbox:latest
+  ghcr.io/shengqiangdd/cloudhub:latest
 
-# 停止后数据保留在 /data/smartbox/smartbox.db
-# 备份: cp /data/smartbox/smartbox.db backup-$(date +%Y%m%d).db
+# 停止后数据保留在 /data/cloudhub/cloudhub.db
+# 备份: cp /data/cloudhub/cloudhub.db backup-$(date +%Y%m%d).db
 ```
 
 ### 构建并运行
@@ -69,7 +69,7 @@ docker compose build
 docker compose up -d
 
 # 查看信号诊断日志
-docker logs smartbox
+docker logs cloudhub
 
 # 预期看到：
 # [entrypoint] $(date) Starting SmartBox backend...
@@ -92,7 +92,7 @@ npm run build     # 输出到 frontend/dist/
 ### 2. 构建 Rust 后端（生产模式）
 
 ```bash
-cd smartbox-backend
+cd backend
 # 首次构建需要安装 Rust 工具链
 # curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 cargo build --release
@@ -104,7 +104,7 @@ cargo build --release
 cp .env.example .env
 # 编辑 .env 设置以下变量：
 # JWT_SECRET=your-jwt-secret           # 令牌签名密钥（必填，用于认证和 Vault 加密）
-# DATABASE_URL=smartbox.db             # SQLite 数据库路径
+# DATABASE_URL=cloudhub.db             # SQLite 数据库路径
 # HOST=0.0.0.0
 # PORT=3001
 ```
@@ -112,7 +112,7 @@ cp .env.example .env
 ### 4. 启动后端
 
 ```bash
-./target/release/smartbox-backend
+./target/release/cloudhub-backend
 # 后端自动托管 frontend/dist/ 静态文件，监听端口 3001
 # SQLite 数据库自动创建，WAL 模式确保并发安全
 # 支持 /api/* REST + /ws WebSocket + SPA 静态文件一站式服务
@@ -120,7 +120,7 @@ cp .env.example .env
 
 ### 5. 使用 Systemd 实现进程守护（Linux）
 
-创建 `/etc/systemd/system/smartbox.service`：
+创建 `/etc/systemd/system/cloudhub.service`：
 
 ```ini
 [Unit]
@@ -129,13 +129,13 @@ After=network.target
 
 [Service]
 Type=simple
-User=smartbox
-WorkingDirectory=/opt/smartbox
-ExecStart=/opt/smartbox/smartbox-backend
+User=cloudhub
+WorkingDirectory=/opt/cloudhub
+ExecStart=/opt/cloudhub/cloudhub
 Restart=always
 RestartSec=10
 Environment=JWT_SECRET=your-secret-key
-Environment=DATABASE_URL=/opt/smartbox/data/smartbox.db
+Environment=DATABASE_URL=/opt/cloudhub/data/cloudhub.db
 Environment=HOST=0.0.0.0
 Environment=PORT=3001
 Environment=RUST_LOG=info
@@ -145,9 +145,9 @@ WantedBy=multi-user.target
 ```
 
 ```bash
-sudo systemctl enable smartbox
-sudo systemctl start smartbox
-sudo systemctl status smartbox
+sudo systemctl enable cloudhub
+sudo systemctl start cloudhub
+sudo systemctl status cloudhub
 ```
 
 ---
@@ -157,16 +157,16 @@ sudo systemctl status smartbox
 ```nginx
 server {
     listen 80;
-    server_name smartbox.example.com;
+    server_name cloudhub.example.com;
     return 301 https://$host$request_uri;
 }
 
 server {
     listen 443 ssl http2;
-    server_name smartbox.example.com;
+    server_name cloudhub.example.com;
 
-    ssl_certificate     /etc/letsencrypt/live/smartbox.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/smartbox.example.com/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/cloudhub.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/cloudhub.example.com/privkey.pem;
 
     # 静态资源缓存
     location /assets/ {
@@ -211,7 +211,7 @@ server {
 |------|--------|------|
 | `PORT` | `3001` | 后端监听端口 |
 | `HOST` | `0.0.0.0` | 监听地址 |
-| `DATABASE_URL` | `无` (Docker 内默认 `/data/smartbox.db`) | SQLite 数据库路径 |
+| `DATABASE_URL` | `无` (Docker 内默认 `/data/cloudhub.db`) | SQLite 数据库路径 |
 | `JWT_SECRET` | 自动生成 | 用于令牌签发和 Vault 加密密钥派生 |
 | `VAULT_KEY` | `无` (从 JWT_SECRET 派生) | Secret Vault AES-256-GCM 加密密钥，建议显式设置 |
 | `LOG_LEVEL` | `info` | 日志级别 (trace/debug/info/warn/error) |

@@ -38,7 +38,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Copy Cargo manifests for dependency caching
-COPY smartbox-backend/Cargo.toml smartbox-backend/Cargo.lock* ./
+COPY backend/Cargo.toml backend/Cargo.lock* ./
 
 # Create dummy source files so cargo can cache dependencies
 RUN mkdir -p src && cat > src/main.rs << 'EOF'
@@ -56,9 +56,9 @@ RUN if [ ! -f Cargo.lock ]; then cargo generate-lockfile; fi
 RUN cargo build --release
 
 # ── 然后覆盖真实源码，只重新编译 app 代码 ──
-COPY smartbox-backend/src/ ./src/
+COPY backend/src/ ./src/
 
-# 增量编译：依赖已缓存，只编译 smartbox-backend 自身的代码
+# 增量编译：依赖已缓存，只编译 app 自身的代码
 RUN cargo build --release
 
 # ============================================
@@ -68,26 +68,26 @@ FROM debian:12-slim
 
 # 显式设置运行时路径和环境
 ENV FRONTEND_DIST=/app/frontend/dist \
-    RUST_LOG=smartbox_backend=info,tower_http=info \
-    DATABASE_URL=/data/smartbox.db
+    RUST_LOG=backend=info,tower_http=info \
+    DATABASE_URL=/data/cloudhub.db
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates tzdata openssl curl tini && \
     rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
-RUN groupadd -r smartbox && useradd -r -g smartbox -m -d /app smartbox
+RUN groupadd -r cloudhub && useradd -r -g cloudhub -m -d /app cloudhub
 
 WORKDIR /app
 
 # ── 创建运行时数据目录 ──
-# Docker compose 的 smartbox-data 卷挂载到 /data，
-# 必须确保 smartbox 用户有写权限（否则 SQLite 无法写入）
+# Docker compose 的 data 卷挂载到 /data，
+# 必须确保 cloudhub 用户有写权限（否则 SQLite 无法写入）
 RUN mkdir -p /data plugins && \
-    chown smartbox:smartbox /app /app/plugins /data
+    chown cloudhub:cloudhub /app /app/plugins /data
 
 # Copy Rust binary
-COPY --from=rust-builder /app/target/release/smartbox-backend /app/smartbox-backend
+COPY --from=rust-builder /app/target/release/cloudhub-backend /app/cloudhub
 
 # Copy frontend dist
 COPY --from=frontend-builder /app/frontend/dist/ /app/frontend/dist/
@@ -104,17 +104,17 @@ COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 
 # Copy default env config
-COPY smartbox-backend/.env.example /app/.env.example
+COPY backend/.env.example /app/.env.example
 
 # Set ownership — must include all copied files
-RUN chown -R smartbox:smartbox /app
+RUN chown -R cloudhub:cloudhub /app
 
-USER smartbox
+USER cloudhub
 
 EXPOSE 3001
 
 # Use tini as PID 1 (proper signal forwarding + zombie reaping).
-# tini → docker-entrypoint.sh (exec) → smartbox-backend
+# tini → docker-entrypoint.sh (exec) → cloudhub
 # Signals (SIGTERM/SIGINT) go directly to the Rust binary.
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["/app/docker-entrypoint.sh"]

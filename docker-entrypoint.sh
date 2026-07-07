@@ -1,29 +1,26 @@
 #!/bin/sh
-# ============================================================
-# SmartBox Docker Entrypoint
-#
-# Strategy: exec directly into the Rust binary so that tini (PID 1)
-# sends signals straight to the Rust process, which already has
-# proper SIGINT/SIGTERM handlers installed (install_shutdown_signal).
-#
-# This avoids the fragile shell-in-the-middle signal forwarding that
-# was causing the exit-code-0 restart loop: when a signal arrives
-# during shell setup (before the Rust binary is even started), the
-# shell's default behaviour terminates the whole process group with
-# exit 0, and because `restart: unless-stopped` is set, Docker
-# restarts the container — creating an infinite loop.
-#
-# For debugging, the log line below still appears in `docker logs`.
-# ============================================================
+set -e
 
-LOG_PREFIX="[entrypoint]"
-log() { printf '%s %s %s\n' "$LOG_PREFIX" "$(date -Iseconds 2>/dev/null || date)" "$*" >&2; }
+log() {
+  echo "[entrypoint] $(date '+%Y-%m-%d %H:%M:%S') $*"
+}
 
-log "Starting SmartBox backend (exec mode, signals go straight to app)..."
-log "Entrypoint PID=$$, about to exec /app/smartbox-backend $*"
+# ── 1. 首次启动：复制默认配置文件 ──
+if [ ! -f /app/.env ]; then
+  cp /app/.env.example /app/.env
+  log "Created default .env from example"
+fi
 
-# ── exec replaces this shell with the Rust binary ──
-# tini → smartbox-backend (no shell in between)
-# Signals (SIGTERM/SIGINT) are delivered directly to the Rust process,
-# which handles them via tokio::signal + graceful shutdown.
-exec /app/smartbox-backend "$@"
+# ── 2. 显示关键配置（脱敏） ──
+log "Binary: cloudhub"
+log "FRONTEND_DIST=${FRONTEND_DIST:-/app/frontend/dist}"
+
+# ── 3. 启动后端 ──
+log "Entrypoint PID=$$, about to exec /app/cloudhub $*"
+log "Starting SmartBox backend (Rust Axum)..."
+
+# exec: 替换当前 shell 进程为 Rust 二进制
+# - tini (PID 1) → docker-entrypoint.sh → cloudhub (exec)
+# - 信号直接传给 cloudhub，无 shell 中间层
+# - cloudhub 内部已注册 SIGINT/SIGTERM handler（graceful shutdown）
+exec /app/cloudhub "$@"

@@ -128,7 +128,7 @@
 ## 五、目录结构
 
 ```
-smartbox/
+cloudhub/
 ├── package.json
 ├── vite.config.ts
 ├── tsconfig.json

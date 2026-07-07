@@ -39,7 +39,7 @@
 **必须且只能**使用 `utils::escape_sh_arg` 转义所有外部输入后再拼接命令。
 
 ```rust
-// 真实函数签名 (smartbox-backend/src/utils/mod.rs)
+// 真实函数签名 (backend/src/utils/mod.rs)
 pub fn escape_sh_arg(arg: &str) -> String
 ```
 
@@ -130,7 +130,7 @@ npm run build        # 生产构建，产出 dist/
 
 ### 后端
 ```bash
-cd smartbox-backend
+cd backend
 cargo check                  # 编译通过
 cargo clippy -- -D warnings  # Clippy 零警告
 cargo test                   # 72 个测试全绿
@@ -159,10 +159,10 @@ docker compose up -d         # 服务健康检查通过
 
 ## 8. 部署与运维要点
 
-- **Docker 镜像**：三阶段构建（Node → Rust builder → Debian slim），最终二进制 **8.8MB**，非 root 用户 `smartbox:10001` 运行
+- **Docker 镜像**：三阶段构建（Node → Rust builder → Debian slim），最终二进制 **8.8MB**，非 root 用户 `cloudhub:10001` 运行
 - **多架构**：GitHub Actions `matrix.platform: [linux/amd64, linux/arm64]`，QEMU + ARM 原生 runner 并行
-- **数据持久化**：`docker-compose.yml` 绑定 `smartbox-data:/data`，`DATABASE_URL=/data/smartbox.db`，`JWT_SECRET` 必须固定
-- **备份/恢复**：`smartbox-backend --db-backup /path/backup.db` / `--db-restore /path/backup.db`（需 `rusqlite` `backup` feature）
+- **数据持久化**：`docker-compose.yml` 绑定 `cloudhub-data:/data`，`DATABASE_URL=/data/cloudhub.db`，`JWT_SECRET` 必须固定
+- **备份/恢复**：`cloudhub --db-backup /path/backup.db` / `--db-restore /path/backup.db`（需 `rusqlite` `backup` feature）
 - **健康检查**：`GET /api/health` 返回 `{status: "ok", version, uptime}`
 
 ---

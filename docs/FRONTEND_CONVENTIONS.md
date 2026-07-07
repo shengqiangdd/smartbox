@@ -350,7 +350,7 @@ export const useSshStore = create<SshState>()(
       syncFromServer: async () => { /* ... */ },
     }),
     {
-      name: 'smartbox-ssh-storage', // localStorage key
+      name: 'cloudhub-ssh-storage', // localStorage key
       partialize: (s) => ({ connections: s.connections }),
     }
   )

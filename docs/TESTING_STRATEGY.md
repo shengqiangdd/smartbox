@@ -269,7 +269,7 @@ npm run test:coverage # vitest run + coverage
 npm run test:e2e      # Playwright headless
 
 # 后端
-cd smartbox-backend
+cd backend
 cargo test            # 全部 72 个测试
 cargo test --no-run   # 编译检查
 cargo test ssh::      # 模块测试
