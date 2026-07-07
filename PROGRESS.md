@@ -1,5 +1,53 @@
 # 智盒 (SmartBox) — 开发进度日志
 
+## 2026-07-07 — 客户端 SQLite 架构迁移 + WASM 修复 ✅
+
+### 🗄️ 客户端 SQLite 架构 — 用户数据隔离
+
+**目标**: 将 Vault、SSH 连接、告警、通知渠道数据从服务端 API 迁移至浏览器端 SQLite（sql.js WASM），实现用户数据完全隔离。
+
+**完成工作**:
+
+| 文件 | 说明 |
+|------|------|
+| `src/services/client-db.ts` | 核心数据库服务（sql.js WASM） |
+| `src/services/client-db-init.ts` | 初始化与加载状态管理 |
+| `src/stores/ssh-store.ts` | 重写：SQLite 持久化连接配置 |
+| `src/stores/alert-store.ts` | 重写：SQLite 持久化规则与历史 |
+| `src/modules/vault/VaultPage.tsx` | 重写：SQLite 存取凭据 |
+| `src/modules/notifications/NotificationsPage.tsx` | 重写：SQLite 存取渠道配置 |
+| `src/App.tsx` | 更新：启动时异步初始化客户端数据库 |
+| `src/services/importExport.ts` | 重写：导出/导入功能适配新架构 |
+| `frontend/public/sql-wasm.wasm` | 本地化 WASM 文件 |
+| `frontend/public/sql-wasm-browser.wasm` | 浏览器专用 WASM 文件 |
+
+**数据库表结构**:
+- `vault_entries` — 凭据存储（id, name, kind, value, tags, created_at, updated_at）
+- `connections` — SSH 连接配置（id, name, host, port, username, auth_type, ...）
+- `alert_rules` — 告警规则（id, name, metric, condition, threshold, enabled, ...）
+- `alert_history` — 告警历史（id, rule_id, severity, message, value, resolved, ...）
+- `notification_channels` — 通知渠道（id, name, type, enabled, config, ...）
+
+**验证结果**:
+| 测试类型 | 状态 |
+|----------|------|
+| TypeScript | ✅ 零错误 |
+| ESLint | ✅ 零警告 |
+| Vitest | ✅ 243/243 |
+| Vite Build | ✅ 成功 |
+| Client DB 集成测试 | ✅ 34/34 |
+| **浏览器测试** | ✅ **11/11 通过** |
+
+**关键修复**:
+- **WASM 加载失败**: sql.js 在浏览器中请求 `sql-wasm-browser.wasm`，SPA fallback 返回 HTML
+- **解决方案**: 复制 `sql-wasm-browser.wasm` 到 `public/` 目录，更新 `locateFile` 使用本地路径
+
+**Git 提交**:
+- `dd301bb` fix: bundle sql.js WASM locally for offline browser support
+- `57c9dfc` feat: client-side SQLite architecture + SSH fix
+
+---
+
 ## 2026-07-04 — 前端三零目标达成 + 全 API 端点覆盖 ✅
 
 ### 🏆 前端代码质量里程碑

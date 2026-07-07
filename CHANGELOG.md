@@ -1,6 +1,19 @@
 # 📋 变更日志
 
-## [Unreleased] - Rust 后端重构
+## [Unreleased] - 客户端 SQLite 架构 + Rust 后端重构
+
+### 🗄️ 客户端 SQLite 架构 — 用户数据隔离 🚀
+- **浏览器端 SQLite** — 使用 sql.js (WASM) 在浏览器中运行 SQLite 数据库，实现用户数据完全隔离
+- **数据存储** — Vault 凭据、SSH 连接配置、告警规则/历史、通知渠道配置全部迁移至客户端 SQLite
+- **IndexedDB 持久化** — SQLite 数据库通过 IndexedDB 持久化，刷新页面不丢失
+- **本地化 WASM** — sql.js WASM 文件打包至 public 目录，支持离线使用
+- **导入导出** — JSON 格式导出/导入所有客户端数据，支持跨设备迁移
+- **数据库表结构**：
+  - `vault_entries` — 凭据存储（id, name, kind, value, tags, created_at, updated_at）
+  - `connections` — SSH 连接配置（id, name, host, port, username, auth_type, ...）
+  - `alert_rules` — 告警规则（id, name, metric, condition, threshold, enabled, ...）
+  - `alert_history` — 告警历史（id, rule_id, severity, message, value, resolved, ...）
+  - `notification_channels` — 通知渠道（id, name, type, enabled, config, ...）
 
 ### ⚡ 后端重构: Node.js → Rust (Axum + Tokio) 🦀
 - **全面功能对等重构** — SSH/SFTP/Docker/日志/插件/AI/WebSocket 认证等 14 个模块，54 个源文件，~8,200 LOC
