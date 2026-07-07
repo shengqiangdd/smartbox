@@ -130,6 +130,7 @@ export default function SshPlaceholder() {
   )
 
   // ─── 批量并行连接多个 SSH 主机 ───
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleBatchConnect = useCallback(
     async (connectionIds: string[]) => {
       if (connectionIds.length === 0) return

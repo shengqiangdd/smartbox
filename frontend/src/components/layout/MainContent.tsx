@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo } from 'react'
 import { useAppStore } from '../../stores/app-store'
 
 const SshPlaceholder = lazy(() => import('../../modules/ssh/SshPlaceholder'))
@@ -72,16 +72,27 @@ function Loading() {
 /** 需要保持活跃的页面（切换标签后不卸载，保持终端连接等状态） */
 const KEEP_ALIVE_PAGES = new Set(['ssh'])
 
+// 模块级别的 Set，记录所有访问过的 keep-alive 页面
+const visitedKeepAlivePages = new Set<string>()
+
 export default function MainContent() {
   const activeNav = useAppStore((s) => s.activeNav)
-  // 记录已访问过的页面，用于 keep-alive
-  const [visitedPages, setVisitedPages] = useState<Set<string>>(new Set([activeNav]))
-
-  // 当切换页面时，如果是 keep-alive 页面，添加到已访问集合
-  useEffect(() => {
-    if (KEEP_ALIVE_PAGES.has(activeNav)) {
-      setVisitedPages((prev) => new Set([...prev, activeNav]))
+  
+  // 在渲染时更新模块级别的 Set（不在组件状态中，避免触发重渲染）
+  if (KEEP_ALIVE_PAGES.has(activeNav)) {
+    visitedKeepAlivePages.add(activeNav)
+  }
+  
+  // 使用 useMemo 计算当前应该渲染的页面列表
+  const pagesToRender = useMemo(() => {
+    const pages = new Set<string>()
+    // 添加所有访问过的 keep-alive 页面
+    for (const page of visitedKeepAlivePages) {
+      pages.add(page)
     }
+    // 添加当前活跃页面
+    pages.add(activeNav)
+    return Array.from(pages)
   }, [activeNav])
 
   // Preload adjacent pages after mount for instant navigation
@@ -118,7 +129,7 @@ export default function MainContent() {
   return (
     <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {/* 渲染所有 keep-alive 页面，使用 display 控制可见性 */}
-      {Array.from(visitedPages).map((pageId) => {
+      {pagesToRender.map((pageId) => {
         const PageComponent = PAGES[pageId]
         if (!PageComponent) return null
         const isActive = pageId === activeNav
@@ -141,17 +152,6 @@ export default function MainContent() {
           </div>
         )
       })}
-      {/* 当前活跃页面如果不是 keep-alive 且未访问过，直接渲染 */}
-      {!visitedPages.has(activeNav) && PAGES[activeNav] && (
-        <div className="flex h-full flex-1 flex-col overflow-hidden">
-          <Suspense fallback={<Loading />}>
-            {(() => {
-              const PageComponent = PAGES[activeNav]
-              return PageComponent ? <PageComponent /> : null
-            })()}
-          </Suspense>
-        </div>
-      )}
     </main>
   )
 }
