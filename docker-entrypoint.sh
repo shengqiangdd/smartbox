@@ -9,6 +9,12 @@ log() {
 if [ ! -f /app/.env ]; then
   if [ -f /app/.env.example ]; then
     cp /app/.env.example /app/.env
+    # Generate a random JWT_SECRET if not set
+    if ! grep -q "^JWT_SECRET=." /app/.env; then
+      JWT_SECRET=$(openssl rand -hex 32)
+      echo "JWT_SECRET=${JWT_SECRET}" >> /app/.env
+      log "Generated random JWT_SECRET"
+    fi
     log "Created default .env from example"
   else
     touch /app/.env
