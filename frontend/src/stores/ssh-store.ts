@@ -1,17 +1,24 @@
 /**
  * ssh-store.ts — Zustand store for SSH connections and sessions.
  *
- * Connections are persisted both in localStorage (via zustand persist)
- * and on the server (SQLite via API) for cross-device durability.
+ * Connections are persisted in client-side SQLite (via sql.js),
+ * each browser/user has their own isolated database.
+ * No server-side storage for connection configs.
  */
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { decryptSshConnection } from '../services/secure-store'
-import { authedFetch } from '../services/auth'
+import {
+  connectionsList,
+  connectionsUpsert,
+  connectionsDelete,
+  isDbReady,
+} from '../services/client-db'
 import type { SshConnection, SshSession, SftpEntry } from '../types/ssh'
 
-interface ServerConnection {
+/** Convert SQLite ConnectionRow to local SshConnection */
+function rowToLocal(row: {
   id: string
   name: string
   host: string
@@ -22,39 +29,37 @@ interface ServerConnection {
   sort_order: number
   created_at: string
   updated_at: string
-}
-
-/** Convert server format to local SshConnection format */
-function serverToLocal(s: ServerConnection): SshConnection {
+}): SshConnection {
   let parsedConfig: Record<string, unknown> = {}
   try {
-    parsedConfig = JSON.parse(s.config)
+    parsedConfig = JSON.parse(row.config)
   } catch {
     /* ignore */
   }
   return {
-    id: s.id,
-    name: s.name,
-    host: s.host,
-    port: s.port,
-    username: s.username,
-    authType: s.auth_type === 'vault_ref' ? 'password' : (s.auth_type as 'password' | 'key'),
+    id: row.id,
+    name: row.name,
+    host: row.host,
+    port: row.port,
+    username: row.username,
+    authType: row.auth_type as 'password' | 'key',
     password: (parsedConfig.password as string) || undefined,
     privateKey: (parsedConfig.private_key as string) || undefined,
     sudoPassword: (parsedConfig.sudo_password as string) || undefined,
     group: (parsedConfig.group as string) || undefined,
-    createdAt: s.created_at ? new Date(s.created_at).getTime() : Date.now(),
+    createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
   }
 }
 
-/** Convert local SshConnection to server payload */
-function localToServer(conn: SshConnection): Record<string, unknown> {
+/** Convert local SshConnection to SQLite row */
+function localToRow(conn: SshConnection) {
   const config: Record<string, unknown> = {}
   if (conn.password) config.password = conn.password
   if (conn.privateKey) config.private_key = conn.privateKey
   if (conn.sudoPassword) config.sudo_password = conn.sudoPassword
   if (conn.group) config.group = conn.group
 
+  const now = new Date().toISOString()
   return {
     id: conn.id,
     name: conn.name,
@@ -64,6 +69,8 @@ function localToServer(conn: SshConnection): Record<string, unknown> {
     auth_type: conn.authType,
     config: JSON.stringify(config),
     sort_order: 0,
+    created_at: conn.createdAt ? new Date(conn.createdAt).toISOString() : now,
+    updated_at: now,
   }
 }
 
@@ -79,9 +86,8 @@ interface SshState {
   currentSftpPath: string
   currentSftpEntries: SftpEntry[]
 
-  // 服务端同步状态
-  serverSynced: boolean // true if we've loaded from server
-  serverError: string | null
+  // 客户端数据库状态
+  dbLoaded: boolean
 
   // 连接配置操作
   addConnection: (conn: SshConnection) => void
@@ -89,10 +95,8 @@ interface SshState {
   deleteConnection: (id: string) => void
   selectConnection: (id: string | null) => void
 
-  // 服务端同步操作
-  syncFromServer: () => Promise<void>
-  pushToServer: (conn: SshConnection) => Promise<void>
-  removeFromServer: (id: string) => Promise<void>
+  // 数据库操作
+  loadFromDb: () => void
 
   // 会话操作
   addSession: (session: SshSession) => void
@@ -106,33 +110,36 @@ interface SshState {
 
 export const useSshStore = create<SshState>()(
   persist(
-    (set, get) => ({
+    (set, _get) => ({
       connections: [],
       selectedConnectionId: null,
       sessions: [],
       currentSftpPath: '/',
       currentSftpEntries: [],
-      serverSynced: false,
-      serverError: null,
+      dbLoaded: false,
+
+      loadFromDb: () => {
+        if (!isDbReady()) return
+        const rows = connectionsList()
+        const connections = rows.map(rowToLocal)
+        set({ connections, dbLoaded: true })
+      },
 
       addConnection: (conn) => {
         set((s) => ({ connections: [...s.connections, conn] }))
-        // Async push to server (fire-and-forget)
-        get()
-          .pushToServer(conn)
-          .catch(() => {
-            /* best-effort */
-          })
+        // Persist to client SQLite
+        if (isDbReady()) {
+          connectionsUpsert(localToRow(conn))
+        }
       },
 
       updateConnection: (id, data) => {
         set((s) => {
           const updated = s.connections.map((c) => (c.id === id ? { ...c, ...data } : c))
           const conn = updated.find((c) => c.id === id)
-          if (conn)
-            get()
-              .pushToServer(conn)
-              .catch(() => {})
+          if (conn && isDbReady()) {
+            connectionsUpsert(localToRow(conn))
+          }
           return { connections: updated }
         })
       },
@@ -142,61 +149,12 @@ export const useSshStore = create<SshState>()(
           connections: s.connections.filter((c) => c.id !== id),
           selectedConnectionId: s.selectedConnectionId === id ? null : s.selectedConnectionId,
         }))
-        get()
-          .removeFromServer(id)
-          .catch(() => {})
+        if (isDbReady()) {
+          connectionsDelete(id)
+        }
       },
 
       selectConnection: (id) => set({ selectedConnectionId: id }),
-
-      syncFromServer: async () => {
-        try {
-          const res = await authedFetch('/api/connections')
-          const json = await res.json()
-          const serverConns: ServerConnection[] = json.data || []
-          const localConns = get().connections
-
-          // Merge: server data takes priority, but keep local connections that aren't yet on server
-          const serverMap = new Map(serverConns.map((c) => [c.id, serverToLocal(c)]))
-          const merged = [...serverMap.values()]
-
-          // Add local connections not yet on server
-          for (const local of localConns) {
-            if (!serverMap.has(local.id)) {
-              merged.push(local)
-            }
-          }
-
-          set({ connections: merged, serverSynced: true, serverError: null })
-        } catch (e: unknown) {
-          const msg = e instanceof Error ? e.message : 'Server sync failed'
-          set({ serverError: msg, serverSynced: false })
-        }
-      },
-
-      pushToServer: async (conn: SshConnection) => {
-        try {
-          await authedFetch('/api/connections', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(localToServer(conn)),
-          })
-        } catch (e: unknown) {
-          const msg = e instanceof Error ? e.message : 'Sync failed'
-          console.warn('Failed to push connection to server:', msg)
-        }
-      },
-
-      removeFromServer: async (id: string) => {
-        try {
-          await authedFetch(`/api/connections/${encodeURIComponent(id)}`, {
-            method: 'DELETE',
-          })
-        } catch (e: unknown) {
-          const msg = e instanceof Error ? e.message : 'Sync failed'
-          console.warn('Failed to remove connection from server:', msg)
-        }
-      },
 
       addSession: (session) => set((s) => ({ sessions: [...s.sessions, session] })),
 
@@ -240,20 +198,12 @@ export const useSshStore = create<SshState>()(
   ),
 )
 
-/** 触发 store 重新从 localStorage 读取 */
+/** 从客户端 SQLite 重新加载连接列表 */
 export const refreshSshStore = () => {
-  const raw = localStorage.getItem('smartbox-ssh')
-  if (!raw) return
-  try {
-    const parsed = JSON.parse(raw)
-    const state = parsed.state || parsed
-    const connections = (state.connections || []) as SshConnection[]
-    useSshStore.setState({
-      connections,
-      selectedConnectionId: state.selectedConnectionId ?? null,
-    })
-  } catch {
-    /* ignore */
+  if (isDbReady()) {
+    const rows = connectionsList()
+    const connections = rows.map(rowToLocal)
+    useSshStore.setState({ connections, dbLoaded: true })
   }
 }
 

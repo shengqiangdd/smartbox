@@ -1,0 +1,9 @@
+FROM scratch
+COPY smartbox-backend/target/release/smartbox-backend /app/smartbox-backend
+COPY frontend/dist /app/frontend/dist
+COPY plugins /app/plugins
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+COPY smartbox-backend/.env.example /app/.env.example
+RUN chmod +x /app/smartbox-backend /app/docker-entrypoint.sh
+EXPOSE 3001
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

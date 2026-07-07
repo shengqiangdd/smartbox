@@ -2,10 +2,10 @@
  * VaultPage.tsx — Secret Vault UI
  *
  * 加密存储 SSH 密钥、API 密钥、密码等敏感凭据。
- * 所有数据在存储前经由服务端 AES-256-GCM 加密。
+ * 数据存储在客户端 SQLite 中，每个浏览器独立隔离。
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import {
   KeyRound,
   Plus,
@@ -19,18 +19,10 @@ import {
   Lock,
   FileText,
   Search,
+  Loader2,
 } from 'lucide-react'
-import { authedFetch } from '../../services/auth'
-
-interface VaultEntry {
-  id: string
-  name: string
-  kind: string
-  value: string
-  tags: string[]
-  createdAt: string
-  updatedAt: string
-}
+import { vaultList, vaultUpsert, vaultDelete, type VaultEntry } from '../../services/client-db'
+import { useClientDbReady } from '../../services/client-db-init'
 
 const KIND_META: Record<
   string,
@@ -42,7 +34,17 @@ const KIND_META: Record<
   note: { label: 'Note', icon: FileText, color: 'text-slate-400' },
 }
 
+function parseTags(tagsStr: string): string[] {
+  try {
+    const parsed = JSON.parse(tagsStr)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
 export default function VaultPage() {
+  const dbReady = useClientDbReady()
   const [entries, setEntries] = useState<VaultEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -52,39 +54,50 @@ export default function VaultPage() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [kindFilter, setKindFilter] = useState<string>('all')
 
-  const loadEntries = useCallback(async () => {
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!dbReady) return
     setLoading(true)
     setError(null)
     try {
-      const res = await authedFetch('/api/vault')
-      const data = await res.json()
-      setEntries(data.data?.entries || [])
+      const data = vaultList()
+      setEntries(data)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load vault entries')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [dbReady])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
-  useEffect(() => {
-    const t = setTimeout(() => loadEntries(), 0)
-    return () => clearTimeout(t)
-  }, [loadEntries])
+  const loadEntries = () => {
+    if (!dbReady) return
+    setLoading(true)
+    setError(null)
+    try {
+      const data = vaultList()
+      setEntries(data)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to load vault entries')
+    } finally {
+      setLoading(false)
+    }
+  }
 
-  const deleteEntry = async (id: string) => {
+  const deleteEntry = (id: string) => {
     if (!confirm('确定删除此凭据？此操作不可撤销。')) return
     try {
-      await authedFetch(`/api/vault/${id}`, { method: 'DELETE' })
+      vaultDelete(id)
       setEntries((prev) => prev.filter((e) => e.id !== id))
     } catch (e: unknown) {
       alert('删除失败: ' + (e instanceof Error ? e.message : '未知错误'))
     }
   }
 
-  const copyValue = async (id: string, value: string) => {
+  const copyValue = async (_id: string, value: string) => {
     try {
       await navigator.clipboard.writeText(value)
-      setCopied(id)
+      setCopied(_id)
       setTimeout(() => setCopied(null), 2000)
     } catch {
       /* fallback */
@@ -102,16 +115,28 @@ export default function VaultPage() {
 
   const filtered = entries.filter((e) => {
     if (kindFilter !== 'all' && e.kind !== kindFilter) return false
+    const tags = parseTags(e.tags)
     if (
       search &&
       !e.name.toLowerCase().includes(search.toLowerCase()) &&
-      !e.tags.some((t) => t.toLowerCase().includes(search.toLowerCase()))
+      !tags.some((t) => t.toLowerCase().includes(search.toLowerCase()))
     )
       return false
     return true
   })
 
   const kindMeta = (kind: string) => KIND_META[kind] ?? KIND_META.note!
+
+  if (!dbReady) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="flex items-center gap-3 text-slate-400">
+          <Loader2 size={20} className="animate-spin" />
+          <span className="text-sm">初始化本地数据库...</span>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -121,7 +146,7 @@ export default function VaultPage() {
           <KeyRound size={22} className="text-smartbox-400" />
           <h1 className="text-lg font-semibold text-slate-200">凭据保险箱</h1>
           <span className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-400">
-            端到端加密
+            本地存储
           </span>
         </div>
         <button
@@ -196,6 +221,7 @@ export default function VaultPage() {
             {filtered.map((entry) => {
               const meta = kindMeta(entry.kind)
               const Icon = meta.icon
+              const tags = parseTags(entry.tags)
               return (
                 <div
                   key={entry.id}
@@ -242,9 +268,9 @@ export default function VaultPage() {
                     </button>
                   </div>
 
-                  {entry.tags.length > 0 && (
+                  {tags.length > 0 && (
                     <div className="flex flex-wrap gap-1">
-                      {entry.tags.map((tag) => (
+                      {tags.map((tag) => (
                         <span
                           key={tag}
                           className="rounded bg-slate-700/30 px-1.5 py-0.5 text-xs text-slate-500"
@@ -289,7 +315,7 @@ function AddEntryModal({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim() || !value.trim()) {
       setError('名称和值不能为空')
@@ -302,24 +328,18 @@ function AddEntryModal({
         .split(',')
         .map((t) => t.trim())
         .filter(Boolean)
-      const res = await authedFetch('/api/vault', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), kind, value: value.trim(), tags }),
-      })
-      const data = await res.json()
-      if (data.data?.id) {
-        const newEntry: VaultEntry = {
-          id: data.data.id,
-          name: name.trim(),
-          kind,
-          value: value.trim(),
-          tags,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        }
-        onCreated(newEntry)
+      const now = new Date().toISOString()
+      const entry: VaultEntry = {
+        id: `vault-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name: name.trim(),
+        kind,
+        value: value.trim(),
+        tags: JSON.stringify(tags),
+        createdAt: now,
+        updatedAt: now,
       }
+      vaultUpsert(entry)
+      onCreated(entry)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : '保存失败')
     } finally {

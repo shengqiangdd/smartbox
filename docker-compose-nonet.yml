@@ -1,0 +1,17 @@
+services:
+  smartbox:
+    container_name: smartbox
+    image: ghcr.io/shengqiangdd/smartbox:latest
+    network_mode: host
+    volumes:
+      - smartbox-data:/data
+    restart: "no"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=/data/smartbox.db
+      - JWT_SECRET=9c42491a5e21e47ab4b46c5b81096b058882248d98b51095e7285358e53d8258
+      - FRONTEND_DIST=/app/working/workspaces/default/smartbox/frontend/dist
+      - PLUGINS_DIR=/app/working/workspaces/default/smartbox/plugins
+
+volumes:
+  smartbox-data:

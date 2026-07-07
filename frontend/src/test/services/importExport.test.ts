@@ -20,7 +20,7 @@ vi.stubGlobal('crypto', {
   },
 })
 
-import { exportConfig, importConfig, collectExportData } from '../../services/importExport'
+import { exportConfig, importConfigFromFile, collectExportData } from '../../services/importExport'
 
 // Mock store hooks used by collectExportData
 type _StoreSelector<T> = (s: T) => unknown
@@ -57,6 +57,21 @@ vi.mock('../../stores/app-store', () => ({
   ),
 }))
 
+vi.mock('../../services/client-db', () => ({
+  isDbReady: () => true,
+  vaultList: () => [],
+  connectionsList: () => [],
+  alertRulesList: () => [],
+  alertHistoryList: () => [],
+  notificationChannelsList: () => [],
+  vaultUpsert: vi.fn(),
+  connectionsUpsert: vi.fn(),
+  alertRulesUpsert: vi.fn(),
+  alertHistoryInsert: vi.fn(),
+  notificationChannelsUpsert: vi.fn(),
+  exportDbJson: () => ({}),
+}))
+
 describe('importExport service', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -81,11 +96,11 @@ describe('importExport service', () => {
 
   it('rejects import of invalid file', async () => {
     const file = new File(['not-json'], 'config.smartbox', { type: 'application/json' })
-    await expect(importConfig(file, '')).rejects.toThrow()
+    await expect(importConfigFromFile(file)).rejects.toThrow()
   })
 
   it('rejects import of corrupted file', async () => {
     const file = new File(['{invalid json}'], 'config.smartbox', { type: 'application/json' })
-    await expect(importConfig(file, '')).rejects.toThrow()
+    await expect(importConfigFromFile(file)).rejects.toThrow()
   })
 })

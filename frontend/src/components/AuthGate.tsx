@@ -27,12 +27,12 @@ export function AuthGate({ children }: AuthGateProps) {
         initAuthFetch()
         const { getWsClient } = await import('../services/websocket')
         await getWsClient()
-        // 尝试从服务端同步 SSH 连接（静默失败不影响启动）
+        // 从客户端 SQLite 加载 SSH 连接
         const { useSshStore } = await import('../stores/ssh-store')
-        useSshStore
-          .getState()
-          .syncFromServer()
-          .catch(() => {})
+        const { isDbReady } = await import('../services/client-db')
+        if (isDbReady()) {
+          useSshStore.getState().loadFromDb()
+        }
         if (!cancelled) {
           setAuthState('ready')
         }

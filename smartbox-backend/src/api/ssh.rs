@@ -76,9 +76,16 @@ pub async fn connect_ssh(
 
     // Try password auth first, then key auth
     if let Some(password) = &body.password {
-        if !password.is_empty() && session.connect_password(password).await.is_ok() {
-            save_connection(&state, &connection_id, &host, port, &username, session).await;
-            return ApiResponse::success(SshConnectResponse { connection_id, host, port, username });
+        if !password.is_empty() {
+            match session.connect_password(password).await {
+                Ok(()) => {
+                    save_connection(&state, &connection_id, &host, port, &username, session).await;
+                    return ApiResponse::success(SshConnectResponse { connection_id, host, port, username });
+                }
+                Err(e) => {
+                    tracing::error!("Password auth failed for {}@{}:{}: {}", username, host, port, e);
+                }
+            }
         }
     }
 

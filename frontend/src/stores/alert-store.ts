@@ -1,16 +1,88 @@
 /**
- * 健康告警引擎 Store
+ * alert-store.ts — Zustand store for alert rules and history.
  *
- * 监控主机性能指标（CPU / 内存 / 磁盘），超过阈值时触发告警通知。
- * 告警历史持久化到 localStorage，通知通过 Toast 系统呈现。
+ * Data is persisted in client-side SQLite (via sql.js).
+ * Each browser/user has their own isolated alert data.
  */
 
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import {
+  alertRulesList,
+  alertRulesUpsert,
+  alertRulesDelete,
+  alertRulesClear,
+  alertHistoryList,
+  alertHistoryInsert,
+  alertHistoryClear,
+  isDbReady,
+} from '../services/client-db'
+import type { AlertRuleRow } from '../services/client-db'
+
+// ─── 类型定义 ───
+
+export type AlertMetric = 'cpu' | 'memory' | 'disk'
+export type AlertSeverity = 'warning' | 'critical'
+
+export interface AlertRule {
+  id: string
+  metric: AlertMetric
+  threshold: number
+  severity: AlertSeverity
+  enabled: boolean
+  consecutive: number
+}
+
+export interface AlertEvent {
+  id: string
+  ruleId: string
+  hostId: string
+  hostName: string
+  metric: AlertMetric
+  value: number
+  threshold: number
+  severity: AlertSeverity
+  timestamp: number
+  notified: boolean
+}
+
+interface AlertState {
+  rules: AlertRule[]
+  history: AlertEvent[]
+  counters: Record<string, number>
+  enabled: boolean
+  soundEnabled: boolean
+  dbLoaded: boolean
+
+  toggleEnabled: () => void
+  toggleSound: () => void
+  addRule: (rule: Omit<AlertRule, 'id'>) => void
+  updateRule: (id: string, data: Partial<AlertRule>) => void
+  deleteRule: (id: string) => void
+  resetToDefaults: () => void
+  evaluate: (
+    hostId: string,
+    hostName: string,
+    metrics: { cpu: number; memory: number; disk: number },
+  ) => AlertEvent[]
+  clearHistory: () => void
+  loadFromDb: () => void
+}
+
+// ─── 默认规则 ───
+
+const DEFAULT_RULES: AlertRule[] = [
+  { id: 'cpu-warning', metric: 'cpu', threshold: 80, severity: 'warning', enabled: true, consecutive: 3 },
+  { id: 'cpu-critical', metric: 'cpu', threshold: 95, severity: 'critical', enabled: true, consecutive: 2 },
+  { id: 'mem-warning', metric: 'memory', threshold: 85, severity: 'warning', enabled: true, consecutive: 3 },
+  { id: 'mem-critical', metric: 'memory', threshold: 95, severity: 'critical', enabled: true, consecutive: 2 },
+  { id: 'disk-warning', metric: 'disk', threshold: 85, severity: 'warning', enabled: true, consecutive: 5 },
+  { id: 'disk-critical', metric: 'disk', threshold: 95, severity: 'critical', enabled: true, consecutive: 3 },
+]
+
+let eventIdCounter = 0
 
 // ─── 声音提醒 ───
 
-// 复用单例 AudioContext，避免频繁创建导致资源耗尽
 let sharedAudioCtx: AudioContext | null = null
 function getAudioCtx(): AudioContext | null {
   try {
@@ -45,144 +117,11 @@ function playAlertSound(severity: AlertSeverity, enabled: boolean) {
   }
 }
 
-function syncAlertToBackend(event: AlertEvent) {
-  fetch('/api/alerts', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      level: event.severity,
-      host: event.hostName,
-      metric: event.metric,
-      message: `${METRIC_LABELS[event.metric]} 使用率 ${event.value}% 超过阈值 ${event.threshold}%`,
-      value: event.value,
-      threshold: event.threshold,
-    }),
-  }).catch(() => {
-    /* 静默失败，不影响前端 */
-  })
-}
-
-// ─── 类型定义 ───
-
-export type AlertMetric = 'cpu' | 'memory' | 'disk'
-export type AlertSeverity = 'warning' | 'critical'
-
-export interface AlertRule {
-  id: string
-  metric: AlertMetric
-  /** 阈值百分比 (0-100) */
-  threshold: number
-  severity: AlertSeverity
-  /** 是否启用 */
-  enabled: boolean
-  /** 连续触发几次才告警（防止瞬间抖动） */
-  consecutive: number
-}
-
-export interface AlertEvent {
-  id: string
-  ruleId: string
-  hostId: string
-  hostName: string
-  metric: AlertMetric
-  value: number
-  threshold: number
-  severity: AlertSeverity
-  timestamp: number
-  /** 是否已通知（避免重复通知） */
-  notified: boolean
-}
-
-interface AlertState {
-  /** 告警规则 */
-  rules: AlertRule[]
-  /** 告警历史（最近 100 条） */
-  history: AlertEvent[]
-  /** 每个 host+metric 的连续超阈值计数器 */
-  counters: Record<string, number>
-  /** 全局告警开关 */
-  enabled: boolean
-  /** 声音提醒开关 */
-  soundEnabled: boolean
-
-  // 操作
-  toggleEnabled: () => void
-  toggleSound: () => void
-  addRule: (rule: Omit<AlertRule, 'id'>) => void
-  updateRule: (id: string, data: Partial<AlertRule>) => void
-  deleteRule: (id: string) => void
-  resetToDefaults: () => void
-  /** 评估一条主机数据，返回触发的告警列表 */
-  evaluate: (
-    hostId: string,
-    hostName: string,
-    metrics: { cpu: number; memory: number; disk: number },
-  ) => AlertEvent[]
-  clearHistory: () => void
-}
-
-// ─── 默认规则 ───
-
-const DEFAULT_RULES: AlertRule[] = [
-  {
-    id: 'cpu-warning',
-    metric: 'cpu',
-    threshold: 80,
-    severity: 'warning',
-    enabled: true,
-    consecutive: 3,
-  },
-  {
-    id: 'cpu-critical',
-    metric: 'cpu',
-    threshold: 95,
-    severity: 'critical',
-    enabled: true,
-    consecutive: 2,
-  },
-  {
-    id: 'mem-warning',
-    metric: 'memory',
-    threshold: 85,
-    severity: 'warning',
-    enabled: true,
-    consecutive: 3,
-  },
-  {
-    id: 'mem-critical',
-    metric: 'memory',
-    threshold: 95,
-    severity: 'critical',
-    enabled: true,
-    consecutive: 2,
-  },
-  {
-    id: 'disk-warning',
-    metric: 'disk',
-    threshold: 85,
-    severity: 'warning',
-    enabled: true,
-    consecutive: 5,
-  },
-  {
-    id: 'disk-critical',
-    metric: 'disk',
-    threshold: 95,
-    severity: 'critical',
-    enabled: true,
-    consecutive: 3,
-  },
-]
-
-let eventIdCounter = 0
-
 // ─── Toast 通知辅助 ───
 
 function notify(message: string, type: 'error' | 'info') {
   window.dispatchEvent(
-    new CustomEvent('smartbox-notification', {
-      detail: { message, type },
-    }),
+    new CustomEvent('smartbox-notification', { detail: { message, type } }),
   )
 }
 
@@ -192,154 +131,212 @@ const METRIC_LABELS: Record<AlertMetric, string> = {
   disk: '磁盘',
 }
 
+// ─── SQLite 辅助 ───
+
+function ruleToRow(r: AlertRule): AlertRuleRow {
+  return {
+    id: r.id,
+    metric: r.metric,
+    threshold: r.threshold,
+    severity: r.severity,
+    enabled: r.enabled ? 1 : 0,
+    consecutive: r.consecutive,
+  }
+}
+
+function rowToRule(row: AlertRuleRow): AlertRule {
+  return {
+    id: row.id,
+    metric: row.metric as AlertMetric,
+    threshold: row.threshold,
+    severity: row.severity as AlertSeverity,
+    enabled: row.enabled === 1,
+    consecutive: row.consecutive,
+  }
+}
+
+function rowToEvent(row: {
+  id: string
+  ruleId: string
+  hostId: string
+  hostName: string
+  metric: string
+  value: number
+  threshold: number
+  severity: string
+  timestamp: number
+  notified: number
+}): AlertEvent {
+  return {
+    id: row.id,
+    ruleId: row.ruleId,
+    hostId: row.hostId,
+    hostName: row.hostName,
+    metric: row.metric as AlertMetric,
+    value: row.value,
+    threshold: row.threshold,
+    severity: row.severity as AlertSeverity,
+    timestamp: row.timestamp,
+    notified: row.notified === 1,
+  }
+}
+
 // ─── Store ───
 
-export const useAlertStore = create<AlertState>()(
-  persist(
-    (set, get) => ({
-      rules: DEFAULT_RULES,
-      history: [],
-      counters: {},
-      enabled: true,
-      soundEnabled: true,
+export const useAlertStore = create<AlertState>()((set, get) => ({
+  rules: DEFAULT_RULES,
+  history: [],
+  counters: {},
+  enabled: true,
+  soundEnabled: true,
+  dbLoaded: false,
 
-      toggleEnabled: () => set((s) => ({ enabled: !s.enabled })),
-      toggleSound: () => set((s) => ({ soundEnabled: !s.soundEnabled })),
+  loadFromDb: () => {
+    if (!isDbReady()) return
+    const ruleRows = alertRulesList()
+    const historyRows = alertHistoryList(100)
+    const rules = ruleRows.length > 0 ? ruleRows.map(rowToRule) : DEFAULT_RULES
+    const history = historyRows.map(rowToEvent)
+    set({ rules, history, dbLoaded: true })
 
-      addRule: (rule) => {
-        const id = `${rule.metric}-${rule.severity}-${Date.now()}`
-        set((s) => ({ rules: [...s.rules, { ...rule, id }] }))
-      },
+    // 如果规则表为空，写入默认规则
+    if (ruleRows.length === 0) {
+      for (const rule of DEFAULT_RULES) {
+        alertRulesUpsert(ruleToRow(rule))
+      }
+    }
+  },
 
-      updateRule: (id, data) => {
-        set((s) => ({
-          rules: s.rules.map((r) => {
-            if (r.id !== id) return r
-            const updated = { ...r, ...data }
-            // 校验范围：阈值 1-100，连续次数 1-20
-            if (updated.threshold !== undefined)
-              updated.threshold = Math.min(100, Math.max(1, updated.threshold))
-            if (updated.consecutive !== undefined)
-              updated.consecutive = Math.min(20, Math.max(1, updated.consecutive))
-            return updated
-          }),
-        }))
-      },
+  toggleEnabled: () => set((s) => ({ enabled: !s.enabled })),
+  toggleSound: () => set((s) => ({ soundEnabled: !s.soundEnabled })),
 
-      deleteRule: (id) => {
-        set((s) => ({ rules: s.rules.filter((r) => r.id !== id) }))
-      },
+  addRule: (rule) => {
+    const id = `${rule.metric}-${rule.severity}-${Date.now()}`
+    const newRule = { ...rule, id }
+    set((s) => ({ rules: [...s.rules, newRule] }))
+    if (isDbReady()) alertRulesUpsert(ruleToRow(newRule))
+  },
 
-      resetToDefaults: () => set({ rules: DEFAULT_RULES, history: [], counters: {} }),
-
-      evaluate: (hostId, hostName, metrics) => {
-        const state = get()
-        if (!state.enabled) return []
-
-        const fired: AlertEvent[] = []
-        const newCounters = { ...state.counters }
-
-        for (const rule of state.rules) {
-          if (!rule.enabled) continue
-
-          const key = `${hostId}:${rule.id}`
-          const value = metrics[rule.metric]
-
-          if (value >= rule.threshold) {
-            // 超阈值，累加计数器
-            newCounters[key] = (newCounters[key] || 0) + 1
-
-            // 达到连续触发次数
-            if (newCounters[key] >= rule.consecutive) {
-              // 检查是否已在最近 60 秒内触发过相同告警（避免重复通知）
-              const recentDuplicate = state.history.find(
-                (e) =>
-                  e.hostId === hostId && e.ruleId === rule.id && Date.now() - e.timestamp < 60_000,
-              )
-
-              if (!recentDuplicate) {
-                const event: AlertEvent = {
-                  id: `evt-${++eventIdCounter}-${Date.now()}`,
-                  ruleId: rule.id,
-                  hostId,
-                  hostName,
-                  metric: rule.metric,
-                  value: Math.round(value * 10) / 10,
-                  threshold: rule.threshold,
-                  severity: rule.severity,
-                  timestamp: Date.now(),
-                  notified: true,
-                }
-                fired.push(event)
-
-                // 播放提醒声音
-                playAlertSound(rule.severity, get().soundEnabled)
-                // 同步到后端持久化
-                syncAlertToBackend(event)
-
-                // 发送 Toast 通知
-                const icon = rule.severity === 'critical' ? '🚨' : '⚠️'
-                const label = METRIC_LABELS[rule.metric]
-                notify(
-                  `${icon} ${hostName}: ${label} 使用率 ${event.value}% 超过阈值 ${rule.threshold}%`,
-                  rule.severity === 'critical' ? 'error' : 'info',
-                )
-              }
-
-              // 重置计数器（触发后重新计数）
-              newCounters[key] = 0
-            }
-          } else {
-            // 低于阈值，重置计数器
-            newCounters[key] = 0
-          }
-        }
-
-        if (
-          fired.length > 0 ||
-          Object.keys(newCounters).length !== Object.keys(state.counters).length
-        ) {
-          set((s) => ({
-            counters: newCounters,
-            history: [...fired, ...s.history].slice(0, 100), // 保留最近 100 条
-          }))
-        }
-
-        return fired
-      },
-
-      clearHistory: () => set({ history: [] }),
-    }),
-    {
-      name: 'smartbox-alerts',
-      partialize: (state) => ({
-        rules: state.rules,
-        history: state.history.slice(0, 50),
-        enabled: state.enabled,
-        soundEnabled: state.soundEnabled,
+  updateRule: (id, data) => {
+    set((s) => ({
+      rules: s.rules.map((r) => {
+        if (r.id !== id) return r
+        const updated = { ...r, ...data }
+        if (updated.threshold !== undefined)
+          updated.threshold = Math.min(100, Math.max(1, updated.threshold))
+        if (updated.consecutive !== undefined)
+          updated.consecutive = Math.min(20, Math.max(1, updated.consecutive))
+        if (isDbReady()) alertRulesUpsert(ruleToRow(updated))
+        return updated
       }),
-      merge: (persisted, current) => {
-        const p = persisted as Partial<AlertState>
-        return {
-          ...current,
-          ...p,
-          // 兼容旧数据：soundEnabled 缺失时默认 true
-          soundEnabled: p.soundEnabled ?? true,
-        }
-      },
-    },
-  ),
-)
+    }))
+  },
 
-/** 触发 store 重新从 localStorage 读取 */
+  deleteRule: (id) => {
+    set((s) => ({ rules: s.rules.filter((r) => r.id !== id) }))
+    if (isDbReady()) alertRulesDelete(id)
+  },
+
+  resetToDefaults: () => {
+    set({ rules: DEFAULT_RULES, history: [], counters: {} })
+    if (isDbReady()) {
+      alertRulesClear()
+      alertHistoryClear()
+      for (const rule of DEFAULT_RULES) {
+        alertRulesUpsert(ruleToRow(rule))
+      }
+    }
+  },
+
+  evaluate: (hostId, hostName, metrics) => {
+    const state = get()
+    if (!state.enabled) return []
+
+    const fired: AlertEvent[] = []
+    const newCounters = { ...state.counters }
+
+    for (const rule of state.rules) {
+      if (!rule.enabled) continue
+      const key = `${hostId}:${rule.id}`
+      const value = metrics[rule.metric]
+
+      if (value >= rule.threshold) {
+        newCounters[key] = (newCounters[key] || 0) + 1
+        if (newCounters[key] >= rule.consecutive) {
+          const recentDuplicate = state.history.find(
+            (e) => e.hostId === hostId && e.ruleId === rule.id && Date.now() - e.timestamp < 60_000,
+          )
+          if (!recentDuplicate) {
+            const event: AlertEvent = {
+              id: `evt-${++eventIdCounter}-${Date.now()}`,
+              ruleId: rule.id,
+              hostId,
+              hostName,
+              metric: rule.metric,
+              value: Math.round(value * 10) / 10,
+              threshold: rule.threshold,
+              severity: rule.severity,
+              timestamp: Date.now(),
+              notified: true,
+            }
+            fired.push(event)
+            playAlertSound(rule.severity, get().soundEnabled)
+            const icon = rule.severity === 'critical' ? '🚨' : '⚠️'
+            const label = METRIC_LABELS[rule.metric]
+            notify(
+              `${icon} ${hostName}: ${label} 使用率 ${event.value}% 超过阈值 ${rule.threshold}%`,
+              rule.severity === 'critical' ? 'error' : 'info',
+            )
+            // 持久化到 SQLite
+            if (isDbReady()) {
+              alertHistoryInsert({
+                id: event.id,
+                ruleId: event.ruleId,
+                hostId: event.hostId,
+                hostName: event.hostName,
+                metric: event.metric,
+                value: event.value,
+                threshold: event.threshold,
+                severity: event.severity,
+                timestamp: event.timestamp,
+                notified: 1,
+              })
+            }
+          }
+          newCounters[key] = 0
+        }
+      } else {
+        newCounters[key] = 0
+      }
+    }
+
+    if (
+      fired.length > 0 ||
+      Object.keys(newCounters).length !== Object.keys(state.counters).length
+    ) {
+      set((s) => ({
+        counters: newCounters,
+        history: [...fired, ...s.history].slice(0, 100),
+      }))
+    }
+    return fired
+  },
+
+  clearHistory: () => {
+    set({ history: [] })
+    if (isDbReady()) alertHistoryClear()
+  },
+}))
+
+/** 触发 store 重新从 SQLite 读取 */
 export const refreshAlertStore = () => {
-  const raw = localStorage.getItem('smartbox-alerts')
-  if (!raw) return
-  try {
-    const parsed = JSON.parse(raw)
-    const state = parsed.state || parsed
-    useAlertStore.setState(state)
-  } catch {
-    /* ignore */
+  if (isDbReady()) {
+    const ruleRows = alertRulesList()
+    const historyRows = alertHistoryList(100)
+    useAlertStore.setState({
+      rules: ruleRows.length > 0 ? ruleRows.map(rowToRule) : DEFAULT_RULES,
+      history: historyRows.map(rowToEvent),
+      dbLoaded: true,
+    })
   }
 }

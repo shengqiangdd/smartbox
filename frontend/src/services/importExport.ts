@@ -2,21 +2,34 @@
  * SmartBox 配置导入导出服务
  *
  * 功能：
- * - 导出所有可迁移数据（SSH 连接、AI 配置、插件状态、App 设置）
- * - 导入并合并到当前 store / IndexedDB
+ * - 导出所有可迁移数据（SSH 连接、AI 配置、插件状态、App 设置、凭据、通知渠道）
+ * - 导入并合并到当前 store / 客户端 SQLite
  * - 支持 AES-GCM 密码加密（复用 crypto.ts）
  * - 导出文件格式：.smartbox 加密 JSON
  *
  * 导出的数据范围：
- * - SSH 连接配置（含密码/私钥 — 导出时仍保持原样，导入时不加密额外加一层）
+ * - SSH 连接配置（含密码/私钥）
  * - AI 配置（含 API Key）
  * - 插件状态（启用的插件列表）
+ * - 告警配置
+ * - 凭据保险箱条目
+ * - 通知渠道配置
  * - App 状态（主题、UI 偏好）
- *
- * 不导出的运行时状态：当前会话、终端分屏、编辑器打开的文件
  */
 
 import { encrypt, decrypt } from './crypto'
+import {
+  vaultList,
+  vaultUpsert,
+  connectionsList,
+  connectionsUpsert,
+  alertRulesList,
+  alertRulesUpsert,
+  notificationChannelsList,
+  notificationChannelsUpsert,
+  type VaultEntry,
+  type ConnectionRow,
+} from './client-db'
 import type { SshConnection } from '../types/ssh'
 
 // ─── 导出数据结构 ───
@@ -26,9 +39,7 @@ export interface ExportData {
   exportedAt: string
   appVersion: string
   data: {
-    /** SSH 连接配置 */
     connections: SshConnection[]
-    /** AI 配置（含 API Key） */
     aiConfig: {
       apiKey: string
       model: string
@@ -37,9 +48,7 @@ export interface ExportData {
       customBaseUrl?: boolean
       enabled: boolean
     }
-    /** 已启用的插件列表 */
     enabledPlugins: string[]
-    /** 告警配置 */
     alertConfig?: {
       enabled: boolean
       rules: Array<{
@@ -51,7 +60,14 @@ export interface ExportData {
         consecutive: number
       }>
     }
-    /** 应用状态 */
+    vault?: VaultEntry[]
+    notificationChannels?: Array<{
+      id: string
+      name: string
+      type: string
+      enabled: boolean
+      config: string
+    }>
     appState: {
       theme: 'dark' | 'light' | 'system'
       sidebarCollapsed: boolean
@@ -63,17 +79,73 @@ export interface ExportData {
   }
 }
 
-const EXPORT_VERSION = 1
+const EXPORT_VERSION = 2
 const EXPORT_MAGIC = 'SMARTBOX_EXPORT'
 const APP_VERSION = 'v0.3.0'
 
-/** 导出文件扩展名 */
 export const EXPORT_EXTENSION = '.smartbox'
 
-// ─── 辅助：通知 ───
+// ─── 辅助 ───
 
 function notify(message: string, type: 'success' | 'error' | 'info' = 'info') {
   window.dispatchEvent(new CustomEvent('smartbox-notification', { detail: { message, type } }))
+}
+
+function getStore(name: string): unknown {
+  try {
+    const raw = localStorage.getItem(name)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return parsed?.state || parsed
+  } catch {
+    return null
+  }
+}
+
+/** Convert SQLite ConnectionRow to local SshConnection */
+function rowToLocal(row: ConnectionRow): SshConnection {
+  let parsedConfig: Record<string, unknown> = {}
+  try {
+    parsedConfig = JSON.parse(row.config)
+  } catch {
+    /* ignore */
+  }
+  return {
+    id: row.id,
+    name: row.name,
+    host: row.host,
+    port: row.port,
+    username: row.username,
+    authType: row.auth_type as 'password' | 'key',
+    password: (parsedConfig.password as string) || undefined,
+    privateKey: (parsedConfig.private_key as string) || undefined,
+    sudoPassword: (parsedConfig.sudo_password as string) || undefined,
+    group: (parsedConfig.group as string) || undefined,
+    createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+  }
+}
+
+/** Convert local SshConnection to SQLite row */
+function localToRow(conn: SshConnection): ConnectionRow {
+  const config: Record<string, unknown> = {}
+  if (conn.password) config.password = conn.password
+  if (conn.privateKey) config.private_key = conn.privateKey
+  if (conn.sudoPassword) config.sudo_password = conn.sudoPassword
+  if (conn.group) config.group = conn.group
+
+  const now = new Date().toISOString()
+  return {
+    id: conn.id,
+    name: conn.name,
+    host: conn.host,
+    port: conn.port,
+    username: conn.username,
+    auth_type: conn.authType,
+    config: JSON.stringify(config),
+    sort_order: 0,
+    created_at: conn.createdAt ? new Date(conn.createdAt).toISOString() : now,
+    updated_at: now,
+  }
 }
 
 // ─── 导出 ───
@@ -82,30 +154,47 @@ function notify(message: string, type: 'success' | 'error' | 'info' = 'info') {
  * 收集所有可导出的数据
  */
 export function collectExportData(): ExportData['data'] {
-  // 从 localStorage 读取 persisted store 数据
-  const getStore = (name: string): unknown => {
-    try {
-      const raw = localStorage.getItem(name)
-      if (!raw) return null
-      const parsed = JSON.parse(raw)
-      return parsed?.state || parsed
-    } catch {
-      return null
-    }
+  // SSH 连接：从客户端 SQLite
+  const connections = connectionsList().map(rowToLocal)
+
+  // 告警规则：从客户端 SQLite
+  const alertRuleRows = alertRulesList()
+  const alertConfig = {
+    enabled: true,
+    rules: alertRuleRows.map((r) => ({
+      id: r.id,
+      metric: r.metric,
+      threshold: r.threshold,
+      severity: r.severity,
+      enabled: r.enabled === 1,
+      consecutive: r.consecutive,
+    })),
   }
 
-  const sshStore = getStore('smartbox-ssh') as {
-    connections?: SshConnection[]
-  } | null
+  // 凭据保险箱：从客户端 SQLite
+  const vault = vaultList()
 
+  // 通知渠道：从客户端 SQLite
+  const notifyRows = notificationChannelsList()
+  const notificationChannels = notifyRows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    type: r.type,
+    enabled: r.enabled === 1,
+    config: r.config,
+  }))
+
+  // AI 配置：从 localStorage（不迁移到 SQLite）
   const aiStore = getStore('smartbox-ai') as {
     config?: ExportData['data']['aiConfig']
   } | null
 
+  // 插件状态：从 localStorage
   const pluginStore = getStore('smartbox-plugins') as {
     plugins?: Array<{ manifest: { id: string }; enabled: boolean }>
   } | null
 
+  // App 状态：从 localStorage
   const appStore = getStore('smartbox-app') as {
     theme?: string
     sidebarCollapsed?: boolean
@@ -115,20 +204,8 @@ export function collectExportData(): ExportData['data'] {
     fmSidebarOpen?: boolean
   } | null
 
-  const alertStore = getStore('smartbox-alerts') as {
-    enabled?: boolean
-    rules?: Array<{
-      id: string
-      metric: string
-      threshold: number
-      severity: string
-      enabled: boolean
-      consecutive: number
-    }>
-  } | null
-
   return {
-    connections: sshStore?.connections || [],
+    connections,
     aiConfig: aiStore?.config || {
       apiKey: '',
       model: 'deepseek/deepseek-v4-flash:free',
@@ -138,9 +215,9 @@ export function collectExportData(): ExportData['data'] {
       enabled: false,
     },
     enabledPlugins: pluginStore?.plugins?.filter((p) => p.enabled).map((p) => p.manifest.id) || [],
-    alertConfig: alertStore?.rules
-      ? { enabled: alertStore.enabled ?? true, rules: alertStore.rules }
-      : undefined,
+    alertConfig,
+    vault,
+    notificationChannels,
     appState: {
       theme: (appStore?.theme as 'dark' | 'light' | 'system') || 'dark',
       sidebarCollapsed: appStore?.sidebarCollapsed ?? false,
@@ -166,7 +243,6 @@ export function exportConfig(password?: string): void {
 
   const jsonStr = JSON.stringify(payload, null, 2)
 
-  // 构造下载
   const performDownload = async (content: string, filename: string) => {
     const blob = new Blob([content], { type: 'application/octet-stream' })
     const url = URL.createObjectURL(blob)
@@ -180,252 +256,164 @@ export function exportConfig(password?: string): void {
   }
 
   if (password) {
-    // 加密导出
     encrypt(jsonStr, password)
       .then((encrypted) => {
-        // 格式: 魔数(16 字节 base64) + 加密内容
-        const wrapped = `${EXPORT_MAGIC}|${encrypted}`
-        performDownload(wrapped, `smartbox-config-encrypted${EXPORT_EXTENSION}`)
-        notify('配置已导出（密码加密）✅', 'success')
+        const magic = EXPORT_MAGIC + '|'
+        const content = magic + encrypted
+        performDownload(content, `smartbox-backup${EXPORT_EXTENSION}`)
+        notify('配置已加密导出', 'success')
       })
       .catch((err) => {
-        notify('导出失败：加密出错 ' + err.message, 'error')
+        notify('加密失败: ' + (err instanceof Error ? err.message : '未知错误'), 'error')
       })
   } else {
-    // 明文导出
-    performDownload(jsonStr, `smartbox-config${EXPORT_EXTENSION}`)
-    notify('配置已导出（明文）✅', 'success')
+    performDownload(jsonStr, `smartbox-backup.json`)
+    notify('配置已导出', 'success')
   }
 }
 
 // ─── 导入 ───
 
 /**
- * 从文件读取导入数据
+ * 导入配置（从文件内容）
  */
-function readFileAsText(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = () => reject(new Error('文件读取失败'))
-    reader.readAsText(file)
-  })
-}
+export async function importConfig(content: string): Promise<void> {
+  let jsonStr = content
 
-/**
- * 解析导入文件内容
- */
-async function parseImportContent(content: string, password?: string): Promise<ExportData> {
-  // 检查是否为加密格式
+  // 检测是否加密文件
   if (content.startsWith(EXPORT_MAGIC + '|')) {
-    if (!password) {
-      throw new Error('此文件已加密，请输入密码')
-    }
     const encrypted = content.slice(EXPORT_MAGIC.length + 1)
-    const decrypted = await decrypt(encrypted, password)
-    return JSON.parse(decrypted)
-  }
-
-  // 明文格式
-  return JSON.parse(content)
-}
-
-/**
- * 验证导入数据的合法性
- */
-function validateImportData(data: ExportData): string | null {
-  if (!data || typeof data !== 'object') return '无效的配置数据'
-  if (data.version !== EXPORT_VERSION) return '配置版本不兼容'
-  if (!data.data) return '数据缺失'
-
-  const d = data.data
-  if (!Array.isArray(d.connections)) return '连接配置格式错误'
-  if (!d.aiConfig || typeof d.aiConfig !== 'object') return 'AI 配置格式错误'
-  if (!d.appState || typeof d.appState !== 'object') return '应用状态格式错误'
-
-  return null
-}
-
-/**
- * 执行导入 — 写入 localStorage stores
- */
-function applyImportData(data: ExportData['data']): void {
-  const d = data
-
-  // 1. 导入 SSH 连接
-  if (d.connections.length > 0) {
+    const password = prompt('此备份文件已加密，请输入解密密码：')
+    if (!password) {
+      notify('导入已取消', 'info')
+      return
+    }
     try {
-      const raw = localStorage.getItem('smartbox-ssh')
-      const store = raw ? JSON.parse(raw) : { state: { connections: [] } }
-      store.state = store.state || {}
-      // 合并：导入的连接追加到现有连接后，避免覆盖
-      const existingIds = new Set(
-        (store.state.connections as SshConnection[])?.map((c: SshConnection) => c.id) || [],
-      )
-      const newConns = d.connections.filter((c) => !existingIds.has(c.id))
-      store.state.connections = [...(store.state.connections || []), ...newConns]
-      localStorage.setItem('smartbox-ssh', JSON.stringify(store))
-    } catch (e) {
-      console.warn('[ImportExport] 导入 SSH 连接失败:', e)
+      jsonStr = await decrypt(encrypted, password)
+    } catch {
+      notify('解密失败，密码可能不正确', 'error')
+      return
     }
   }
 
-  // 2. 导入 AI 配置
-  if (d.aiConfig) {
-    try {
-      const raw = localStorage.getItem('smartbox-ai')
-      const store = raw ? JSON.parse(raw) : { state: {} }
-      store.state = store.state || {}
-      store.state.config = { ...store.state.config, ...d.aiConfig }
-      localStorage.setItem('smartbox-ai', JSON.stringify(store))
-    } catch (e) {
-      console.warn('[ImportExport] 导入 AI 配置失败:', e)
-    }
-  }
-
-  // 3. 导入插件状态
-  if (d.enabledPlugins.length > 0) {
-    try {
-      const raw = localStorage.getItem('smartbox-plugins')
-      const store = raw ? JSON.parse(raw) : { state: { plugins: [] } }
-      store.state = store.state || { plugins: [] }
-      const plugins = store.state.plugins || []
-      for (const pid of d.enabledPlugins) {
-        const existing = plugins.find((p: { manifest: { id: string } }) => p.manifest?.id === pid)
-        if (existing) {
-          existing.enabled = true
-        } else {
-          plugins.push({ manifest: { id: pid }, enabled: true })
-        }
-      }
-      store.state.plugins = plugins
-      localStorage.setItem('smartbox-plugins', JSON.stringify(store))
-    } catch (e) {
-      console.warn('[ImportExport] 导入插件状态失败:', e)
-    }
-  }
-
-  // 4. 导入告警配置
-  if (d.alertConfig) {
-    try {
-      const raw = localStorage.getItem('smartbox-alerts')
-      const store = raw ? JSON.parse(raw) : { state: {} }
-      store.state = store.state || {}
-      store.state.enabled = d.alertConfig.enabled
-      store.state.rules = d.alertConfig.rules
-      localStorage.setItem('smartbox-alerts', JSON.stringify(store))
-    } catch (e) {
-      console.warn('[ImportExport] 导入告警配置失败:', e)
-    }
-  }
-
-  // 5. 导入 App 状态（仅覆盖 UI 偏好）
-  if (d.appState) {
-    try {
-      const raw = localStorage.getItem('smartbox-app')
-      const store = raw ? JSON.parse(raw) : { state: {} }
-      store.state = store.state || {}
-      Object.assign(store.state, d.appState)
-      localStorage.setItem('smartbox-app', JSON.stringify(store))
-    } catch (e) {
-      console.warn('[ImportExport] 导入 App 状态失败:', e)
-    }
-  }
-}
-
-/**
- * 从文件导入配置
- * @param file 用户选择的文件
- * @param password 解密密码（如果文件加密）
- */
-export async function importConfig(file: File, password?: string): Promise<void> {
-  const content = await readFileAsText(file)
-
-  let data: ExportData
+  let payload: ExportData
   try {
-    data = await parseImportContent(content, password)
-  } catch (err: unknown) {
-    if (err instanceof Error && err.message?.includes('密码错误')) {
-      throw err
+    payload = JSON.parse(jsonStr)
+  } catch {
+    notify('文件格式无效', 'error')
+    return
+  }
+
+  if (payload.version !== EXPORT_VERSION && payload.version !== 1) {
+    notify(`不支持的导出版本: ${payload.version}`, 'error')
+    return
+  }
+
+  const data = payload.data
+
+  // 导入 SSH 连接到 SQLite
+  if (data.connections && Array.isArray(data.connections)) {
+    for (const conn of data.connections) {
+      connectionsUpsert(localToRow(conn))
     }
-    const msg = err instanceof Error ? err.message : '格式错误'
-    throw new Error('解析文件失败：' + msg, { cause: err })
+    // 触发 ssh-store 刷新
+    window.dispatchEvent(new Event('smartbox-config-imported'))
   }
 
-  // 验证
-  const validationError = validateImportData(data)
-  if (validationError) {
-    throw new Error(validationError)
+  // 导入告警规则到 SQLite
+  if (data.alertConfig?.rules && Array.isArray(data.alertConfig.rules)) {
+    for (const rule of data.alertConfig.rules) {
+      alertRulesUpsert({
+        id: rule.id,
+        metric: rule.metric,
+        threshold: rule.threshold,
+        severity: rule.severity,
+        enabled: rule.enabled ? 1 : 0,
+        consecutive: rule.consecutive,
+      })
+    }
   }
 
-  // 执行导入
-  applyImportData(data.data)
+  // 导入凭据到 SQLite
+  if (data.vault && Array.isArray(data.vault)) {
+    for (const entry of data.vault) {
+      vaultUpsert(entry)
+    }
+  }
+
+  // 导入通知渠道到 SQLite
+  if (data.notificationChannels && Array.isArray(data.notificationChannels)) {
+    for (const ch of data.notificationChannels) {
+      notificationChannelsUpsert({
+        id: ch.id,
+        name: ch.name,
+        type: ch.type,
+        enabled: ch.enabled ? 1 : 0,
+        config: ch.config,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+    }
+  }
+
+  // 导入 AI 配置到 localStorage
+  if (data.aiConfig) {
+    const aiStore = getStore('smartbox-ai') as { config?: Record<string, unknown> } | null
+    const merged = { ...((aiStore?.config as Record<string, unknown>) || {}), ...data.aiConfig }
+    localStorage.setItem(
+      'smartbox-ai',
+      JSON.stringify({ state: { config: merged } }),
+    )
+  }
+
+  // 导入插件状态
+  if (data.enabledPlugins) {
+    localStorage.setItem(
+      'smartbox-plugins',
+      JSON.stringify({
+        state: {
+          plugins: (data.enabledPlugins as string[]).map((id) => ({
+            manifest: { id },
+            enabled: true,
+          })),
+        },
+      }),
+    )
+  }
+
+  // 导入 App 状态
+  if (data.appState) {
+    localStorage.setItem('smartbox-app', JSON.stringify({ state: data.appState }))
+  }
+
+  notify('配置导入成功，页面将刷新', 'success')
+  setTimeout(() => window.location.reload(), 1500)
 }
 
 /**
- * 显示文件选择对话框并执行导入
+ * 从 File 对象导入配置
  */
-export async function importConfigFromFile(): Promise<void> {
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.accept = EXPORT_EXTENSION
-
-  const file = await new Promise<File>((resolve, reject) => {
-    input.onchange = () => {
-      if (input.files && input.files[0]) {
-        resolve(input.files[0])
-      } else {
-        reject(new Error('未选择文件'))
-      }
-    }
-    input.onerror = () => reject(new Error('文件选择失败'))
-    input.click()
-  })
-
-  // 尝试明文导入
-  const content = await readFileAsText(file)
-
-  if (content.startsWith(EXPORT_MAGIC + '|')) {
-    // 加密文件，需要密码 — 通过自定义事件让 UI 弹出密码输入
-    return new Promise((resolve, reject) => {
-      window.dispatchEvent(
-        new CustomEvent('smartbox-import-needs-password', {
-          detail: { file, resolve, reject },
-        }),
-      )
-    })
-  }
-
-  // 明文导入
-  try {
-    const data = JSON.parse(content)
-    const error = validateImportData(data)
-    if (error) throw new Error(error)
-    applyImportData(data.data)
-    notify(`配置导入成功 ✅（${data.data.connections.length} 个连接，已合并）`, 'success')
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : '未知错误'
-    notify('导入失败：' + msg, 'error')
-    throw err
-  }
+export async function importConfigFromFile(file: File): Promise<void> {
+  const text = await file.text()
+  await importConfig(text)
 }
 
 /**
- * 带密码的加密文件导入
+ * 导入加密文件（带密码）
  */
 export async function importEncryptedFile(file: File, password: string): Promise<void> {
-  const content = await readFileAsText(file)
-  const data = await parseImportContent(content, password)
-  const error = validateImportData(data)
-  if (error) throw new Error(error)
-  applyImportData(data.data)
-  notify(`配置导入成功 ✅（${data.data.connections.length} 个连接，已合并）`, 'success')
-}
+  const text = await file.text()
+  let jsonStr = text
 
-export default {
-  exportConfig,
-  importConfig,
-  importConfigFromFile,
-  importEncryptedFile,
-  EXPORT_EXTENSION,
+  if (text.startsWith(EXPORT_MAGIC + '|')) {
+    const encrypted = text.slice(EXPORT_MAGIC.length + 1)
+    try {
+      jsonStr = await decrypt(encrypted, password)
+    } catch {
+      throw new Error('解密失败，密码不正确')
+    }
+  }
+
+  // 直接调用 importConfig（会再次尝试解密，但因为已经是明文所以跳过加密检测）
+  await importConfig(jsonStr)
 }

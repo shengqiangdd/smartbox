@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useActionState } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import {
   Settings,
   Moon,
@@ -30,7 +30,6 @@ import SystemMaintenance from './SystemMaintenance'
 import {
   exportConfig,
   importConfigFromFile,
-  importEncryptedFile,
 } from '../../services/importExport'
 import { ConfirmModal } from '../../components/ConfirmModal'
 
@@ -61,31 +60,7 @@ export default function SettingsPanel() {
   const [importingFile, setImportingFile] = useState<File | null>(null)
   const [importError, setImportError] = useState('')
   const [showExportConfirm, setShowExportConfirm] = useState(false)
-  const [importSuccess, setImportSuccess] = useState(false)
-
-  // ── useActionState: 导入操作异步状态 ──
-  const [importState, importAction, isImporting] = useActionState(
-    async (_prev: string | null, formData: FormData): Promise<string | null> => {
-      const file = formData.get('file') as File | null
-      const pwd = (formData.get('password') as string) || ''
-      if (!file) return '未选择文件'
-      try {
-        await importEncryptedFile(file, pwd)
-        setShowImportDialog(false)
-        setImportingFile(null)
-        setImportPassword('')
-        setImportSuccess(true)
-        // 导入成功后通知各 store 重新从 localStorage 读取
-        setTimeout(() => {
-          window.dispatchEvent(new CustomEvent('smartbox-config-imported'))
-        }, 500)
-        return null
-      } catch (err: unknown) {
-        return err instanceof Error ? err.message : '导入失败'
-      }
-    },
-    null,
-  )
+  const [importSuccess] = useState(false)
 
   const themeOptions = [
     { value: 'dark' as const, label: '深色', icon: Moon },
@@ -202,19 +177,31 @@ export default function SettingsPanel() {
     setImportingFile(null)
     setImportError('')
     // 触发文件选择
-    importConfigFromFile().catch((err: unknown) => {
-      const msg = err instanceof Error ? err.message : '导入失败'
-      setImportError(msg)
-    })
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.json'
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (file) {
+        setImportingFile(file)
+      }
+    }
+    input.click()
   }, [])
 
-  const handleConfirmImport = useCallback(() => {
+  const handleConfirmImport = useCallback(async () => {
     if (!importingFile) return
-    const fd = new FormData()
-    fd.append('file', importingFile)
-    fd.append('password', importPassword || '')
-    importAction(fd)
-  }, [importingFile, importPassword, importAction])
+    setImportError('')
+    try {
+      await importConfigFromFile(importingFile)
+      setImportingFile(null)
+      // 刷新页面数据
+      window.location.reload()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '导入失败'
+      setImportError(msg)
+    }
+  }, [importingFile])
 
   const handleExportWithoutPassword = useCallback(() => {
     setShowExportConfirm(false)
@@ -712,11 +699,10 @@ export default function SettingsPanel() {
                 </div>
                 <button
                   onClick={handleImportClick}
-                  disabled={isImporting}
                   className="btn btn-ghost flex min-h-[44px] items-center gap-1.5 text-xs"
                 >
                   <Upload size={14} />
-                  {isImporting ? '导入中...' : '导入'}
+                  导入
                 </button>
               </div>
             </div>
@@ -844,8 +830,8 @@ export default function SettingsPanel() {
               placeholder="输入解密密码"
               autoFocus
             />
-            {(importError || importState) && (
-              <p className="mt-2 text-xs text-red-400">{importError || importState}</p>
+            {importError && (
+              <p className="mt-2 text-xs text-red-400">{importError}</p>
             )}
             <div className="mt-4 flex justify-end gap-2">
               <button
@@ -860,10 +846,9 @@ export default function SettingsPanel() {
               </button>
               <button
                 onClick={handleConfirmImport}
-                disabled={isImporting}
-                className="bg-smartbox-600 hover:bg-smartbox-500 rounded-md px-3 py-1.5 text-xs font-medium text-white transition-colors disabled:opacity-50"
+                className="bg-smartbox-600 hover:bg-smartbox-500 rounded-md px-3 py-1.5 text-xs font-medium text-white transition-colors"
               >
-                {isImporting ? '导入中...' : '确认导入'}
+                确认导入
               </button>
             </div>
           </div>
