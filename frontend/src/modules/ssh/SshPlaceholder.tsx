@@ -96,7 +96,7 @@ export default function SshPlaceholder() {
             privateKey: decryptedConn.privateKey,
             sudoPassword: decryptedConn.sudoPassword || decryptedConn.password,
           },
-          30000,
+          60000, // 增加到 60 秒，避免多主机连接时超时
         )
 
         const session: SshSession = {
@@ -129,32 +129,40 @@ export default function SshPlaceholder() {
     [setSidebarOpen],
   )
 
-  // ─── 批量并行连接多个 SSH 主机 ───
+  // ─── 批量并行连接多个 SSH 主机（限制并发数） ───
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleBatchConnect = useCallback(
     async (connectionIds: string[]) => {
       if (connectionIds.length === 0) return
 
       setConnecting(true)
-      try {
-        // 并行建立所有连接
-        const results = await Promise.allSettled(
-          connectionIds.map((connId) => handleConnect(connId)),
-        )
 
-        // 返回成功连接的 sessionId 列表
-        const successIds = results
-          .filter((r): r is PromiseFulfilledResult<string | null> => r.status === 'fulfilled')
-          .map((r) => r.value)
-          .filter((id): id is string => id !== null)
+      // 限制并发连接数为 3，避免后端过载导致超时
+      const MAX_CONCURRENT = 3
+      const results: (string | null)[] = []
 
-        if (successIds.length > 0) {
-          setSplits([])
+      // 分批处理连接
+      for (let i = 0; i < connectionIds.length; i += MAX_CONCURRENT) {
+        const batch = connectionIds.slice(i, i + MAX_CONCURRENT)
+        const batchResults = await Promise.allSettled(batch.map((connId) => handleConnect(connId)))
+
+        // 收集本批次的结果
+        for (const result of batchResults) {
+          if (result.status === 'fulfilled') {
+            results.push(result.value)
+          } else {
+            results.push(null)
+          }
         }
-        return successIds
-      } finally {
-        setConnecting(false)
       }
+
+      // 返回成功连接的 sessionId 列表
+      const successIds = results.filter((id): id is string => id !== null)
+
+      if (successIds.length > 0) {
+        setSplits([])
+      }
+      return successIds
     },
     [handleConnect, setSplits],
   )
