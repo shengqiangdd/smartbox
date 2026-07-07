@@ -1,5 +1,5 @@
 use aes_gcm::{
-    aead::{Aead, KeyInit, OsRng, generate_nonce},
+    aead::{Aead, KeyInit},
     Aes256Gcm, Key, Nonce,
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
@@ -8,9 +8,16 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 ///
 /// Returns base64-encoded ciphertext with nonce prepended.
 pub fn encrypt(plaintext: &str, key: &[u8; 32]) -> Result<String, String> {
-    let key = Key::<Aes256Gcm>::from_slice(key);
+    let key = Key::<Aes256Gcm>::try_from(key.as_slice())
+        .map_err(|e| format!("Invalid key: {:?}", e))?;
     let cipher = Aes256Gcm::new(key);
-    let nonce = generate_nonce(&mut OsRng);
+    
+    // Generate random 12-byte nonce
+    let mut nonce_bytes = [0u8; 12];
+    rand::rngs::OsRng.try_fill_bytes(&mut nonce_bytes)
+        .map_err(|e| format!("Failed to generate nonce: {:?}", e))?;
+    let nonce = Nonce::<Aes256Gcm>::try_from(nonce_bytes.as_slice())
+        .map_err(|e| format!("Invalid nonce: {:?}", e))?;
 
     let ciphertext = cipher
         .encrypt(&nonce, plaintext.as_bytes())
@@ -18,7 +25,7 @@ pub fn encrypt(plaintext: &str, key: &[u8; 32]) -> Result<String, String> {
 
     // Prepend nonce to ciphertext
     let mut combined = Vec::new();
-    combined.extend_from_slice(&nonce);
+    combined.extend_from_slice(&nonce_bytes);
     combined.extend_from_slice(&ciphertext);
 
     Ok(BASE64.encode(&combined))
@@ -35,12 +42,14 @@ pub fn decrypt(encrypted: &str, key: &[u8; 32]) -> Result<String, String> {
     }
 
     let (nonce_bytes, ciphertext) = combined.split_at(12);
-    let nonce = Nonce::from_slice(nonce_bytes);
-    let key = Key::<Aes256Gcm>::from_slice(key);
+    let nonce = Nonce::<Aes256Gcm>::try_from(nonce_bytes)
+        .map_err(|e| format!("Invalid nonce: {:?}", e))?;
+    let key = Key::<Aes256Gcm>::try_from(key.as_slice())
+        .map_err(|e| format!("Invalid key: {:?}", e))?;
 
     let cipher = Aes256Gcm::new(key);
     let plaintext = cipher
-        .decrypt(nonce, ciphertext)
+        .decrypt(&nonce, ciphertext)
         .map_err(|e| format!("Decryption failed: {:?}", e))?;
 
     String::from_utf8(plaintext).map_err(|e| format!("UTF-8 decode failed: {:?}", e))
@@ -48,9 +57,9 @@ pub fn decrypt(encrypted: &str, key: &[u8; 32]) -> Result<String, String> {
 
 /// Generate a random 256-bit encryption key.
 pub fn generate_key() -> [u8; 32] {
-    use rand::rngs::OsRng;
+    use rand::TryRngCore;
     let mut key = [0u8; 32];
-    OsRng.fill_bytes(&mut key);
+    rand::rngs::OsRng.try_fill_bytes(&mut key).expect("Failed to generate random key");
     key
 }
 
