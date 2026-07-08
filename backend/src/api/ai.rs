@@ -18,6 +18,28 @@ use crate::api_types::{AiConfigResponse, ModelListItem, ModelsListResponse};
 use crate::app_state::AppState;
 use crate::response::ApiResponse;
 
+/// Determine if a model is free based on its pricing info.
+/// Handles both OpenRouter format (`prompt`/`completion` as strings) and
+/// generic format (`request` as f64).
+fn is_free_model(pricing: &serde_json::Value) -> bool {
+    // Try "prompt" field first (OpenRouter format: "0" as string)
+    if let Some(prompt) = pricing.get("prompt").and_then(|v| v.as_str()) {
+        if let Ok(val) = prompt.parse::<f64>() {
+            if val > 0.0 {
+                return false;
+            }
+        }
+    }
+    // Fallback to "request" field (generic format)
+    if let Some(req) = pricing.get("request").and_then(|v| v.as_f64()) {
+        if req > 0.0 {
+            return false;
+        }
+    }
+    // If neither field exists or both are 0, treat as free
+    true
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ModelQuery {
     pub provider: Option<String>,
@@ -70,11 +92,8 @@ pub async fn fetch_free_models(
                 let free_models: Vec<ModelListItem> = models
                     .into_iter()
                     .filter(|m| {
-                        m.get("pricing")
-                            .and_then(|p| p.get("request"))
-                            .and_then(|r| r.as_f64())
-                            .map(|v| v <= 0.0)
-                            .unwrap_or(false)
+                        let pricing = m.get("pricing").cloned().unwrap_or_default();
+                        is_free_model(&pricing)
                     })
                     .map(|m| ModelListItem {
                         value: m.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
@@ -164,21 +183,19 @@ async fn fetch_openrouter_models(
                 .unwrap_or_default();
             let items: Vec<ModelListItem> = models
                 .into_iter()
-                .map(|m| ModelListItem {
-                    value: m.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                    label: m
-                        .get("name")
-                        .or_else(|| m.get("id"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string(),
-                    free: m
-                        .get("pricing")
-                        .and_then(|p| p.get("request"))
-                        .and_then(|r| r.as_f64())
-                        .map(|v| v <= 0.0)
-                        .unwrap_or(false),
-                    description: None,
+                .map(|m| {
+                    let pricing = m.get("pricing").cloned().unwrap_or_default();
+                    ModelListItem {
+                        value: m.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                        label: m
+                            .get("name")
+                            .or_else(|| m.get("id"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        free: is_free_model(&pricing),
+                        description: None,
+                    }
                 })
                 .collect();
             ModelsListResponse {
@@ -254,21 +271,19 @@ async fn fetch_siliconflow_models() -> ModelsListResponse {
             };
             let items: Vec<ModelListItem> = models
                 .into_iter()
-                .map(|m| ModelListItem {
-                    value: m.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                    label: m
-                        .get("name")
-                        .or_else(|| m.get("id"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string(),
-                    free: m
-                        .get("pricing")
-                        .and_then(|p| p.get("request"))
-                        .and_then(|r| r.as_f64())
-                        .map(|v| v <= 0.0)
-                        .unwrap_or(false),
-                    description: None,
+                .map(|m| {
+                    let pricing = m.get("pricing").cloned().unwrap_or_default();
+                    ModelListItem {
+                        value: m.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                        label: m
+                            .get("name")
+                            .or_else(|| m.get("id"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        free: is_free_model(&pricing),
+                        description: None,
+                    }
                 })
                 .collect();
             ModelsListResponse {
@@ -313,6 +328,7 @@ async fn fetch_models_from_url(base_url: &str, api_key: Option<&str>) -> ModelsL
                 .into_iter()
                 .filter_map(|m| {
                     let id = m.get("id").and_then(|v| v.as_str())?;
+                    let pricing = m.get("pricing").cloned().unwrap_or_default();
                     Some(ModelListItem {
                         value: id.to_string(),
                         label: m
@@ -321,12 +337,7 @@ async fn fetch_models_from_url(base_url: &str, api_key: Option<&str>) -> ModelsL
                             .and_then(|v| v.as_str())
                             .unwrap_or(id)
                             .to_string(),
-                        free: m
-                            .get("pricing")
-                            .and_then(|p| p.get("request"))
-                            .and_then(|r| r.as_f64())
-                            .map(|v| v <= 0.0)
-                            .unwrap_or(true), // default to free if no pricing info
+                        free: is_free_model(&pricing),
                         description: None,
                     })
                 })
