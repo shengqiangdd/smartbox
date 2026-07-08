@@ -76,7 +76,207 @@ async function* streamChat(
   }
 }
 
-export default function AiSidebar({ sessionId, connectionId, onClose }: Props) {
+/**
+ * 渲染 Markdown 内容（简化版，支持常用语法）
+ */
+function renderMarkdown(
+  text: string,
+  extractCommands: (text: string) => string[],
+  copyCommand: (cmd: string) => void,
+  executeCommand: (cmd: string) => void,
+  copiedCmd: string | null,
+) {
+  // 先提取代码块
+  const parts: React.ReactNode[] = []
+  const codeBlockRegex = /```(\w*)\n([\s\S]*?)```/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  while ((match = codeBlockRegex.exec(text)) !== null) {
+    // 代码块前的文本
+    if (match.index > lastIndex) {
+      parts.push(
+        <span key={`text-${lastIndex}`}>
+          {renderInlineMarkdown(text.slice(lastIndex, match.index))}
+        </span>,
+      )
+    }
+
+    const lang = match[1] || 'bash'
+    const code = match[2]!.trim()
+    const isCopied = copiedCmd === code
+
+    parts.push(
+      <div
+        key={`code-${match.index}`}
+        className="my-2 overflow-hidden rounded-lg border border-slate-700/50 bg-slate-950/80"
+      >
+        {/* 代码块头部 */}
+        <div className="flex items-center justify-between border-b border-slate-700/50 bg-slate-800/50 px-3 py-1.5">
+          <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
+            <Terminal size={12} className="text-wrench-400" />
+            {lang}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => executeCommand(code)}
+              className="flex items-center gap-1 text-[11px] text-emerald-400 hover:text-emerald-300"
+            >
+              <span className="text-xs">▶</span> 执行
+            </button>
+            <button
+              onClick={() => copyCommand(code)}
+              className="text-slate-500 hover:text-slate-300"
+            >
+              {isCopied ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
+            </button>
+          </div>
+        </div>
+        {/* 代码内容 */}
+        <div className="overflow-x-auto p-3">
+          <code className="font-mono text-[12px] leading-relaxed text-slate-300">{code}</code>
+        </div>
+      </div>,
+    )
+    lastIndex = match.index + match[0].length
+  }
+
+  // 剩余文本
+  if (lastIndex < text.length) {
+    parts.push(<span key={`text-${lastIndex}`}>{renderInlineMarkdown(text.slice(lastIndex))}</span>)
+  }
+
+  return parts.length > 0 ? parts : renderInlineMarkdown(text)
+}
+
+/**
+ * 渲染行内 Markdown（粗体、行内代码、列表）
+ */
+function renderInlineMarkdown(text: string) {
+  // 按行分割处理
+  const lines = text.split('\n')
+  const elements: React.ReactNode[] = []
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!
+
+    // 标题 (### Header)
+    const headingMatch = line.match(/^(#{1,6})\s+(.+)$/)
+    if (headingMatch) {
+      const level = headingMatch[1]!.length
+      const cls =
+        level === 1
+          ? 'text-base font-bold text-white mt-4 mb-2'
+          : level === 2
+            ? 'text-sm font-bold text-white mt-3 mb-1.5'
+            : 'text-[13px] font-semibold text-slate-200 mt-2 mb-1'
+      elements.push(
+        <div key={`h-${i}`} className={cls}>
+          {renderInline(headingMatch[2]!)}
+        </div>,
+      )
+      continue
+    }
+
+    // 无序列表
+    const bulletMatch = line.match(/^[\s]*[-*]\s+(.+)$/)
+    if (bulletMatch) {
+      elements.push(
+        <div key={`li-${i}`} className="flex gap-1.5 py-0.5 pl-2">
+          <span className="text-wrench-400 mt-px">•</span>
+          <span className="flex-1">{renderInline(bulletMatch[1]!)}</span>
+        </div>,
+      )
+      continue
+    }
+
+    // 有序列表
+    const olMatch = line.match(/^[\s]*(\d+)[.)]\s+(.+)$/)
+    if (olMatch) {
+      elements.push(
+        <div key={`ol-${i}`} className="flex gap-1.5 py-0.5 pl-2">
+          <span className="text-wrench-400 min-w-[16px] text-right">{olMatch[1]}.</span>
+          <span className="flex-1">{renderInline(olMatch[2]!)}</span>
+        </div>,
+      )
+      continue
+    }
+
+    // 空行
+    if (line.trim() === '') {
+      elements.push(<div key={`br-${i}`} className="h-2" />)
+      continue
+    }
+
+    // 普通文本
+    elements.push(
+      <div key={`p-${i}`} className="py-0.5">
+        {renderInline(line)}
+      </div>,
+    )
+  }
+
+  return elements
+}
+
+/**
+ * 渲染行内格式（粗体、行内代码、链接）
+ */
+function renderInline(text: string) {
+  const parts: React.ReactNode[] = []
+  // 匹配: **粗体** `行内代码` [链接](url)
+  const regex = /(\*\*(.+?)\*\*)|(`([^`]+)`)|(\[([^\]]+)\]\(([^)]+)\))/g
+  let lastIdx = 0
+  let m: RegExpExecArray | null
+
+  while ((m = regex.exec(text)) !== null) {
+    if (m.index > lastIdx) {
+      parts.push(text.slice(lastIdx, m.index))
+    }
+
+    if (m[2]) {
+      // **粗体**
+      parts.push(
+        <strong key={`b-${m.index}`} className="font-semibold text-white">
+          {m[2]}
+        </strong>,
+      )
+    } else if (m[4]) {
+      // `行内代码`
+      parts.push(
+        <code
+          key={`c-${m.index}`}
+          className="text-wrench-300 rounded bg-slate-700/50 px-1 py-0.5 font-mono text-[11px]"
+        >
+          {m[4]}
+        </code>,
+      )
+    } else if (m[6] && m[7]) {
+      // [链接](url)
+      parts.push(
+        <a
+          key={`a-${m.index}`}
+          href={m[7]}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-wrench-400 decoration-wrench-400/30 hover:decoration-wrench-400 underline"
+        >
+          {m[6]}
+        </a>,
+      )
+    }
+
+    lastIdx = m.index + m[0].length
+  }
+
+  if (lastIdx < text.length) {
+    parts.push(text.slice(lastIdx))
+  }
+
+  return parts.length > 0 ? parts : text
+}
+
+export default function AiSidebar({ sessionId: _sessionId, connectionId, onClose }: Props) {
   const aiConfig = useAiStore((s) => s.config)
   const abortRef = useRef<AbortController | null>(null)
   const [messages, setMessages] = useState<AiMessage[]>([
@@ -99,8 +299,7 @@ export default function AiSidebar({ sessionId, connectionId, onClose }: Props) {
     },
   ])
   const [input, setInput] = useState('')
-  const [streaming, setStreaming] = useState(false)
-  const [streamingContent, setStreamingContent] = useState('')
+  const [loading, setLoading] = useState(false)
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -108,135 +307,84 @@ export default function AiSidebar({ sessionId, connectionId, onClose }: Props) {
   // 自动滚动到底部
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingContent])
+  }, [messages])
 
-  // 取消流式响应
-  const cancelStream = useCallback(() => {
-    abortRef.current?.abort()
-    abortRef.current = null
-    setStreaming(false)
-    // 如果生成了部分内容，保留已生成的内容
-    if (streamingContent.trim()) {
-      setMessages((prev) => [...prev, { role: 'assistant', content: streamingContent }])
-      setStreamingContent('')
+  // 从消息中提取可执行的 Shell 命令
+  const extractCommands = useCallback((content: string): string[] => {
+    const codeBlockRegex = /```(?:bash|sh|shell)?\n([\s\S]*?)```/g
+    const commands: string[] = []
+    let match: RegExpExecArray | null
+    while ((match = codeBlockRegex.exec(content)) !== null) {
+      const code = match[1]!.trim()
+      if (code) commands.push(code)
     }
-  }, [streamingContent])
+    return commands
+  }, [])
 
-  // 发送消息
-  const sendMessage = useCallback(async () => {
-    const text = input.trim()
-    if (!text || streaming) return
-
-    const abortController = new AbortController()
-    abortRef.current = abortController
-
-    const userMsg: AiMessage = { role: 'user', content: text }
-    const newMessages = [...messages, userMsg]
-    setMessages(newMessages)
-    setInput('')
-    setStreaming(true)
-    setStreamingContent('')
-
-    try {
-      let fullContent = ''
-      const stream = streamChat(
-        newMessages,
-        aiConfig.apiKey,
-        aiConfig.model,
-        aiConfig.baseUrl,
-        abortController.signal,
-      )
-
-      for await (const chunk of stream) {
-        // 如果已取消，停止消费流
-        if (abortController.signal.aborted) break
-        fullContent += chunk
-        setStreamingContent(fullContent)
+  // 执行命令（通过 REST API）
+  const executeCommand = useCallback(
+    async (cmd: string) => {
+      if (!connectionId) {
+        alert('请先连接到 SSH 服务器')
+        return
       }
 
-      // 如果未被取消，完整添加消息；如果已取消，上面的 break 已保留已生成内容
-      if (!abortController.signal.aborted) {
-        setMessages((prev) => [...prev, { role: 'assistant', content: fullContent }])
-        setStreamingContent('')
+      // 标记消息为执行中
+      setMessages((prev) =>
+        prev.map((m, i) =>
+          i === prev.length - 1 && m.role === 'assistant'
+            ? { ...m, _executing: true, _execResult: undefined }
+            : m,
+        ),
+      )
+
+      try {
+        const res = await fetch(`/api/ssh/exec?connection_id=${connectionId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: cmd }),
+        })
+
+        const data = await res.json()
+
+        if (res.ok) {
+          const resultText = data.stdout || data.stderr || '(无输出)'
+          setMessages((prev) => {
+            const newMessages = [
+              ...prev.slice(0, -1),
+              {
+                ...prev[prev.length - 1]!,
+                _executing: false,
+                _execResult: resultText,
+              } as AiMessage,
+            ]
+            return newMessages
+          })
+        } else {
+          const errMsg = data.error || '执行失败'
+          setMessages((prev) => [
+            ...prev.slice(0, -1),
+            { ...prev[prev.length - 1]!, _executing: false } as AiMessage,
+            { role: 'user', content: `❌ 执行失败: ${errMsg}` },
+          ])
+        }
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : '网络错误'
+        setMessages((prev) =>
+          prev.map((m, i) =>
+            i === prev.length - 1 && m.role === 'assistant'
+              ? ({ ...m, role: 'assistant', content: `❌ 执行失败: ${errMsg}` } as AiMessage)
+              : m,
+          ),
+        )
       }
-    } catch (err: unknown) {
-      // 如果是用户取消的，不报错
-      if (err instanceof Error && err.name === 'AbortError') return
-      const errMsg = err instanceof Error ? err.message : '请求失败'
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: `**错误**: ${errMsg}\n\n请检查 API Key 和网络连接。` },
-      ])
-    } finally {
-      abortRef.current = null
-      setStreaming(false)
-    }
-  }, [input, messages, streaming, aiConfig])
-
-  // 提取消息中的 bash 命令
-  const extractCommands = (content: string): string[] => {
-    const matches = content.match(/```bash\n([\s\S]*?)```/g)
-    if (!matches) return []
-    return matches.map((m) =>
-      m
-        .replace(/```bash\n/g, '')
-        .replace(/```/g, '')
-        .trim(),
-    )
-  }
-
-  // 通过 REST API 执行命令并获取结果，插入到对话中
-  const executeCommand = async (cmd: string) => {
-    if (!connectionId) return
-    // 添加占位消息表示正在执行
-    const execId = `exec_${crypto.randomUUID()}`
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: 'assistant',
-        content: `⏳ 正在执行: \`${cmd}\``,
-        _execId: execId,
-        _executing: true,
-      } as AiMessage,
-    ])
-
-    try {
-      const res = await fetch('/api/ssh/exec', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ connectionId, command: cmd }),
-      })
-      const result = await res.json()
-
-      // 替换占位消息为执行结果
-      setMessages((prev) =>
-        prev.map((m) => {
-          const msg = m as AiMessage
-          return msg._execId === execId
-            ? ({
-                ...msg,
-                content: formatExecResult(cmd, result),
-                _execResult: { command: cmd, ...(result as Record<string, unknown>) },
-              } as AiMessage)
-            : m
-        }),
-      )
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : '未知错误'
-      setMessages((prev) =>
-        prev.map((m) => {
-          const msg = m as AiMessage
-          return msg._execId === execId
-            ? ({ ...msg, role: 'assistant', content: `❌ 执行失败: ${errMsg}` } as AiMessage)
-            : m
-        }),
-      )
-    }
-  }
+    },
+    [connectionId],
+  )
 
   // 发送执行结果给 AI 分析
-  const analyzeResult = useCallback((cmd: string, stdout: string, stderr: string) => {
-    const prompt = `以下是命令的执行结果，请分析：\n\n命令: ${cmd}\n\n标准输出:\n${stdout || '(无输出)'}\n${stderr ? `\n标准错误:\n${stderr}` : ''}`
+  const analyzeResult = useCallback((cmd: string, stdout: string, _stderr: string) => {
+    const prompt = `以下是命令的执行结果，请分析：\n\n命令: ${cmd}\n\n标准输出:\n${stdout || '(无输出)'}`
     setInput(prompt)
     inputRef.current?.focus()
   }, [])
@@ -253,6 +401,59 @@ export default function AiSidebar({ sessionId, connectionId, onClose }: Props) {
     if (messages.length <= 1) return
     setMessages([messages[0]!]) // 保留 system prompt
   }
+
+  // 发送消息
+  const sendMessage = useCallback(async () => {
+    const text = input.trim()
+    if (!text || loading) return
+
+    const userMessage: AiMessage = { role: 'user', content: text }
+    const newMessages = [...messages, userMessage]
+    setMessages(newMessages)
+    setInput('')
+    setLoading(true)
+
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    try {
+      let assistantContent = ''
+      const stream = streamChat(
+        newMessages,
+        aiConfig.apiKey || '',
+        aiConfig.model,
+        aiConfig.baseUrl || 'https://openrouter.ai/api/v1',
+        controller.signal,
+      )
+
+      for await (const chunk of stream) {
+        assistantContent += chunk
+        setMessages((prev) => {
+          const updated = [...prev]
+          const lastMsg = updated[updated.length - 1]
+          if (lastMsg?.role === 'assistant') {
+            updated[updated.length - 1] = { ...lastMsg, content: assistantContent }
+          } else {
+            updated.push({ role: 'assistant', content: assistantContent })
+          }
+          return updated
+        })
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        // 用户取消
+      } else {
+        const errMsg = err instanceof Error ? err.message : '未知错误'
+        setMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: `❌ AI 请求失败: ${errMsg}` },
+        ])
+      }
+    } finally {
+      setLoading(false)
+      abortRef.current = null
+    }
+  }, [input, loading, messages, aiConfig])
 
   // 如果 AI 未启用
   if (!aiConfig.enabled) {
@@ -336,57 +537,39 @@ export default function AiSidebar({ sessionId, connectionId, onClose }: Props) {
             >
               {/* 消息内容 */}
               <div className="break-words whitespace-pre-wrap">
-                {renderMessageContent(
-                  msg.content,
-                  extractCommands,
-                  copyCommand,
-                  executeCommand,
-                  copiedCmd,
-                )}
+                {msg.role === 'assistant'
+                  ? renderMarkdown(
+                      msg.content,
+                      extractCommands,
+                      copyCommand,
+                      executeCommand,
+                      copiedCmd,
+                    )
+                  : msg.content}
               </div>
               {/* 执行结果：添加「发送给 AI 分析」按钮 */}
               {'_execResult' in msg && !msg._executing && msg._execResult && (
                 <button
                   onClick={() => {
-                    const r = msg._execResult
-                    if (!r) return
-                    analyzeResult(r.command, r.stdout || '', r.stderr || '')
+                    const cmd = extractCommands(msg.content).pop() || ''
+                    const execResult = (msg as { _execResult?: string })._execResult || ''
+                    analyzeResult(cmd, execResult, '')
                   }}
-                  className="text-wrench-400 hover:bg-wrench-500/10 border-wrench-500/20 mt-2 flex items-center gap-1 rounded border px-2 py-1 text-[10px]"
+                  className="border-wrench-600/30 bg-wrench-600/10 text-wrench-400 hover:bg-wrench-600/20 mt-2 flex items-center gap-1 rounded border px-2 py-1 text-[11px]"
                 >
-                  <Brain size={10} /> 发送给 AI 分析
+                  <Send size={10} /> 发送给 AI 分析
                 </button>
               )}
             </div>
           </div>
         ))}
 
-        {/* 流式输出 */}
-        {streamingContent && (
+        {/* 加载状态 */}
+        {loading && messages[messages.length - 1]?.role !== 'assistant' && (
           <div className="flex justify-start">
-            <div className="max-w-[90%] rounded-lg border border-slate-700/30 bg-slate-800/50 px-3 py-2 text-xs text-slate-300">
-              <div className="mb-1 flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
-                  <Loader2 size={10} className="animate-spin" />
-                  生成中...
-                </div>
-                <button
-                  onClick={cancelStream}
-                  className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-red-400 hover:bg-red-500/10"
-                  title="停止生成"
-                >
-                  <X size={10} /> 停止
-                </button>
-              </div>
-              <div className="break-words whitespace-pre-wrap">
-                {renderMessageContent(
-                  streamingContent,
-                  extractCommands,
-                  copyCommand,
-                  executeCommand,
-                  copiedCmd,
-                )}
-              </div>
+            <div className="flex items-center gap-2 rounded-lg border border-slate-700/30 bg-slate-800/50 px-3 py-2 text-xs text-slate-400">
+              <Loader2 size={14} className="animate-spin" />
+              AI 正在思考...
             </div>
           </div>
         )}
@@ -407,122 +590,19 @@ export default function AiSidebar({ sessionId, connectionId, onClose }: Props) {
                 sendMessage()
               }
             }}
-            placeholder={sessionId ? '描述你想要做的操作...' : '先连接 SSH...'}
-            disabled={streaming || !sessionId}
-            rows={2}
-            className="input flex-1 resize-none py-2 text-xs"
-            style={{ minHeight: '36px', maxHeight: '120px' }}
+            placeholder="描述你想要做的操作..."
+            rows={1}
+            className="focus:border-wrench-500 flex-1 resize-none rounded-lg border border-slate-700/50 bg-slate-800/50 px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none"
           />
-          {streaming ? (
-            <button
-              onClick={cancelStream}
-              className="btn-danger flex h-9 w-9 shrink-0 items-center justify-center rounded-lg p-0"
-              title="停止生成"
-            >
-              <X size={14} />
-            </button>
-          ) : (
-            <button
-              onClick={sendMessage}
-              disabled={!input.trim() || !sessionId}
-              className="btn-primary flex h-9 w-9 shrink-0 items-center justify-center rounded-lg p-0 disabled:opacity-40"
-            >
-              <Send size={14} />
-            </button>
-          )}
+          <button
+            onClick={sendMessage}
+            disabled={!input.trim() || loading}
+            className="bg-wrench-600 hover:bg-wrench-500 flex h-8 w-8 items-center justify-center rounded-lg text-white disabled:opacity-50"
+          >
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+          </button>
         </div>
-        <p className="mt-1 text-[10px] text-slate-600">Enter 发送 · Shift+Enter 换行</p>
       </div>
     </div>
   )
-}
-
-// 格式化命令执行结果为可读文本
-function formatExecResult(
-  cmd: string,
-  result: { stdout?: string; stderr?: string; exitCode?: number; error?: string },
-): string {
-  if (result.error) {
-    return `❌ 执行失败: ${result.error}`
-  }
-  const parts: string[] = []
-  if (result.stdout?.trim()) parts.push(result.stdout.trim())
-  if (result.stderr?.trim()) parts.push(`[stderr] ${result.stderr.trim()}`)
-  const output = parts.join('\n') || '(无输出)'
-  return `✅ \`${cmd}\` 执行完成 (exit: ${result.exitCode ?? '?'})\n\`\`\`\n${output}\n\`\`\``
-}
-
-// 渲染消息内容（支持代码块和命令按钮）
-function renderMessageContent(
-  content: string,
-  extractCommands: (c: string) => string[],
-  copyCommand: (c: string) => void,
-  executeCommand: (c: string) => void,
-  copiedCmd: string | null,
-) {
-  const commands = extractCommands(content)
-
-  // 如果有命令，分段渲染
-  if (commands.length > 0) {
-    const parts = content.split(/```bash[\s\S]*?```/)
-    const elements: React.ReactNode[] = []
-
-    commands.forEach((cmd, idx) => {
-      // 命令之前的文本
-      if (parts[idx]?.trim()) {
-        elements.push(
-          <p key={`text-${idx}`} className="mb-1">
-            {parts[idx]}
-          </p>,
-        )
-      }
-
-      // 命令块
-      elements.push(
-        <div
-          key={`cmd-${idx}`}
-          className="my-1.5 overflow-hidden rounded-lg border border-slate-700/50 bg-slate-900/80"
-        >
-          <div className="flex items-center justify-between bg-slate-800/50 px-2 py-1">
-            <span className="flex items-center gap-1 text-[10px] text-slate-500">
-              <Terminal size={10} /> bash
-            </span>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => executeCommand(cmd)}
-                className="flex items-center gap-1 rounded px-2 py-0.5 text-[10px] text-emerald-400 hover:bg-emerald-500/10"
-                title="在终端执行"
-              >
-                ▶ 执行
-              </button>
-              <button
-                onClick={() => copyCommand(cmd)}
-                className="flex items-center gap-1 rounded px-2 py-0.5 text-[10px] text-slate-400 hover:bg-slate-700"
-                title="复制命令"
-              >
-                {copiedCmd === cmd ? <Check size={10} /> : <Copy size={10} />}
-              </button>
-            </div>
-          </div>
-          <pre className="overflow-x-auto p-2 font-mono text-[11px] leading-relaxed text-slate-200">
-            <code>{cmd}</code>
-          </pre>
-        </div>,
-      )
-    })
-
-    // 剩余文本
-    if (parts[commands.length]?.trim()) {
-      elements.push(
-        <p key="text-last" className="mt-1">
-          {parts[commands.length]}
-        </p>,
-      )
-    }
-
-    return <>{elements}</>
-  }
-
-  // 无命令：普通文本渲染
-  return <p>{content}</p>
 }
