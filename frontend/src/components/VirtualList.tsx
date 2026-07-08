@@ -88,6 +88,13 @@ export default function VirtualList<T>({
     }
   }, [])
 
+  /** 容器滚动样式：防止滚动穿透 + 移动端触摸滚动支持 */
+  const scrollStyle = {
+    minHeight: 0,
+    overscrollBehavior: 'contain' as const,
+    WebkitOverflowScrolling: 'touch' as const,
+  }
+
   if (!useVirtual) {
     return (
       <div
@@ -95,18 +102,18 @@ export default function VirtualList<T>({
         className={`overflow-y-auto ${className}`}
         onKeyDown={handleKeyDown}
         tabIndex={-1}
-        style={{ minHeight: 0 }}
+        style={scrollStyle}
       >
         <div style={{ height: totalHeight, position: 'relative' }}>
           {items.map((item, i) => (
             <div
               key={getKey?.(item) ?? i}
               style={{
+                height: itemHeight,
                 position: 'absolute',
                 top: i * itemHeight,
                 left: 0,
                 right: 0,
-                height: itemHeight,
               }}
             >
               {renderItem(item, i)}
@@ -123,15 +130,16 @@ export default function VirtualList<T>({
       className={`overflow-y-auto ${className}`}
       onKeyDown={handleKeyDown}
       tabIndex={-1}
+      style={scrollStyle}
     >
       <div style={{ height: totalHeight, position: 'relative' }}>
-        <div style={{ transform: `translateY(${paddingTop}px)` }}>
-          {visibleItems.map(({ item, index }) => (
-            <div key={getKey?.(item) ?? index} style={{ height: itemHeight }}>
-              {renderItem(item, index)}
-            </div>
-          ))}
-        </div>
+        {/* 顶部留白 */}
+        <div style={{ height: paddingTop }} />
+        {visibleItems.map(({ item, index }) => (
+          <div key={getKey?.(item) ?? index} style={{ height: itemHeight, position: 'relative' }}>
+            {renderItem(item, index)}
+          </div>
+        ))}
       </div>
     </div>
   )

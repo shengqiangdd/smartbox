@@ -105,17 +105,17 @@ async function ensureSftpSession(
   if (existing) {
     onStatus('检测到已有 SSH 连接，尝试复用 SFTP...')
     try {
-      await wsClient.request(
-        {
-          type: 'sftp',
-          connectionId: existing.id,
-          operation: 'stat',
-          path: '/',
-        },
-        5000,
-      )
-      onStatus('')
-      return existing.id // ✅ 可用，直接复用
+      const resp = await fetch('/api/sftp/stat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectionId: existing.id, path: '/' }),
+      })
+      const json = (await resp.json()) as { success: boolean; error?: string }
+      if (json.success) {
+        onStatus('')
+        return existing.id // ✅ 可用，直接复用
+      }
+      throw new Error(json.error || 'SFTP stat failed')
     } catch {
       // 不可用，继续建新连接
       onStatus('已有连接 SFTP 未就绪，创建新连接...')

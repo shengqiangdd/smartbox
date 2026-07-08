@@ -11,8 +11,6 @@ import {
   Clock,
 } from 'lucide-react'
 import { useSshStore } from '../../stores/ssh-store'
-import { getWsClientSync } from '../../services/websocket'
-import type { WsClient } from '../../services/websocket'
 
 interface TransferTarget {
   connId: string
@@ -30,8 +28,6 @@ type TransferMode = 'upload' | 'command'
 
 export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
   const sessions = useSshStore((s) => s.sessions)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const connections = useSshStore((s) => s.connections)
   const [mode, setMode] = useState<TransferMode>('upload')
 
   // 目标选择
@@ -107,74 +103,47 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
     }
   }
 
-  // 分块上传
-  const chunkedUpload = async (
-    wsClient: WsClient,
+  // 通过 REST API 上传文件
+  const uploadFileViaRest = async (
     connId: string,
-    content: string,
     path: string,
-    totalSize: number,
+    file: File,
     targetIdx: number,
   ): Promise<void> => {
-    // 启动分块会话
-    const startResult = await wsClient.request({
-      type: 'sftp',
-      connectionId: connId,
-      operation: 'chunk_start',
-      path,
+    // 读取文件为 base64
+    const arrayBuffer = await file.arrayBuffer()
+    const base64 = btoa(
+      new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), ''),
+    )
+
+    setTargets((prev) => {
+      const next = [...prev]
+      next[targetIdx] = { ...next[targetIdx]!, progress: 40 }
+      return next
     })
 
-    if (!startResult.success) {
-      throw new Error(String(startResult.error || '分块上传启动失败'))
-    }
-
-    const chunkId = startResult.chunkId
-    const CHUNK_SIZE = 5 * 1024 * 1024 // 5MB
-    const rawBytes = Math.floor(content.length * 0.75) // base64 → 实际字节
-    const totalChunks = Math.ceil(rawBytes / CHUNK_SIZE)
-
-    for (let c = 0; c < totalChunks; c++) {
-      const start = c * CHUNK_SIZE
-      const end = Math.min(start + CHUNK_SIZE, content.length)
-      const chunkContent = content.slice(start, end)
-
-      const appendResult = await wsClient.request({
-        type: 'sftp',
-        connectionId: connId,
-        operation: 'chunk_append',
-        chunkId,
-        content: chunkContent,
-      })
-
-      if (!appendResult.success) {
-        throw new Error(String(appendResult.error || '分块写入失败'))
-      }
-
-      const progress = Math.round(((c + 1) / totalChunks) * 90) + 10
-      setTargets((prev) => {
-        const next = [...prev]
-        const entry = next[targetIdx]!
-        next[targetIdx] = {
-          ...entry,
-          progress,
-          size: Math.round(((c + 1) / totalChunks) * totalSize),
-        }
-        return next
-      })
-    }
-
-    // 完成
-    const finishResult = await wsClient.request({
-      type: 'sftp',
-      connectionId: connId,
-      operation: 'chunk_finish',
-      chunkId,
-      targetPath: path,
+    const res = await fetch('/api/sftp/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ connectionId: connId, path, data: base64 }),
     })
 
-    if (!finishResult.success) {
-      throw new Error(String(finishResult.error || '分块上传完成失败'))
+    if (!res.ok) {
+      const errorText = await res.text().catch(() => 'Unknown error')
+      throw new Error(`HTTP ${res.status}: ${errorText}`)
     }
+
+    const json = await res.json()
+
+    if (!json.success) {
+      throw new Error(String(json.error || '上传失败'))
+    }
+
+    setTargets((prev) => {
+      const next = [...prev]
+      next[targetIdx] = { ...next[targetIdx]!, progress: 100, size: file.size }
+      return next
+    })
   }
 
   // 执行上传
@@ -184,90 +153,53 @@ export default function BatchFilePanel({ onClose }: { onClose: () => void }) {
     setRunning(true)
     const file = selectedFile
 
-    // 读取文件内容为 base64
-    const reader = new FileReader()
-    reader.onload = async () => {
-      const content = (reader.result as string).split(',')[1] || '' // base64 data
+    // 对所有目标执行上传
+    for (let i = 0; i < targets.length; i++) {
+      const target: TransferTarget = targets[i]!
+      if (target.status !== 'pending') continue
 
-      // 对所有目标执行上传
-      for (let i = 0; i < targets.length; i++) {
-        const target: TransferTarget = targets[i]!
-        if (target.status !== 'pending') continue
+      setTargets((prev) => {
+        const next = [...prev]
+        const entry = next[i]!
+        next[i] = { ...entry, status: 'connecting', progress: 0 }
+        return next
+      })
+
+      try {
+        const fullPath = `${target.path.replace(/\/$/, '')}/${file.name}`
+        addLog(`📤 [${target.name}] 上传到 ${fullPath}`)
 
         setTargets((prev) => {
           const next = [...prev]
           const entry = next[i]!
-          next[i] = { ...entry, status: 'connecting', progress: 0 }
+          next[i] = { ...entry, status: 'transferring', progress: 10 }
           return next
         })
 
-        try {
-          const wsClient = getWsClientSync()
-          if (!wsClient) {
-            throw new Error('WebSocket 未连接')
-          }
+        // 统一通过 REST API 上传
+        await uploadFileViaRest(target.connId as string, fullPath, file, i)
 
-          const fullPath = `${target.path.replace(/\/$/, '')}/${file.name}`
-          addLog(`📤 [${target.name}] 上传到 ${fullPath}`)
-
-          setTargets((prev) => {
-            const next = [...prev]
-            const entry = next[i]!
-            next[i] = { ...entry, status: 'transferring', progress: 10 }
-            return next
-          })
-
-          // 用 SFTP writeFile 上传
-          // 对于大文件用分块上传，小文件直接 writeFile
-          if (file.size > 5 * 1024 * 1024) {
-            // 大文件：分块上传
-            await chunkedUpload(wsClient, target.connId as string, content, fullPath, file.size, i)
-          } else {
-            // 小文件：直接 writeFile
-            const result = await wsClient.request({
-              type: 'sftp',
-              connectionId: target.connId,
-              operation: 'writefile',
-              path: fullPath,
-              content,
-            })
-
-            if (!result.success) {
-              throw new Error(String(result.error || '上传失败'))
-            }
-
-            setTargets((prev) => {
-              const next = [...prev]
-              const entry = next[i]!
-              next[i] = { ...entry, progress: 100, size: file.size }
-              return next
-            })
-          }
-
-          setTargets((prev) => {
-            const next = [...prev]
-            const entry = next[i]!
-            next[i] = { ...entry, status: 'success', progress: 100 }
-            return next
-          })
-          addLog(`✅ [${target.name}] 上传完成 (${(file.size / 1024).toFixed(1)} KB)`)
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : '上传失败'
-          setTargets((prev) => {
-            const next = [...prev]
-            const entry = next[i]!
-            next[i] = { ...entry, status: 'error', error: msg }
-            return next
-          })
-          addLog(`❌ [${target.name}] 上传失败: ${msg}`)
-        }
+        setTargets((prev) => {
+          const next = [...prev]
+          const entry = next[i]!
+          next[i] = { ...entry, status: 'success', progress: 100 }
+          return next
+        })
+        addLog(`✅ [${target.name}] 上传完成 (${(file.size / 1024).toFixed(1)} KB)`)
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : '上传失败'
+        setTargets((prev) => {
+          const next = [...prev]
+          const entry = next[i]!
+          next[i] = { ...entry, status: 'error', error: msg }
+          return next
+        })
+        addLog(`❌ [${target.name}] 上传失败: ${msg}`)
       }
-
-      setRunning(false)
-      addLog('🏁 批量上传完成')
     }
 
-    reader.readAsDataURL(file)
+    setRunning(false)
+    addLog('🏁 批量上传完成')
   }, [selectedFile, targets])
 
   // 执行远程命令
