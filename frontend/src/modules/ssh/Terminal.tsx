@@ -107,8 +107,9 @@ export default function TerminalView({
   const [showShortcuts, setShowShortcuts] = useState(false)
 
   // ─── 视口高度跟踪（移动端键盘适配核心）──
-  // 直接用 visualViewport.height 作为终端根 div 的高度
-  // 键盘弹出时 visualViewport.height 自动缩小，终端跟着缩小
+  // 使用 visualViewport.height 监听键盘弹出/收起
+  // 配合 interactive-widget=virtual-keyboards meta 标签
+  // 浏览器会在键盘弹出时自动缩小 viewport
   const [viewportHeight, setViewportHeight] = useState(0)
 
   useEffect(() => {
@@ -562,15 +563,7 @@ export default function TerminalView({
   }, [])
 
   return (
-    <div
-      className={`relative flex flex-col ${className}`}
-      style={{
-        minHeight: 0,
-        // 直接用 visualViewport.height 作为终端高度
-        // 键盘弹出时 visualViewport.height 自动缩小
-        height: viewportHeight > 0 ? `${viewportHeight}px` : '100%',
-      }}
-    >
+    <div className={`relative flex flex-col ${className}`} style={{ minHeight: 0 }}>
       {/* 搜索面板 */}
       {showSearch && (
         <div className="absolute right-0 bottom-0 left-0 z-20 flex items-center gap-1 border-t border-slate-700/50 bg-slate-900 px-2 py-1">
