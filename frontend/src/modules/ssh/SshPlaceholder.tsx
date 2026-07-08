@@ -20,6 +20,10 @@ import AiSidebar from './AiSidebar'
 import type { SshSession } from '../../types/ssh'
 import { useAiStore } from '../../stores/ai-store'
 
+// 模块级凭据存储：每个 session 的解密凭据（供 Terminal 组件建立独立 WS 连接使用）
+// 使用模块级 Map 而非 useRef，避免 React refs-during-render 限制
+const sessionCredentials = new Map<string, import('./Terminal').SshCredentials>()
+
 export default function SshPlaceholder() {
   const connections = useSshStore((s) => s.connections)
   const selectedConnectionId = useSshStore((s) => s.selectedConnectionId)
@@ -92,11 +96,11 @@ export default function SshPlaceholder() {
       const store = useSshStore.getState()
 
       try {
-        // 🔐 解密存储的密码/私钥后再发送
+        // 🔐 解密存储的密码/私钥，存到 credentialsMap 供 Terminal 使用
         const decryptedConn = await decryptConnection(conn)
-        const ws = wsClientRef.current || (await getWsClient())
 
-        // 检查 WebSocket 是否已连接
+        // 检查共享 WebSocket 是否已连接（用于获取 token 等）
+        const ws = wsClientRef.current || (await getWsClient())
         if (ws.status !== 'connected') {
           const wsErr = ws.lastError
           setConnectError(
@@ -107,19 +111,16 @@ export default function SshPlaceholder() {
         }
 
         setConnectError(null) // 清除之前的错误
-        await ws.request(
-          {
-            type: 'connect',
-            connectionId: sessionId,
-            host: conn.host,
-            port: conn.port,
-            username: conn.username,
-            password: decryptedConn.password,
-            privateKey: decryptedConn.privateKey,
-            sudoPassword: decryptedConn.sudoPassword || decryptedConn.password,
-          },
-          60000, // 增加到 60 秒，避免多主机连接时超时
-        )
+
+        // 存储解密凭据（Terminal 组件会使用它建立独立 WS 连接）
+        sessionCredentials.set(sessionId, {
+          host: conn.host,
+          port: conn.port,
+          username: conn.username,
+          password: decryptedConn.password,
+          privateKey: decryptedConn.privateKey,
+          sudoPassword: decryptedConn.sudoPassword || decryptedConn.password,
+        })
 
         const session: SshSession = {
           id: sessionId,
@@ -198,6 +199,9 @@ export default function SshPlaceholder() {
 
   const handleDisconnect = useCallback(
     (sessionId: string) => {
+      // 清理凭据
+      sessionCredentials.delete(sessionId)
+      // 通过共享 WS 发送 disconnect（如果后端仍在该连接上）
       wsClientRef.current?.send({
         type: 'disconnect',
         connectionId: sessionId,
@@ -616,6 +620,7 @@ export default function SshPlaceholder() {
                   activeSplitId={activeSplitId}
                   onSetActiveSplit={setActiveSplitId}
                   onTerminalData={handleTerminalData}
+                  credentialsMap={sessionCredentials}
                 />
               ) : activeSession ? (
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -623,6 +628,7 @@ export default function SshPlaceholder() {
                     connectionId={activeSession.id}
                     sessionId={activeSession.id}
                     className="flex-1"
+                    credentials={sessionCredentials.get(activeSession.id)}
                   />
                 </div>
               ) : null}

@@ -4,7 +4,8 @@ import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
 import { Search, X, ChevronUp, ChevronDown, Keyboard } from 'lucide-react'
-import { getWsClientSync } from '../../services/websocket'
+import { createTerminalWsClient, type WsClient } from '../../services/websocket'
+import { getToken } from '../../services/auth'
 
 /** 分屏面板配置 */
 export interface SplitPanel {
@@ -16,6 +17,16 @@ export interface SplitPanel {
   children?: SplitPanel[]
 }
 
+/** SSH 连接凭据（传递给 Terminal 以建立独立 WS 连接） */
+export interface SshCredentials {
+  host: string
+  port: number
+  username: string
+  password?: string
+  privateKey?: string
+  sudoPassword?: string
+}
+
 interface Props {
   connectionId: string
   sessionId: string
@@ -24,6 +35,8 @@ interface Props {
   onDisconnected?: () => void
   /** 命令同步：收到用户输入时回调（用于广播到同组其他分屏） */
   onTerminalData?: (data: string) => void
+  /** SSH 连接凭据（用于建立独立 WebSocket 连接） */
+  credentials?: SshCredentials
 }
 
 // 主题配色（与终端一致）
@@ -57,6 +70,7 @@ export default function TerminalView({
   onConnected,
   onDisconnected,
   onTerminalData,
+  credentials,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<XTerm | null>(null)
@@ -81,8 +95,13 @@ export default function TerminalView({
   }, [onConnected, onDisconnected, showSearch])
   /** generation ID：每次 mount 递增，防止旧实例的异步回调污染新实例 */
   const genRef = useRef(0)
-  // 用 ref 持有 wsClient，避免 effect 依赖数组问题
-  const wsClientRef = useRef(getWsClientSync())
+  // 每个终端独立的 WebSocket 客户端（用于 SSH I/O）
+  const termWsRef = useRef<WsClient | null>(null)
+  // 凭据 ref（避免 effect 依赖变化）
+  const credentialsRef = useRef(credentials)
+  useEffect(() => {
+    credentialsRef.current = credentials
+  }, [credentials])
 
   // ─── 移动端快捷键面板 ───
   const [showShortcuts, setShowShortcuts] = useState(false)
@@ -137,7 +156,102 @@ export default function TerminalView({
     terminalRef.current = term
     fitAddonRef.current = fitAddon
 
-    // 发送终端数据到后端（shell 模式）
+    // ─── 创建独立 WebSocket 连接用于此终端 ───
+    // 后端 handle_terminal_connect 会阻塞整个 WS 主循环，
+    // 因此每个终端必须有自己的 WS 连接以支持多主机同时连接。
+    const initTerminalConnection = async () => {
+      if (gen !== genRef.current) return
+
+      const creds = credentialsRef.current
+      if (!creds) {
+        term.write('\r\n\x1b[31m[错误] 缺少连接凭据\x1b[0m\r\n')
+        return
+      }
+
+      try {
+        const token = await getToken()
+        if (gen !== genRef.current) return
+
+        const termWs = createTerminalWsClient(token)
+        termWsRef.current = termWs
+
+        // 注册事件处理器（在连接前注册，确保不遗漏）
+        termWs.on('data', (msg) => {
+          if (msg.connectionId === connectionId) {
+            const raw = msg.data as string
+            try {
+              const decoded = decodeURIComponent(escape(atob(raw)))
+              if (!disposedRef.current) term.write(decoded)
+            } catch {
+              if (!disposedRef.current) term.write(raw)
+            }
+          }
+        })
+
+        termWs.on('connected', () => {
+          connectedRef.current = true
+          term.focus()
+          setTimeout(() => {
+            const c = containerRef.current
+            if (c && c.offsetWidth > 0 && c.offsetHeight > 0) {
+              try {
+                fitAddon.fit()
+              } catch {
+                /* ignore */
+              }
+            }
+          }, 100)
+          onConnectedRef.current?.()
+        })
+
+        termWs.on('disconnected', () => {
+          connectedRef.current = false
+          if (!disposedRef.current) {
+            term.write('\r\n\x1b[31m[连接已断开]\x1b[0m\r\n')
+          }
+          onDisconnectedRef.current?.()
+        })
+
+        termWs.on('error', (msg) => {
+          if (!disposedRef.current) {
+            term.write(`\r\n\x1b[31m[错误] ${(msg.message as string) || '未知错误'}\x1b[0m\r\n`)
+          }
+        })
+
+        // 连接 WebSocket
+        termWs.connect()
+
+        // 等待连接建立后发送 SSH connect 消息
+        const unsub = termWs.onStatus((status) => {
+          if (status === 'connected') {
+            unsub()
+            if (gen !== genRef.current) return
+            termWs.send({
+              type: 'connect',
+              connectionId,
+              host: creds.host,
+              port: creds.port,
+              username: creds.username,
+              password: creds.password || '',
+              privateKey: creds.privateKey || '',
+              sudoPassword: creds.sudoPassword || '',
+            })
+          } else if (status === 'disconnected') {
+            unsub()
+            if (!disposedRef.current) {
+              term.write('\r\n\x1b[31m[WebSocket 连接失败]\x1b[0m\r\n')
+            }
+          }
+        })
+      } catch (err) {
+        if (gen !== genRef.current) return
+        const msg = err instanceof Error ? err.message : '获取认证令牌失败'
+        term.write(`\r\n\x1b[31m[错误] ${msg}\x1b[0m\r\n`)
+      }
+    }
+
+    initTerminalConnection()
+
     // ─── 快捷键注册 ───
     // Ctrl+C: 选中文本时复制，未选中时发送 SIGINT
     // Ctrl+V / Shift+Insert: 粘贴
@@ -162,7 +276,7 @@ export default function TerminalView({
           .then((text) => {
             if (text) {
               const encoded = btoa(unescape(encodeURIComponent(text)))
-              wsClientRef.current.send({ type: 'exec', connectionId, data: encoded })
+              termWsRef.current?.send({ type: 'exec', connectionId, data: encoded })
               onTerminalData?.(encoded)
             }
           })
@@ -192,7 +306,7 @@ export default function TerminalView({
           .then((text) => {
             if (text) {
               const encoded = btoa(unescape(encodeURIComponent(text)))
-              wsClientRef.current.send({ type: 'exec', connectionId, data: encoded })
+              termWsRef.current?.send({ type: 'exec', connectionId, data: encoded })
               onTerminalData?.(encoded)
             }
           })
@@ -206,69 +320,13 @@ export default function TerminalView({
     term.onData((data) => {
       // 将用户输入以 base64 编码发送
       const encoded = btoa(unescape(encodeURIComponent(data)))
-      wsClientRef.current.send({
+      termWsRef.current?.send({
         type: 'exec',
         connectionId,
         data: encoded,
       })
       // 命令同步：广播到同组其他分屏
       onTerminalData?.(encoded)
-    })
-
-    // 监听终端数据（来自后端）
-    const unsubData = wsClientRef.current.on('data', (msg) => {
-      if (msg.connectionId === connectionId) {
-        const raw = msg.data as string
-        try {
-          const decoded = decodeURIComponent(escape(atob(raw)))
-          if (!disposedRef.current) {
-            term.write(decoded)
-          }
-        } catch {
-          // 非 base64 的直接写入
-          if (!disposedRef.current) {
-            term.write(raw)
-          }
-        }
-      }
-    })
-
-    // 监听连接状态
-    const unsubConnected = wsClientRef.current.on('connected', (msg) => {
-      if (msg.connectionId === connectionId) {
-        connectedRef.current = true
-        term.focus()
-        setTimeout(() => {
-          const c = containerRef.current
-          if (c && c.offsetWidth > 0 && c.offsetHeight > 0) {
-            try {
-              fitAddon.fit()
-            } catch {
-              /* ignore */
-            }
-          }
-        }, 100)
-        onConnectedRef.current?.()
-      }
-    })
-
-    const unsubDisconnected = wsClientRef.current.on('disconnected', (msg) => {
-      if (msg.connectionId === connectionId) {
-        connectedRef.current = false
-        if (!disposedRef.current) {
-          term.write('\r\n\x1b[31m[连接已断开]\x1b[0m\r\n')
-        }
-        onDisconnectedRef.current?.()
-      }
-    })
-
-    // 错误处理
-    const unsubError = wsClientRef.current.on('error', (msg) => {
-      if (msg.connectionId === connectionId) {
-        if (!disposedRef.current) {
-          term.write(`\r\n\x1b[31m[错误] ${msg.message || msg.code}\x1b[0m\r\n`)
-        }
-      }
     })
 
     // Resize 监听 — 用 rAF 确保 DOM 就绪后再 fit
@@ -289,7 +347,7 @@ export default function TerminalView({
 
     // 发送 resize 到后端
     term.onResize(({ cols, rows }) => {
-      wsClientRef.current.send({
+      termWsRef.current?.send({
         type: 'resize',
         connectionId,
         cols,
@@ -317,10 +375,11 @@ export default function TerminalView({
       clearTimeout(fitTimer)
       observer.disconnect()
       window.removeEventListener('keydown', searchKeyHandler)
-      unsubData()
-      unsubConnected()
-      unsubDisconnected()
-      unsubError()
+      // 断开并清理独立 WebSocket
+      if (termWsRef.current) {
+        termWsRef.current.disconnect()
+        termWsRef.current = null
+      }
       try {
         term.dispose()
       } catch {}
@@ -328,7 +387,10 @@ export default function TerminalView({
       fitAddonRef.current = null
       searchAddonRef.current = null
     }
-  }, [connectionId, sessionId, onTerminalData])
+    // connectionId/sessionId 变化时重新创建终端连接
+    // credentials 通过 ref 引用，onTerminalData 由父组件 useCallback 包装，均稳定不变
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectionId, sessionId])
 
   // ─── 搜索函数 ───
   const doSearch = useCallback((query: string, dir: 'next' | 'prev' = 'next') => {
@@ -452,7 +514,7 @@ export default function TerminalView({
                 onClick={() => {
                   // 发送按键序列到后端
                   const encoded = btoa(unescape(encodeURIComponent(s.seq)))
-                  wsClientRef.current.send({ type: 'exec', connectionId, data: encoded })
+                  termWsRef.current?.send({ type: 'exec', connectionId, data: encoded })
                   onTerminalData?.(encoded)
                 }}
                 className="flex items-center justify-between rounded bg-slate-800/60 px-2 py-1.5 transition-colors active:bg-slate-700"
@@ -507,6 +569,8 @@ interface SplitContainerProps {
   onSetActiveSplit?: (id: string) => void
   /** 命令同步：分屏收到的终端输入 */
   onTerminalData?: (sessionId: string, data: string) => void
+  /** 每个 session 的 SSH 凭据（用于建立独立 WS 连接） */
+  credentialsMap?: Map<string, SshCredentials>
 }
 
 export function SplitContainer({
@@ -521,6 +585,7 @@ export function SplitContainer({
   activeSplitId,
   onSetActiveSplit,
   onTerminalData,
+  credentialsMap,
 }: SplitContainerProps) {
   if (splits.length === 0) return null
 
@@ -541,6 +606,7 @@ export function SplitContainer({
         activeSplitId={activeSplitId}
         onSetActiveSplit={onSetActiveSplit}
         onTerminalData={onTerminalData}
+        credentialsMap={credentialsMap}
       />
     )
   }
@@ -590,6 +656,7 @@ export function SplitContainer({
               activeSplitId={activeSplitId}
               onSetActiveSplit={onSetActiveSplit}
               onTerminalData={onTerminalData}
+              credentialsMap={credentialsMap}
             />
           </div>
         ))}
@@ -623,6 +690,7 @@ export function SplitContainer({
           activeSplitId={activeSplitId}
           onSetActiveSplit={onSetActiveSplit}
           onTerminalData={onTerminalData}
+          credentialsMap={credentialsMap}
         />
       </div>
 
@@ -645,6 +713,7 @@ export function SplitContainer({
           activeSplitId={activeSplitId}
           onSetActiveSplit={onSetActiveSplit}
           onTerminalData={onTerminalData}
+          credentialsMap={credentialsMap}
         />
       </div>
     </div>
@@ -664,6 +733,7 @@ function SplitPane({
   activeSplitId,
   onSetActiveSplit,
   onTerminalData,
+  credentialsMap,
 }: {
   split: SplitDef
   onSplit: (id: string, direction: 'vertical' | 'horizontal') => void
@@ -680,6 +750,7 @@ function SplitPane({
   activeSplitId?: string | null
   onSetActiveSplit?: (id: string) => void
   onTerminalData?: (sessionId: string, data: string) => void
+  credentialsMap?: Map<string, SshCredentials>
 }) {
   const isSyncOn = !!split.syncGroup
   const groupId = split.syncGroup || ''
@@ -921,6 +992,7 @@ function SplitPane({
         onTerminalData={
           onTerminalData ? (data: string) => onTerminalData(split.sessionId, data) : undefined
         }
+        credentials={credentialsMap?.get(split.sessionId)}
       />
     </div>
   )

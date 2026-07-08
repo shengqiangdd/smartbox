@@ -419,3 +419,19 @@ export function getWsClientSync(): WsClient {
   _instance = new WsClient(`${protocol}//${host}/ws`)
   return _instance
 }
+
+/**
+ * 为 SSH 终端创建独立的 WsClient 实例。
+ *
+ * 每个终端需要独立的 WebSocket 连接，因为后端 handle_terminal_connect
+ * 会接管整个 socket 进入 I/O 循环，阻塞其他消息处理。
+ *
+ * @param token JWT 认证令牌
+ * @returns 独立的 WsClient 实例（未连接）
+ */
+export function createTerminalWsClient(token: string): WsClient {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const host = window.location.host
+  const url = `${protocol}//${host}/ws?token=${token}`
+  return new WsClient(url)
+}
