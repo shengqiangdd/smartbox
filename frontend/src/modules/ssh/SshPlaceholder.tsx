@@ -588,7 +588,9 @@ export default function SshPlaceholder() {
                       selectConnection(connections[0]!.id)
                     } else if (activeSession) {
                       // 已有连接时，聚焦终端输入区域
-                      const termEl = document.querySelector('.xterm-helper-textarea') as HTMLElement | null
+                      const termEl = document.querySelector(
+                        '.xterm-helper-textarea',
+                      ) as HTMLElement | null
                       termEl?.focus()
                     }
                   }}
