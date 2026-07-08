@@ -17,7 +17,8 @@ interface Props {
   onClose: () => void
 }
 
-// OpenRouter 流式 API 调用（支持取消）
+// 通过后端代理调用 LLM API（支持取消）
+// 后端会自动使用服务端的 OPENROUTER_API_KEY，前端不需要自己填 Key
 async function* streamChat(
   messages: AiMessage[],
   apiKey: string,
@@ -25,21 +26,16 @@ async function* streamChat(
   baseUrl: string,
   signal?: AbortSignal,
 ): AsyncGenerator<string> {
-  const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`
-
-  const res = await fetch(url, {
+  const res = await fetch('/api/ai/chat', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-      'HTTP-Referer': window.location.origin,
-      'X-Title': 'Wrench',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model,
       messages,
       stream: true,
       max_tokens: 4096,
+      api_key: apiKey || undefined,
+      base_url: baseUrl || undefined,
     }),
     signal,
   })
@@ -259,7 +255,7 @@ export default function AiSidebar({ sessionId, connectionId, onClose }: Props) {
   }
 
   // 如果 AI 未启用
-  if (!aiConfig.enabled || !aiConfig.apiKey) {
+  if (!aiConfig.enabled) {
     return (
       <div className="flex h-full w-full flex-col border-l border-slate-700/50 bg-slate-900/80 md:w-96">
         <div className="flex items-center justify-between border-b border-slate-700/50 px-3 py-2">
@@ -274,8 +270,8 @@ export default function AiSidebar({ sessionId, connectionId, onClose }: Props) {
         <div className="flex flex-1 items-center justify-center p-6">
           <div className="text-center">
             <Sparkles size={32} className="mx-auto mb-3 text-slate-600" />
-            <p className="text-sm text-slate-500">AI Agent 未配置</p>
-            <p className="mt-1 text-xs text-slate-600">在设置中填写 API Key 并启用 AI Agent</p>
+            <p className="text-sm text-slate-500">AI Agent 未启用</p>
+            <p className="mt-1 text-xs text-slate-600">在设置中开启 AI Agent 即可使用</p>
           </div>
         </div>
       </div>

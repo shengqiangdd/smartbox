@@ -3,14 +3,14 @@
 //! Supported providers: OpenRouter, OpenAI, SiliconFlow.
 //!
 //! Endpoints:
-//!   GET /api/ai/config            — Get global AI config
-//!   GET /api/ai/fetch-free-models — Fetch free models from OpenRouter
-//!   GET /api/ai/fetch-all-models  — Fetch models with optional `?provider=`
-//!
-//! Frontend can pass `?api_key=` to use its own key when the server-side
-//! OPENROUTER_API_KEY is not configured.
+//!   GET  /api/ai/config            — Get global AI config
+//!   GET  /api/ai/fetch-free-models — Fetch free models from OpenRouter
+//!   GET  /api/ai/fetch-all-models  — Fetch models with optional `?provider=`
+//!   POST /api/ai/chat              — Proxy chat completions to LLM provider
 
-use axum::{extract::Query, extract::State};
+use axum::body::Body;
+use axum::extract::{Query, State};
+use axum::http::{Response, StatusCode};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -44,7 +44,9 @@ pub async fn get_ai_config(State(state): State<Arc<AppState>>) -> ApiResponse<Ai
 }
 
 /// Fetch free models from OpenRouter (GET /api/ai/fetch-free-models)
-pub async fn fetch_free_models(State(state): State<Arc<AppState>>) -> ApiResponse<ModelsListResponse> {
+pub async fn fetch_free_models(
+    State(state): State<Arc<AppState>>,
+) -> ApiResponse<ModelsListResponse> {
     let api_key = match &state.config.openrouter_api_key {
         Some(k) => k.clone(),
         None => {
@@ -65,7 +67,11 @@ pub async fn fetch_free_models(State(state): State<Arc<AppState>>) -> ApiRespons
         Ok(resp) => {
             if resp.status().is_success() {
                 let data: serde_json::Value = resp.json().await.unwrap_or_default();
-                let models = data.get("data").and_then(|d| d.as_array()).cloned().unwrap_or_default();
+                let models = data
+                    .get("data")
+                    .and_then(|d| d.as_array())
+                    .cloned()
+                    .unwrap_or_default();
                 let free_models: Vec<ModelListItem> = models
                     .into_iter()
                     .filter(|m| {
@@ -84,11 +90,17 @@ pub async fn fetch_free_models(State(state): State<Arc<AppState>>) -> ApiRespons
                             .unwrap_or("")
                             .to_string(),
                         free: true,
-                        description: m.get("description").and_then(|v| v.as_str()).map(String::from),
+                        description: m
+                            .get("description")
+                            .and_then(|v| v.as_str())
+                            .map(String::from),
                     })
                     .collect();
 
-                ApiResponse::success(ModelsListResponse { models: free_models, error: None })
+                ApiResponse::success(ModelsListResponse {
+                    models: free_models,
+                    error: None,
+                })
             } else {
                 ApiResponse::success(ModelsListResponse {
                     models: Vec::new(),
@@ -96,7 +108,10 @@ pub async fn fetch_free_models(State(state): State<Arc<AppState>>) -> ApiRespons
                 })
             }
         }
-        Err(e) => ApiResponse::success(ModelsListResponse { models: Vec::new(), error: Some(e.to_string()) }),
+        Err(e) => ApiResponse::success(ModelsListResponse {
+            models: Vec::new(),
+            error: Some(e.to_string()),
+        }),
     }
 }
 
@@ -123,7 +138,10 @@ pub async fn fetch_all_models(
     ApiResponse::success(result)
 }
 
-async fn fetch_openrouter_models(state: &AppState, api_key_override: Option<&str>) -> ModelsListResponse {
+async fn fetch_openrouter_models(
+    state: &AppState,
+    api_key_override: Option<&str>,
+) -> ModelsListResponse {
     let api_key = match api_key_override {
         Some(k) => k.to_string(),
         None => match &state.config.openrouter_api_key {
@@ -146,7 +164,11 @@ async fn fetch_openrouter_models(state: &AppState, api_key_override: Option<&str
     {
         Ok(resp) if resp.status().is_success() => {
             let data: serde_json::Value = resp.json().await.unwrap_or_default();
-            let models = data.get("data").and_then(|d| d.as_array()).cloned().unwrap_or_default();
+            let models = data
+                .get("data")
+                .and_then(|d| d.as_array())
+                .cloned()
+                .unwrap_or_default();
             let items: Vec<ModelListItem> = models
                 .into_iter()
                 .map(|m| ModelListItem {
@@ -166,7 +188,10 @@ async fn fetch_openrouter_models(state: &AppState, api_key_override: Option<&str
                     description: None,
                 })
                 .collect();
-            ModelsListResponse { models: items, error: None }
+            ModelsListResponse {
+                models: items,
+                error: None,
+            }
         }
         Ok(resp) => ModelsListResponse {
             models: Vec::new(),
@@ -184,17 +209,28 @@ async fn fetch_openai_models() -> ModelsListResponse {
     match client.get("https://api.openai.com/v1/models").send().await {
         Ok(resp) if resp.status().is_success() => {
             let data: serde_json::Value = resp.json().await.unwrap_or_default();
-            let models = data.get("data").and_then(|d| d.as_array()).cloned().unwrap_or_default();
+            let models = data
+                .get("data")
+                .and_then(|d| d.as_array())
+                .cloned()
+                .unwrap_or_default();
             let items: Vec<ModelListItem> = models
                 .into_iter()
                 .map(|m| ModelListItem {
                     value: m.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                    label: m.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    label: m
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
                     free: true,
                     description: None,
                 })
                 .collect();
-            ModelsListResponse { models: items, error: None }
+            ModelsListResponse {
+                models: items,
+                error: None,
+            }
         }
         Ok(resp) => ModelsListResponse {
             models: Vec::new(),
@@ -209,10 +245,13 @@ async fn fetch_openai_models() -> ModelsListResponse {
 
 async fn fetch_siliconflow_models() -> ModelsListResponse {
     let client = reqwest::Client::new();
-    match client.get("https://api.siliconflow.cn/v1/models").send().await {
+    match client
+        .get("https://api.siliconflow.cn/v1/models")
+        .send()
+        .await
+    {
         Ok(resp) if resp.status().is_success() => {
             let data: serde_json::Value = resp.json().await.unwrap_or_default();
-            // SiliconFlow returns an array directly
             let models = if let Some(arr) = data.as_array() {
                 arr.clone()
             } else if let Some(arr) = data.get("data").and_then(|d| d.as_array()) {
@@ -239,7 +278,10 @@ async fn fetch_siliconflow_models() -> ModelsListResponse {
                     description: None,
                 })
                 .collect();
-            ModelsListResponse { models: items, error: None }
+            ModelsListResponse {
+                models: items,
+                error: None,
+            }
         }
         Ok(resp) => ModelsListResponse {
             models: Vec::new(),
@@ -249,5 +291,114 @@ async fn fetch_siliconflow_models() -> ModelsListResponse {
             models: Vec::new(),
             error: Some(e.to_string()),
         },
+    }
+}
+
+// ─── Chat Proxy ───
+
+/// POST body for /api/ai/chat — mirrors OpenRouter chat completions format
+#[derive(Deserialize)]
+pub struct ChatRequest {
+    pub model: Option<String>,
+    pub messages: Option<Vec<serde_json::Value>>,
+    pub stream: Option<bool>,
+    pub max_tokens: Option<u32>,
+    /// Frontend-provided API key (fallback to server-side OPENROUTER_API_KEY)
+    pub api_key: Option<String>,
+    /// Base URL override (defaults to OpenRouter)
+    pub base_url: Option<String>,
+}
+
+/// Proxy chat completions to the LLM provider (POST /api/ai/chat)
+///
+/// The backend uses its own OPENROUTER_API_KEY when the frontend doesn't
+/// provide one, so users don't need to configure a key themselves.
+pub async fn chat_proxy(
+    State(state): State<Arc<AppState>>,
+    axum::Json(req): axum::Json<ChatRequest>,
+) -> Response<Body> {
+    // Resolve API key: frontend > server env
+    let api_key = req
+        .api_key
+        .filter(|k| !k.is_empty())
+        .or_else(|| state.config.openrouter_api_key.clone());
+
+    let api_key = match api_key {
+        Some(k) => k,
+        None => {
+            return Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body(Body::from(
+                    serde_json::json!({ "error": "API Key 未配置，请在设置中填写或配置服务端 OPENROUTER_API_KEY" })
+                        .to_string(),
+                ))
+                .unwrap();
+        }
+    };
+
+    let base_url = req
+        .base_url
+        .as_deref()
+        .unwrap_or("https://openrouter.ai/api/v1");
+    let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+
+    let model = req
+        .model
+        .unwrap_or_else(|| "google/gemma-4-31b-it:free".into());
+    let messages = req.messages.unwrap_or_default();
+    let stream = req.stream.unwrap_or(false);
+
+    let body = serde_json::json!({
+        "model": model,
+        "messages": messages,
+        "stream": stream,
+        "max_tokens": req.max_tokens.unwrap_or(4096),
+    });
+
+    let client = reqwest::Client::new();
+    let resp = match client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .header("HTTP-Referer", "https://wrench.app")
+        .header("X-Title", "Wrench")
+        .body(body.to_string())
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            return Response::builder()
+                .status(StatusCode::BAD_GATEWAY)
+                .body(Body::from(
+                    serde_json::json!({ "error": e.to_string() }).to_string(),
+                ))
+                .unwrap();
+        }
+    };
+
+    let status = resp.status();
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .cloned();
+
+    if stream {
+        // Streaming: forward the SSE stream directly
+        let mut builder = Response::builder().status(status.as_u16());
+        if let Some(ct) = content_type {
+            builder = builder.header("content-type", ct);
+        }
+        builder
+            .body(Body::from_stream(resp.bytes_stream()))
+            .unwrap()
+    } else {
+        // Non-streaming: forward the full response
+        let bytes = resp.bytes().await.unwrap_or_default();
+        let mut builder = Response::builder().status(status.as_u16());
+        if let Some(ct) = content_type {
+            builder = builder.header("content-type", ct);
+        }
+        builder.body(Body::from(bytes)).unwrap()
     }
 }

@@ -193,6 +193,7 @@ pub async fn build_app(state: Arc<AppState>) -> Router {
         .route("/ai/config", get(api::ai::get_ai_config))
         .route("/ai/fetch-free-models", get(api::ai::fetch_free_models))
         .route("/ai/fetch-all-models", get(api::ai::fetch_all_models))
+        .route("/ai/chat", axum::routing::post(api::ai::chat_proxy))
         .route("/sftp/list", axum::routing::post(api::sftp::sftp_list_dir))
         .route("/sftp/upload", axum::routing::post(api::sftp::sftp_upload))
         .route("/sftp/download", axum::routing::post(api::sftp::sftp_download))
