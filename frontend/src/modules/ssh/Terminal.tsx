@@ -107,21 +107,28 @@ export default function TerminalView({
   const [showShortcuts, setShowShortcuts] = useState(false)
 
   // ─── 移动端虚拟键盘高度补偿 ───
+  // 使用 visualViewport 的 offsetTop 计算键盘高度（更准确，包含 IME 候选框）
   const [keyboardHeight, setKeyboardHeight] = useState(0)
 
   useEffect(() => {
     if (!window.visualViewport) return
 
-    const handleResize = () => {
+    const updateKeyboardHeight = () => {
       const vv = window.visualViewport!
-      // 键盘高度 = 窗口高度 - viewport 高度
-      const kbHeight = window.innerHeight - vv.height
+      // 键盘高度 = 窗口高度 - viewport 高度 - viewport 顶部偏移
+      // offsetTop 在键盘弹出时会变化，反映实际可视区域位置
+      const kbHeight = window.innerHeight - vv.height - vv.offsetTop
       setKeyboardHeight(Math.max(0, kbHeight))
+    }
+
+    // 使用 requestAnimationFrame 确保在渲染后计算
+    const handleResize = () => {
+      requestAnimationFrame(updateKeyboardHeight)
     }
 
     window.visualViewport.addEventListener('resize', handleResize)
     window.visualViewport.addEventListener('scroll', handleResize)
-    handleResize()
+    updateKeyboardHeight()
 
     return () => {
       window.visualViewport?.removeEventListener('resize', handleResize)
@@ -554,7 +561,14 @@ export default function TerminalView({
   }, [])
 
   return (
-    <div className={`relative flex flex-col ${className}`} style={{ minHeight: 0 }}>
+    <div
+      className={`relative flex flex-col ${className}`}
+      style={{
+        minHeight: 0,
+        // 键盘弹出时，整个组件高度缩小，终端容器跟着缩小，避免被键盘遮挡
+        height: keyboardHeight > 0 ? `calc(100% - ${keyboardHeight}px)` : undefined,
+      }}
+    >
       {/* 搜索面板 */}
       {showSearch && (
         <div className="absolute right-0 bottom-0 left-0 z-20 flex items-center gap-1 border-t border-slate-700/50 bg-slate-900 px-2 py-1">
@@ -611,18 +625,17 @@ export default function TerminalView({
         ref={containerRef}
         className="flex-1 overflow-hidden bg-slate-950 px-1"
         style={{
-          // 移动端键盘弹出时，减少容器高度以补偿
-          marginBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : undefined,
-          // 键盘弹出时缩短高度
-          height: keyboardHeight > 0 ? `calc(100% - ${keyboardHeight}px)` : undefined,
           // 阻止浏览器默认触摸行为，由自定义触摸滚动处理器接管
           touchAction: 'none',
         }}
       />
 
-      {/* 移动端快捷键浮动按钮 */}
+      {/* 移动端快捷键浮动按钮 — 使用 onPointerDown 防止焦点转移（避免 IME 关闭） */}
       <button
-        onClick={() => setShowShortcuts((v) => !v)}
+        onPointerDown={(e) => {
+          e.preventDefault() // 阻止焦点转移，保持 IME 活跃
+          setShowShortcuts((v) => !v)
+        }}
         className="absolute top-2 right-2 z-10 flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800/80 text-slate-400 backdrop-blur-sm transition-colors hover:bg-slate-700/80 hover:text-slate-200 md:hidden"
         title="快捷键"
       >
@@ -643,7 +656,10 @@ export default function TerminalView({
           <div className="flex items-center justify-between border-b border-slate-700/30 pb-2">
             <span className="text-xs font-medium text-slate-300">快捷键（点击发送）</span>
             <button
-              onClick={() => setShowShortcuts(false)}
+              onPointerDown={(e) => {
+                e.preventDefault() // 阻止焦点转移，保持 IME 活跃
+                setShowShortcuts(false)
+              }}
               className="btn-icon text-slate-500 hover:text-slate-300"
             >
               <X size={14} />
