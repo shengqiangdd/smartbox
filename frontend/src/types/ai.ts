@@ -160,7 +160,8 @@ export const AI_PROVIDERS: AiProvider[] = [
     ],
   },
   // ─── SiliconFlow (硅基流动) ──
-  // 来源: SiliconFlow 官方文档 + API 查询
+  // 来源: https://siliconflow.cn (Playwright 抓取首页)
+  // 最新上线: GLM-5.2, Kimi K2.7 Code, DeepSeek-V4-Pro & Flash
   {
     id: 'siliconflow',
     name: 'SiliconFlow (硅基流动)',
@@ -212,6 +213,7 @@ export const AI_PROVIDERS: AiProvider[] = [
       { value: 'meta-llama/Llama-3.3-70B-Instruct', label: 'Llama 3.3 70B', free: true },
       { value: 'meta-llama/Llama-3.1-8B-Instruct', label: 'Llama 3.1 8B', free: true },
       { value: 'THUDM/glm-4-9b-chat', label: 'GLM-4 9B', free: true, description: '智谱' },
+      { value: 'THUDM/glm-5.2', label: 'GLM-5.2', free: true, description: '智谱最新高速版' },
       {
         value: 'internlm/internlm2_5-20b-chat',
         label: 'InternLM2.5 20B',
@@ -219,9 +221,16 @@ export const AI_PROVIDERS: AiProvider[] = [
         description: '书生',
       },
       { value: '01-ai/Yi-1.5-34B-Chat', label: 'Yi 1.5 34B', free: true, description: '零一万物' },
+      {
+        value: 'moonshotai/Kimi-K2.7-Code',
+        label: 'Kimi K2.7 Code',
+        free: true,
+        description: '月之暗面代码专家',
+      },
     ],
   },
   // ─── Agnes (Sapiens AI) ──
+  // 来源: https://huggingface.co/agnes-ai
   {
     id: 'agnes',
     name: 'Agnes (Sapiens AI)',
@@ -232,9 +241,11 @@ export const AI_PROVIDERS: AiProvider[] = [
       { value: 'agnes-2.0-flash', label: 'Agnes 2.0 Flash', free: true },
       { value: 'agnes-2.0-pro', label: 'Agnes 2.0 Pro' },
       { value: 'agnes-1.5', label: 'Agnes 1.5' },
+      { value: 'agnes-seallm-8b', label: 'Agnes SeaLLM 8B', free: true, description: '海语模型' },
     ],
   },
   // ─── OpenCode ──
+  // 来源: https://opencode.ai/docs, https://github.com/opencode-ai/opencode
   {
     id: 'opencode',
     name: 'OpenCode',
