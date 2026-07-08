@@ -146,6 +146,7 @@ export default function SettingsPanel() {
   const fetchModels = useCallback(
     async (providerId?: string) => {
       setIsFetchingModels(true)
+      setFetchedModels([]) // 先清空，避免旧数据残留
       try {
         const params = new URLSearchParams()
         if (providerId) params.set('provider', providerId)
