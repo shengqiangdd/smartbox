@@ -564,8 +564,9 @@ export default function TerminalView({
       className={`relative flex flex-col ${className}`}
       style={{
         minHeight: 0,
-        // 确保父容器有明确高度，让子元素的 100% 计算正确
-        height: '100%',
+        // 使用 100dvh（动态视口高度）确保在移动端正确响应键盘弹出
+        // 100dvh 会随键盘弹出/收起自动调整
+        height: '100dvh',
       }}
     >
       {/* 搜索面板 */}
