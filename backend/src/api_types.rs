@@ -110,6 +110,9 @@ pub struct AiConfigResponse {
     pub enabled: bool,
     pub provider: String,
     pub models: Vec<String>,
+    /// Masked API key hint (e.g. "sk-...xxxx") so frontend knows one is set
+    #[serde(rename = "apiKeyHint", skip_serializing_if = "Option::is_none")]
+    pub api_key_hint: Option<String>,
 }
 
 #[derive(Serialize)]

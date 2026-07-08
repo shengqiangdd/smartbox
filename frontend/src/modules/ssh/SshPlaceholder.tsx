@@ -586,10 +586,14 @@ export default function SshPlaceholder() {
                   onClick={() => {
                     if (!activeSession && connections.length > 0) {
                       selectConnection(connections[0]!.id)
+                    } else if (activeSession) {
+                      // 已有连接时，聚焦终端输入区域
+                      const termEl = document.querySelector('.xterm-helper-textarea') as HTMLElement | null
+                      termEl?.focus()
                     }
                   }}
                   className="flex items-center gap-1 px-3 py-2 text-xs text-slate-500 hover:text-slate-300"
-                  title="打开终端"
+                  title="终端"
                 >
                   <Terminal size={14} />
                   <span className="hidden md:inline">终端</span>

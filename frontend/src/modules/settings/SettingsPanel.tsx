@@ -74,11 +74,16 @@ export default function SettingsPanel() {
       fetch('/api/ai/config')
         .then((r) => r.json())
         .then((data) => {
-          if (data.apiKey) setAiConfig({ apiKey: data.apiKey })
+          // 后端有 apiKeyHint 说明服务端配置了 OPENROUTER_API_KEY
+          // 但出于安全不返回真实 key，前端需要用户手动填写
+          if (data.apiKeyHint && !data.apiKey) {
+            // 服务端有 key 但前端没有，提示用户
+            console.log('后端已配置 API Key，请在下方填写你的 Key 或使用服务端 Key')
+          }
         })
         .catch(() => {})
     }
-  }, [aiConfig.provider, aiConfig.apiKey, setAiConfig])
+  }, [aiConfig.provider, aiConfig.apiKey])
 
   // ── 从 API 获取的免费模型列表（在 allModels / selectedModelLabel 之前声明） ──
   const allModels =
@@ -145,8 +150,11 @@ export default function SettingsPanel() {
     async (providerId?: string) => {
       setIsFetchingModels(true)
       try {
-        const params = providerId ? `?provider=${encodeURIComponent(providerId)}` : ''
-        const resp = await fetch(`/api/ai/fetch-all-models${params}`)
+        const params = new URLSearchParams()
+        if (providerId) params.set('provider', providerId)
+        // 传入前端存储的 API Key，后端优先使用 query 参数中的 key
+        if (aiConfig.apiKey) params.set('api_key', aiConfig.apiKey)
+        const resp = await fetch(`/api/ai/fetch-all-models?${params.toString()}`)
         if (!resp.ok) throw new Error('API 请求失败: ' + resp.status)
         const data = await resp.json()
         if (data.models && Array.isArray(data.models)) {
@@ -158,7 +166,7 @@ export default function SettingsPanel() {
         setIsFetchingModels(false)
       }
     },
-    [setFetchedModels, setIsFetchingModels],
+    [setFetchedModels, setIsFetchingModels, aiConfig.apiKey],
   )
 
   // 当前 provider 切换时自动拉取模型

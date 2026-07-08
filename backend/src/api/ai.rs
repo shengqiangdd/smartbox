@@ -6,6 +6,9 @@
 //!   GET /api/ai/config            — Get global AI config
 //!   GET /api/ai/fetch-free-models — Fetch free models from OpenRouter
 //!   GET /api/ai/fetch-all-models  — Fetch models with optional `?provider=`
+//!
+//! Frontend can pass `?api_key=` to use its own key when the server-side
+//! OPENROUTER_API_KEY is not configured.
 
 use axum::{extract::Query, extract::State};
 use serde::Deserialize;
@@ -18,14 +21,25 @@ use crate::response::ApiResponse;
 #[derive(Debug, Deserialize)]
 pub struct ModelQuery {
     pub provider: Option<String>,
+    /// Frontend-provided API key (fallback when server-side key is absent)
+    pub api_key: Option<String>,
 }
 
 /// Get AI config (GET /api/ai/config)
 pub async fn get_ai_config(State(state): State<Arc<AppState>>) -> ApiResponse<AiConfigResponse> {
+    let api_key_hint = state.config.openrouter_api_key.as_ref().map(|k| {
+        if k.len() <= 8 {
+            "*".repeat(k.len())
+        } else {
+            format!("{}...{}", &k[..4], &k[k.len() - 4..])
+        }
+    });
+
     ApiResponse::success(AiConfigResponse {
         enabled: state.config.openrouter_api_key.is_some(),
         provider: "openrouter".into(),
         models: Vec::new(),
+        api_key_hint,
     })
 }
 
@@ -86,29 +100,41 @@ pub async fn fetch_free_models(State(state): State<Arc<AppState>>) -> ApiRespons
     }
 }
 
-/// Fetch models for any provider (GET /api/ai/fetch-all-models?provider=openrouter)
+/// Fetch models for any provider (GET /api/ai/fetch-all-models?provider=openrouter&api_key=xxx)
 pub async fn fetch_all_models(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ModelQuery>,
 ) -> ApiResponse<ModelsListResponse> {
     let provider = params.provider.as_deref().unwrap_or("openrouter");
 
+    // Resolve API key: query param > server env
+    let resolved_key = params.api_key.or_else(|| state.config.openrouter_api_key.clone());
+
     let result = match provider {
-        "openrouter" => fetch_openrouter_models(&state).await,
+        "openrouter" => fetch_openrouter_models(&state, resolved_key.as_deref()).await,
         "openai" => fetch_openai_models().await,
         "siliconflow" => fetch_siliconflow_models().await,
-        other => ModelsListResponse { models: Vec::new(), error: Some(format!("Unknown provider: {}", other)) },
+        other => ModelsListResponse {
+            models: Vec::new(),
+            error: Some(format!("Unknown provider: {}", other)),
+        },
     };
 
     ApiResponse::success(result)
 }
 
-async fn fetch_openrouter_models(state: &AppState) -> ModelsListResponse {
-    let api_key = match &state.config.openrouter_api_key {
-        Some(k) => k,
-        None => {
-            return ModelsListResponse { models: Vec::new(), error: Some("API key not configured".into()) };
-        }
+async fn fetch_openrouter_models(state: &AppState, api_key_override: Option<&str>) -> ModelsListResponse {
+    let api_key = match api_key_override {
+        Some(k) => k.to_string(),
+        None => match &state.config.openrouter_api_key {
+            Some(k) => k.clone(),
+            None => {
+                return ModelsListResponse {
+                    models: Vec::new(),
+                    error: Some("API key not configured".into()),
+                };
+            }
+        },
     };
 
     let client = reqwest::Client::new();
@@ -142,8 +168,14 @@ async fn fetch_openrouter_models(state: &AppState) -> ModelsListResponse {
                 .collect();
             ModelsListResponse { models: items, error: None }
         }
-        Ok(resp) => ModelsListResponse { models: Vec::new(), error: Some(format!("HTTP {}", resp.status())) },
-        Err(e) => ModelsListResponse { models: Vec::new(), error: Some(e.to_string()) },
+        Ok(resp) => ModelsListResponse {
+            models: Vec::new(),
+            error: Some(format!("HTTP {}", resp.status())),
+        },
+        Err(e) => ModelsListResponse {
+            models: Vec::new(),
+            error: Some(e.to_string()),
+        },
     }
 }
 
@@ -164,8 +196,14 @@ async fn fetch_openai_models() -> ModelsListResponse {
                 .collect();
             ModelsListResponse { models: items, error: None }
         }
-        Ok(resp) => ModelsListResponse { models: Vec::new(), error: Some(format!("HTTP {}", resp.status())) },
-        Err(e) => ModelsListResponse { models: Vec::new(), error: Some(e.to_string()) },
+        Ok(resp) => ModelsListResponse {
+            models: Vec::new(),
+            error: Some(format!("HTTP {}", resp.status())),
+        },
+        Err(e) => ModelsListResponse {
+            models: Vec::new(),
+            error: Some(e.to_string()),
+        },
     }
 }
 
@@ -197,13 +235,19 @@ async fn fetch_siliconflow_models() -> ModelsListResponse {
                         .and_then(|p| p.get("request"))
                         .and_then(|r| r.as_f64())
                         .map(|v| v <= 0.0)
-                        .unwrap_or(true),
+                        .unwrap_or(false),
                     description: None,
                 })
                 .collect();
             ModelsListResponse { models: items, error: None }
         }
-        Ok(resp) => ModelsListResponse { models: Vec::new(), error: Some(format!("HTTP {}", resp.status())) },
-        Err(e) => ModelsListResponse { models: Vec::new(), error: Some(e.to_string()) },
+        Ok(resp) => ModelsListResponse {
+            models: Vec::new(),
+            error: Some(format!("HTTP {}", resp.status())),
+        },
+        Err(e) => ModelsListResponse {
+            models: Vec::new(),
+            error: Some(e.to_string()),
+        },
     }
 }
