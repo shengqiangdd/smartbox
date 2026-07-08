@@ -132,9 +132,6 @@ export default function TerminalView({
     return () => vv.removeEventListener('resize', handleResize)
   }, [])
 
-  // 移动端快捷键栏高度（固定 72px = 两行 × 36px）
-  const SHORTCUT_BAR_HEIGHT = 72
-
   useEffect(() => {
     if (!containerRef.current) return
 
@@ -623,25 +620,12 @@ export default function TerminalView({
         style={{
           // 阻止浏览器默认触摸行为，由自定义触摸滚动处理器接管
           touchAction: 'none',
-          // 移动端为快捷键栏预留底部空间
-          paddingBottom:
-            typeof window !== 'undefined' && window.innerWidth < 768
-              ? `${SHORTCUT_BAR_HEIGHT}px`
-              : undefined,
         }}
       />
 
-      {/* 移动端快捷键工具栏 — 固定在屏幕底部，像 Termux 一样 */}
-      {/* 使用 fixed 定位确保始终在键盘上方可见 */}
-      <div
-        className="fixed inset-x-0 bottom-0 z-40 flex shrink-0 flex-col border-t border-slate-700/30 bg-slate-900/95 md:hidden"
-        style={
-          {
-            // 键盘弹出时，快捷键栏跟着上移
-            // 通过 visualViewport.offsetTop 计算键盘高度
-          }
-        }
-      >
+      {/* 移动端快捷键工具栏 — 普通 flex 元素，不使用 fixed/absolute */}
+      {/* 键盘弹出时 flex-1 缩小，快捷键栏自动在键盘上方 */}
+      <div className="flex shrink-0 flex-col border-t border-slate-700/30 bg-slate-900/95 md:hidden">
         {/* 第一行：常用功能键 */}
         <div className="flex items-center justify-around gap-0.5 px-1 py-1">
           {[
