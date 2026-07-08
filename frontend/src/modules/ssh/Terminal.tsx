@@ -560,7 +560,14 @@ export default function TerminalView({
   }, [])
 
   return (
-    <div className={`relative flex flex-col ${className}`} style={{ minHeight: 0 }}>
+    <div
+      className={`relative flex flex-col ${className}`}
+      style={{
+        minHeight: 0,
+        // 确保父容器高度为 100%，让终端容器可以正确计算
+        height: '100%',
+      }}
+    >
       {/* 搜索面板 */}
       {showSearch && (
         <div className="absolute right-0 bottom-0 left-0 z-20 flex items-center gap-1 border-t border-slate-700/50 bg-slate-900 px-2 py-1">
@@ -615,11 +622,12 @@ export default function TerminalView({
       )}
       <div
         ref={containerRef}
-        className="flex-1 overflow-hidden bg-slate-950 px-1"
+        className="overflow-hidden bg-slate-950 px-1"
         style={{
-          // 使用 visualViewport.height 限制终端容器最大高度，防止被键盘遮挡
+          // 直接使用 visualViewport.height 设置终端容器高度
           // 减去 48px 为顶部工具栏预留空间
-          maxHeight: viewportHeight > 0 ? `calc(${viewportHeight}px - 48px)` : undefined,
+          // 键盘弹出时 viewportHeight 自动缩小，终端高度跟着缩小
+          height: viewportHeight > 0 ? `calc(${viewportHeight}px - 48px)` : '100%',
           // 阻止浏览器默认触摸行为，由自定义触摸滚动处理器接管
           touchAction: 'none',
         }}
