@@ -99,20 +99,12 @@ export default function SshPlaceholder() {
         // 🔐 解密存储的密码/私钥，存到 credentialsMap 供 Terminal 使用
         const decryptedConn = await decryptConnection(conn)
 
-        // 检查共享 WebSocket 是否已连接（用于获取 token 等）
-        const ws = wsClientRef.current || (await getWsClient())
-        if (ws.status !== 'connected') {
-          const wsErr = ws.lastError
-          setConnectError(
-            wsErr ? `WebSocket 未连接: ${wsErr}` : 'WebSocket 未连接，请检查后端服务是否正常运行',
-          )
-          setSidebarOpen(false)
-          return null
-        }
-
         setConnectError(null) // 清除之前的错误
 
         // 存储解密凭据（Terminal 组件会使用它建立独立 WS 连接）
+        // 注意：不再检查共享 WS 状态，因为每个 Terminal 有自己的 WS 连接。
+        // 共享 WS 会在第一个终端连接后被后端阻塞（handle_terminal_connect 接管 I/O），
+        // 如果在此检查会导致后续连接/按钮操作全部失败。
         sessionCredentials.set(sessionId, {
           host: conn.host,
           port: conn.port,
