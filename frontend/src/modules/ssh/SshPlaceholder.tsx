@@ -468,7 +468,7 @@ export default function SshPlaceholder() {
   )
 
   return (
-    <div className="relative flex h-[calc(100vh-48px)] flex-col overflow-hidden lg:h-auto lg:flex-1">
+    <div className="relative flex h-dvh flex-col overflow-hidden lg:h-auto lg:flex-1">
       {/* 移动端侧边栏遮罩 */}
       {sidebarOpen && (
         <div

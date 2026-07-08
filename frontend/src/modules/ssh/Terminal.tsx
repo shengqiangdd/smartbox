@@ -623,53 +623,81 @@ export default function TerminalView({
         }}
       />
 
-      {/* 移动端快捷键工具栏 — 普通 flex 元素，不使用 fixed/absolute */}
-      {/* 键盘弹出时 flex-1 缩小，快捷键栏自动在键盘上方 */}
+      {/* 移动端快捷键工具栏 — 三行紧凑布局 */}
       <div className="flex shrink-0 flex-col border-t border-slate-700/30 bg-slate-900/95 md:hidden">
-        {/* 第一行：常用功能键 */}
-        <div className="flex items-center justify-around gap-0.5 px-1 py-1">
-          {[
-            { key: 'ESC', seq: '\x1b' },
-            { key: 'TAB', seq: '\t' },
-            { key: 'Ctrl+C', seq: '\x03' },
-            { key: 'Ctrl+D', seq: '\x04' },
-            { key: 'Ctrl+L', seq: '\x0c' },
-          ].map((s) => (
+        {/* 第一行：控制键 */}
+        <div className="flex gap-px px-0.5 pt-0.5">
+          {(
+            [
+              ['ESC', '\x1b'],
+              ['TAB', '\t'],
+              ['Ctrl+C', '\x03'],
+              ['Ctrl+D', '\x04'],
+              ['Ctrl+L', '\x0c'],
+            ] as const
+          ).map(([label, seq]) => (
             <button
-              key={s.key}
+              key={label}
               onPointerDown={(e) => {
                 e.preventDefault()
-                const encoded = btoa(unescape(encodeURIComponent(s.seq)))
+                const encoded = btoa(unescape(encodeURIComponent(seq)))
                 termWsRef.current?.send({ type: 'exec', connectionId, data: encoded })
                 onTerminalData?.(encoded)
               }}
-              className="flex h-8 flex-1 items-center justify-center rounded bg-slate-800/80 font-mono text-xs text-slate-300 active:bg-slate-700"
+              className="flex h-8 flex-1 items-center justify-center rounded bg-slate-800/80 font-mono text-[11px] text-slate-300 active:bg-slate-700 active:text-white"
             >
-              {s.key}
+              {label}
             </button>
           ))}
         </div>
-        {/* 第二行：方向键和翻页 */}
-        <div className="flex items-center justify-around gap-0.5 px-1 pt-0.5 pb-1">
-          {[
-            { key: '↑', seq: '\x1b[A' },
-            { key: '↓', seq: '\x1b[B' },
-            { key: '←', seq: '\x1b[D' },
-            { key: '→', seq: '\x1b[C' },
-            { key: 'PGUP', seq: '\x1b[5~' },
-            { key: 'PGDN', seq: '\x1b[6~' },
-          ].map((s) => (
+        {/* 第二行：方向键 + Home/End */}
+        <div className="flex gap-px px-0.5 pt-0.5">
+          {(
+            [
+              ['Hom', '\x1b[H'],
+              [' ↑ ', '\x1b[A'],
+              [' ↓ ', '\x1b[B'],
+              [' ← ', '\x1b[D'],
+              [' → ', '\x1b[C'],
+              ['End', '\x1b[F'],
+            ] as const
+          ).map(([label, seq]) => (
             <button
-              key={s.key}
+              key={label}
               onPointerDown={(e) => {
                 e.preventDefault()
-                const encoded = btoa(unescape(encodeURIComponent(s.seq)))
+                const encoded = btoa(unescape(encodeURIComponent(seq)))
                 termWsRef.current?.send({ type: 'exec', connectionId, data: encoded })
                 onTerminalData?.(encoded)
               }}
-              className="flex h-8 flex-1 items-center justify-center rounded bg-slate-800/80 font-mono text-xs text-slate-300 active:bg-slate-700"
+              className="flex h-8 flex-1 items-center justify-center rounded bg-slate-800/80 font-mono text-[11px] text-slate-300 active:bg-slate-700 active:text-white"
             >
-              {s.key}
+              {label}
+            </button>
+          ))}
+        </div>
+        {/* 第三行：翻页 + 编辑 */}
+        <div className="flex gap-px px-0.5 pt-0.5 pb-0.5">
+          {(
+            [
+              ['PG↑', '\x1b[5~'],
+              ['PG↓', '\x1b[6~'],
+              [' Ins', '\x1b[2~'],
+              [' Del', '\x1b[3~'],
+              ['  |  ', '\x7c'],
+            ] as const
+          ).map(([label, seq]) => (
+            <button
+              key={label}
+              onPointerDown={(e) => {
+                e.preventDefault()
+                const encoded = btoa(unescape(encodeURIComponent(seq)))
+                termWsRef.current?.send({ type: 'exec', connectionId, data: encoded })
+                onTerminalData?.(encoded)
+              }}
+              className="flex h-8 flex-1 items-center justify-center rounded bg-slate-800/80 font-mono text-[11px] text-slate-300 active:bg-slate-700 active:text-white"
+            >
+              {label}
             </button>
           ))}
         </div>
