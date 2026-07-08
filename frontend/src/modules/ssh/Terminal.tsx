@@ -3,7 +3,7 @@ import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
-import { Search, X, ChevronUp, ChevronDown, Keyboard } from 'lucide-react'
+import { Search, X, ChevronUp, ChevronDown } from 'lucide-react'
 import { createTerminalWsClient, type WsClient } from '../../services/websocket'
 import { getToken } from '../../services/auth'
 
@@ -103,10 +103,10 @@ export default function TerminalView({
     credentialsRef.current = credentials
   }, [credentials])
 
-  // ─── 移动端快捷键面板 ───
-  const [showShortcuts, setShowShortcuts] = useState(false)
+  // ─── 移动端快捷键工具栏 ──
+  // 已改为固定在终端底部的紧凑工具栏（像 Termux 一样），不再需要浮层状态
 
-  // ─── 移动端键盘弹出时自动滚动到光标 + 关闭快捷键面板 ──
+  // ─── 移动端键盘弹出时自动滚动到光标 ──
   useEffect(() => {
     const vv = window.visualViewport
     const term = terminalRef.current
@@ -116,11 +116,8 @@ export default function TerminalView({
 
     const handleResize = () => {
       const newHeight = vv.height
-      // 键盘弹出时高度缩小
+      // 键盘弹出时高度缩小 → 滚动到光标位置
       if (newHeight < prevHeight - 50) {
-        // 自动关闭快捷键面板，腾出空间给终端
-        setShowShortcuts(false)
-        // 滚动到光标位置
         setTimeout(() => {
           try {
             term.scrollToBottom()
@@ -621,78 +618,36 @@ export default function TerminalView({
         }}
       />
 
-      {/* 移动端快捷键浮动按钮 — 使用 onPointerDown 防止焦点转移（避免 IME 关闭） */}
-      <button
-        onPointerDown={(e) => {
-          e.preventDefault() // 阻止焦点转移，保持 IME 活跃
-          setShowShortcuts((v) => !v)
-        }}
-        className="absolute top-2 right-2 z-10 flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800/80 text-slate-400 backdrop-blur-sm transition-colors hover:bg-slate-700/80 hover:text-slate-200 md:hidden"
-        title="快捷键"
-      >
-        <Keyboard size={16} />
-      </button>
-
-      {/* 移动端快捷键面板 - 始终显示在可视区域底部 */}
-      {showShortcuts && (
-        <div
-          className="absolute inset-x-0 bottom-0 z-50 rounded-t-xl border-t border-slate-700/50 bg-slate-900/95 p-3 backdrop-blur-lg md:hidden"
-          style={{
-            maxHeight: '40vh',
-            overflowY: 'auto',
-          }}
-        >
-          <div className="flex items-center justify-between border-b border-slate-700/30 pb-2">
-            <span className="text-xs font-medium text-slate-300">快捷键（点击发送）</span>
+      {/* 移动端快捷键工具栏 — 固定在终端底部，像 Termux 一样紧凑 */}
+      <div className="flex shrink-0 flex-col border-t border-slate-700/30 bg-slate-900/95 md:hidden">
+        {/* 第一行：常用键 */}
+        <div className="flex items-center gap-1 overflow-x-auto px-1 py-1">
+          {[
+            { key: 'ESC', seq: '\x1b' },
+            { key: 'TAB', seq: '\t' },
+            { key: 'Ctrl+C', seq: '\x03' },
+            { key: 'Ctrl+D', seq: '\x04' },
+            { key: 'Ctrl+L', seq: '\x0c' },
+            { key: '↑', seq: '\x1b[A' },
+            { key: '↓', seq: '\x1b[B' },
+            { key: '←', seq: '\x1b[D' },
+            { key: '→', seq: '\x1b[C' },
+          ].map((s) => (
             <button
+              key={s.key}
               onPointerDown={(e) => {
-                e.preventDefault() // 阻止焦点转移，保持 IME 活跃
-                setShowShortcuts(false)
+                e.preventDefault()
+                const encoded = btoa(unescape(encodeURIComponent(s.seq)))
+                termWsRef.current?.send({ type: 'exec', connectionId, data: encoded })
+                onTerminalData?.(encoded)
               }}
-              className="btn-icon text-slate-500 hover:text-slate-300"
+              className="flex h-8 min-w-[44px] shrink-0 items-center justify-center rounded bg-slate-800/80 px-2 text-xs font-mono text-slate-300 active:bg-slate-700"
             >
-              <X size={14} />
+              {s.key}
             </button>
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
-            {[
-              { key: 'Tab', label: '补全', seq: '\t' },
-              { key: 'Esc', label: '取消', seq: '\x1b' },
-              { key: 'Ctrl+C', label: '中断', seq: '\x03' },
-              { key: 'Ctrl+D', label: 'EOF', seq: '\x04' },
-              { key: 'Ctrl+Z', label: '挂起', seq: '\x1a' },
-              { key: 'Ctrl+L', label: '清屏', seq: '\x0c' },
-              { key: '↑', label: '上', seq: '\x1b[A' },
-              { key: '↓', label: '下', seq: '\x1b[B' },
-              { key: '→', label: '右', seq: '\x1b[C' },
-              { key: '←', label: '左', seq: '\x1b[D' },
-              { key: 'Home', label: '行首', seq: '\x1b[H' },
-              { key: 'End', label: '行尾', seq: '\x1b[F' },
-              { key: 'PgUp', label: '上翻', seq: '\x1b[5~' },
-              { key: 'PgDn', label: '下翻', seq: '\x1b[6~' },
-              { key: 'Del', label: '删除', seq: '\x1b[3~' },
-            ].map((s) => (
-              <button
-                key={s.key}
-                onPointerDown={(e) => {
-                  // 阻止默认行为：防止焦点从 textarea 转移到按钮（避免 IME 中断）
-                  e.preventDefault()
-                  const encoded = btoa(unescape(encodeURIComponent(s.seq)))
-                  termWsRef.current?.send({ type: 'exec', connectionId, data: encoded })
-                  onTerminalData?.(encoded)
-                }}
-                className="flex min-h-[44px] items-center justify-between rounded-lg bg-slate-800/80 px-3 py-2 transition-colors active:bg-slate-700"
-              >
-                <kbd className="font-mono text-sm text-slate-200">{s.key}</kbd>
-                <span className="text-[11px] text-slate-500">{s.label}</span>
-              </button>
-            ))}
-          </div>
-          <div className="mt-3 border-t border-slate-700/30 pt-2">
-            <p className="text-center text-[11px] text-slate-500">💡 单指滑动可滚动终端内容</p>
-          </div>
+          ))}
         </div>
-      )}
+      </div>
     </div>
   )
 }
