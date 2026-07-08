@@ -106,50 +106,38 @@ export default function TerminalView({
   // ─── 移动端快捷键面板 ───
   const [showShortcuts, setShowShortcuts] = useState(false)
 
-  // ─── 移动端虚拟键盘高度补偿 ──
-  // 使用 screen.height 作为基准（不随键盘变化），计算键盘高度
-  const [keyboardHeight, setKeyboardHeight] = useState(0)
+  // ─── 视口高度跟踪（移动端键盘适配核心）──
+  // 直接用 visualViewport.height 作为终端根 div 的高度
+  // 键盘弹出时 visualViewport.height 自动缩小，终端跟着缩小
+  const [viewportHeight, setViewportHeight] = useState(0)
 
   useEffect(() => {
-    if (!window.visualViewport) return
+    const vv = window.visualViewport
+    if (!vv) return
 
-    const updateKeyboardHeight = () => {
-      const vv = window.visualViewport!
-      // 键盘高度 = 屏幕高度 - viewport 高度 - viewport 顶部偏移
-      // screen.height 是固定值，不随键盘变化
-      // visualViewport.offsetTop 在键盘弹出时会增加（viewport 上移）
-      const kbHeight = window.screen.height - vv.height - vv.offsetTop
-      setKeyboardHeight(Math.max(0, kbHeight))
-    }
-
-    // 延迟计算，等待键盘动画完成
-    const handleResize = () => {
-      setTimeout(updateKeyboardHeight, 100)
-    }
-
-    window.visualViewport.addEventListener('resize', handleResize)
-    window.visualViewport.addEventListener('scroll', handleResize)
-    updateKeyboardHeight()
+    const update = () => setViewportHeight(Math.floor(vv.height))
+    vv.addEventListener('resize', update)
+    vv.addEventListener('scroll', update)
+    update()
 
     return () => {
-      window.visualViewport?.removeEventListener('resize', handleResize)
-      window.visualViewport?.removeEventListener('scroll', handleResize)
+      vv.removeEventListener('resize', update)
+      vv.removeEventListener('scroll', update)
     }
   }, [])
 
-  // 键盘高度变化时重新计算终端尺寸
+  // 视口变化时重新计算终端尺寸
   useEffect(() => {
-    if (!fitAddonRef.current || !containerRef.current) return
-    // 延迟执行确保 DOM 已更新
+    if (!fitAddonRef.current || !containerRef.current || viewportHeight <= 0) return
     const timer = setTimeout(() => {
       try {
         fitAddonRef.current?.fit()
       } catch {
         /* ignore */
       }
-    }, 100)
+    }, 50)
     return () => clearTimeout(timer)
-  }, [keyboardHeight])
+  }, [viewportHeight])
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -342,6 +330,12 @@ export default function TerminalView({
                 }
               }
             }, 50)
+            return
+          }
+
+          // 过滤后端错误响应（SSH 断开后前端消息被主循环拒绝）
+          if (msg.type === 'error') {
+            connectedRef.current = false
             return
           }
 
@@ -568,7 +562,15 @@ export default function TerminalView({
   }, [])
 
   return (
-    <div className={`relative flex flex-col ${className}`} style={{ minHeight: 0 }}>
+    <div
+      className={`relative flex flex-col ${className}`}
+      style={{
+        minHeight: 0,
+        // 直接用 visualViewport.height 作为终端高度
+        // 键盘弹出时 visualViewport.height 自动缩小
+        height: viewportHeight > 0 ? `${viewportHeight}px` : '100%',
+      }}
+    >
       {/* 搜索面板 */}
       {showSearch && (
         <div className="absolute right-0 bottom-0 left-0 z-20 flex items-center gap-1 border-t border-slate-700/50 bg-slate-900 px-2 py-1">
@@ -625,9 +627,6 @@ export default function TerminalView({
         ref={containerRef}
         className="flex-1 overflow-hidden bg-slate-950 px-1"
         style={{
-          // 使用 margin-bottom 为键盘预留空间
-          // flex-1 会让容器占据所有剩余空间，margin-bottom 会减少可用空间
-          marginBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : undefined,
           // 阻止浏览器默认触摸行为，由自定义触摸滚动处理器接管
           touchAction: 'none',
         }}
@@ -645,15 +644,13 @@ export default function TerminalView({
         <Keyboard size={16} />
       </button>
 
-      {/* 移动端快捷键面板 - 键盘弹出时显示在键盘上方 */}
+      {/* 移动端快捷键面板 - 始终显示在可视区域底部 */}
       {showShortcuts && (
         <div
-          className="fixed inset-x-0 z-50 rounded-t-xl border-t border-slate-700/50 bg-slate-900/95 p-3 backdrop-blur-lg md:hidden"
+          className="absolute inset-x-0 bottom-0 z-50 rounded-t-xl border-t border-slate-700/50 bg-slate-900/95 p-3 backdrop-blur-lg md:hidden"
           style={{
-            bottom: keyboardHeight > 0 ? `${keyboardHeight}px` : '0',
             maxHeight: '40vh',
             overflowY: 'auto',
-            transition: 'bottom 0.2s ease-out',
           }}
         >
           <div className="flex items-center justify-between border-b border-slate-700/30 pb-2">
