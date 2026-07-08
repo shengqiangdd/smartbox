@@ -69,6 +69,8 @@ html:not(.dark) {
   body,
   #root {
     height: 100%;
+    /* 防止 overscroll 触发浏览器后退/刷新 */
+    overscroll-behavior: none;
   }
 
   body {
@@ -79,6 +81,10 @@ html:not(.dark) {
       'Noto Sans SC', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* 防止 iOS Safari 橡皮筋效果 */
+    position: fixed;
+    width: 100%;
+    overflow: hidden;
   }
 
   ::-webkit-scrollbar {
@@ -657,14 +663,20 @@ html:not(.dark) .markdown-preview pre.cm-code-block code {
    ============================================ */
 /* 终端容器触摸滚动支持 */
 .xterm .xterm-viewport {
-  -webkit-overflow-scrolling: touch;
+  -webkit-overflow-scrolling: touch !important;
   overflow-y: auto !important;
+  overflow-x: hidden !important;
   scrollbar-width: thin;
+  /* 防止 overscroll 触发浏览器后退/刷新 */
+  overscroll-behavior: contain;
+  /* 允许触摸滚动 */
+  touch-action: pan-y;
 }
 
-/* 终端容器禁止默认触摸行为，让 xterm 自己处理 */
+/* 终端屏幕区域：允许垂直滚动，阻止水平滑动 */
 .xterm .xterm-screen {
-  touch-action: none;
+  touch-action: pan-y;
+  position: relative;
 }
 
 /* 终端获得焦点时禁用输入法（强制英文输入） */

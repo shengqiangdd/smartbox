@@ -106,6 +106,43 @@ export default function TerminalView({
   // ─── 移动端快捷键面板 ───
   const [showShortcuts, setShowShortcuts] = useState(false)
 
+  // ─── 移动端虚拟键盘高度补偿 ───
+  const [keyboardHeight, setKeyboardHeight] = useState(0)
+
+  useEffect(() => {
+    if (!window.visualViewport) return
+
+    const handleResize = () => {
+      const vv = window.visualViewport!
+      // 键盘高度 = 窗口高度 - viewport 高度
+      const kbHeight = window.innerHeight - vv.height
+      setKeyboardHeight(Math.max(0, kbHeight))
+    }
+
+    window.visualViewport.addEventListener('resize', handleResize)
+    window.visualViewport.addEventListener('scroll', handleResize)
+    handleResize()
+
+    return () => {
+      window.visualViewport?.removeEventListener('resize', handleResize)
+      window.visualViewport?.removeEventListener('scroll', handleResize)
+    }
+  }, [])
+
+  // 键盘高度变化时重新计算终端尺寸
+  useEffect(() => {
+    if (!fitAddonRef.current || !containerRef.current) return
+    // 延迟执行确保 DOM 已更新
+    const timer = setTimeout(() => {
+      try {
+        fitAddonRef.current?.fit()
+      } catch {
+        /* ignore */
+      }
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [keyboardHeight])
+
   useEffect(() => {
     if (!containerRef.current) return
 
@@ -467,8 +504,13 @@ export default function TerminalView({
         ref={containerRef}
         className="flex-1 overflow-hidden bg-slate-950 px-1"
         lang="en"
-        inputMode="none"
-        style={{ WebkitOverflowScrolling: 'touch' }}
+        style={{
+          WebkitOverflowScrolling: 'touch',
+          // 移动端键盘弹出时，减少容器高度以补偿
+          marginBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : undefined,
+          // 键盘弹出时缩短高度
+          height: keyboardHeight > 0 ? `calc(100% - ${keyboardHeight}px)` : undefined,
+        }}
       />
 
       {/* 移动端快捷键浮动按钮 */}
@@ -480,11 +522,16 @@ export default function TerminalView({
         <Keyboard size={16} />
       </button>
 
-      {/* 移动端快捷键面板 */}
+      {/* 移动端快捷键面板 - 键盘弹出时显示在键盘上方 */}
       {showShortcuts && (
         <div
-          className="absolute inset-x-0 bottom-0 z-30 rounded-t-xl border-t border-slate-700/50 bg-slate-900/95 p-3 backdrop-blur-lg md:hidden"
-          style={{ maxHeight: '60vh', overflowY: 'auto' }}
+          className="fixed inset-x-0 z-50 rounded-t-xl border-t border-slate-700/50 bg-slate-900/95 p-3 backdrop-blur-lg md:hidden"
+          style={{
+            bottom: keyboardHeight > 0 ? `${keyboardHeight}px` : '0',
+            maxHeight: keyboardHeight > 0 ? '40vh' : '60vh',
+            overflowY: 'auto',
+            transition: 'bottom 0.2s ease-out',
+          }}
         >
           <div className="flex items-center justify-between border-b border-slate-700/30 pb-2">
             <span className="text-xs font-medium text-slate-300">快捷键（点击发送）</span>
