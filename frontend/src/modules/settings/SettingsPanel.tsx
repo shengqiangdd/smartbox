@@ -10,12 +10,11 @@ export default function SettingsPanel() {
   const setTheme = useAppStore((s) => s.setTheme)
 
   const themeOptions = useMemo(
-    () =>
-      [
-        { value: 'dark' as const, label: '深色', icon: Moon },
-        { value: 'light' as const, label: '浅色', icon: Sun },
-        { value: 'system' as const, label: '跟随系统', icon: Monitor },
-      ],
+    () => [
+      { value: 'dark' as const, label: '深色', icon: Moon },
+      { value: 'light' as const, label: '浅色', icon: Sun },
+      { value: 'system' as const, label: '跟随系统', icon: Monitor },
+    ],
     [],
   )
 

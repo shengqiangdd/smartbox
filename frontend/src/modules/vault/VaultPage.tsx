@@ -52,7 +52,11 @@ interface EntryCardProps {
   onToggleShow: (id: string) => void
   onCopy: (id: string, value: string) => void
   onDelete: (id: string) => void
-  kindMeta: (kind: string) => { label: string; icon: React.ComponentType<{ size?: number; className?: string }>; color: string }
+  kindMeta: (kind: string) => {
+    label: string
+    icon: React.ComponentType<{ size?: number; className?: string }>
+    color: string
+  }
 }
 
 const EntryCard = memo(function EntryCard({
@@ -105,7 +109,7 @@ const EntryCard = memo(function EntryCard({
       </div>
 
       <div className="mb-2 rounded bg-slate-900/60 px-3 py-2">
-        <code className="break-all text-xs text-slate-400">
+        <code className="text-xs break-all text-slate-400">
           {showValue ? entry.value : '•'.repeat(Math.min(entry.value.length, 20))}
         </code>
       </div>
@@ -215,10 +219,7 @@ export default function VaultPage() {
     })
   }, [entries, search, kindFilter])
 
-  const kindMetaFn = useCallback(
-    (kind: string) => KIND_META[kind] ?? KIND_META.note!,
-    [],
-  )
+  const kindMetaFn = useCallback((kind: string) => KIND_META[kind] ?? KIND_META.note!, [])
 
   // 渲染各类型数量统计
   const kindCounts = useMemo(() => {
@@ -339,9 +340,7 @@ export default function VaultPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-full max-w-md rounded-lg border border-slate-700 bg-slate-900 p-6">
             <h2 className="mb-4 text-lg font-semibold text-slate-200">新增凭据</h2>
-            <p className="text-sm text-slate-400">
-              增加凭据功能开发中，敬请期待...
-            </p>
+            <p className="text-sm text-slate-400">增加凭据功能开发中，敬请期待...</p>
             <button
               onClick={() => setShowAddModal(false)}
               className="mt-4 rounded-lg bg-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-600"

@@ -620,7 +620,9 @@ export default function MonitorPage() {
           <div className="flex shrink-0 items-center gap-1.5">
             <Network size={12} className="text-amber-400" />
             <span className="text-[10px] text-slate-500">连接</span>
-            <span className="font-mono text-[11px] text-slate-300">{healthDisplay.connections}</span>
+            <span className="font-mono text-[11px] text-slate-300">
+              {healthDisplay.connections}
+            </span>
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
             <Bell
@@ -718,11 +720,7 @@ export default function MonitorPage() {
                     <div>
                       <div className="mb-1 flex items-center gap-2">
                         <Cpu size={12} className="text-cyan-500" />
-                        <ProgressBar
-                          value={s.cpu}
-                          label="CPU"
-                          color="from-cyan-500 to-cyan-400"
-                        />
+                        <ProgressBar value={s.cpu} label="CPU" color="from-cyan-500 to-cyan-400" />
                       </div>
                       <Sparkline data={h.map((p) => p.cpu)} color="#06b6d4" />
                     </div>
@@ -760,12 +758,10 @@ export default function MonitorPage() {
                       <Network size={12} className="text-amber-500" />
                       <div className="flex gap-4 text-[11px]">
                         <span className="text-slate-400">
-                          ↓{' '}
-                          <span className="font-mono text-slate-300">{formatSpeed(s.netRx)}</span>
+                          ↓ <span className="font-mono text-slate-300">{formatSpeed(s.netRx)}</span>
                         </span>
                         <span className="text-slate-400">
-                          ↑{' '}
-                          <span className="font-mono text-slate-300">{formatSpeed(s.netTx)}</span>
+                          ↑ <span className="font-mono text-slate-300">{formatSpeed(s.netTx)}</span>
                         </span>
                       </div>
                       <HardDrive size={12} className="text-teal-500" />

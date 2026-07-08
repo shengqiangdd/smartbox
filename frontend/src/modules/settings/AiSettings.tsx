@@ -217,10 +217,7 @@ const AiSettings = memo(function AiSettings() {
 
           {showProviderSelector && (
             <>
-              <div
-                className="fixed inset-0 z-40"
-                onClick={() => setShowProviderSelector(false)}
-              />
+              <div className="fixed inset-0 z-40" onClick={() => setShowProviderSelector(false)} />
               <div className="absolute top-full right-0 left-0 z-50 mt-1 overflow-hidden rounded-lg border border-slate-700 bg-slate-800 shadow-xl">
                 {AI_PROVIDERS.map((provider) => (
                   <button
@@ -319,15 +316,15 @@ const AiSettings = memo(function AiSettings() {
           <MessageSquare size={12} />
           模型
           {freeModelCount > 0 && (
-            <span className="ml-1 text-[10px] text-emerald-500/70">{freeModelCount} 个免费模型</span>
+            <span className="ml-1 text-[10px] text-emerald-500/70">
+              {freeModelCount} 个免费模型
+            </span>
           )}
           <button
             onClick={() => fetchModels(currentProvider.id)}
             disabled={isFetchingModels}
             className="hover:text-wrench-400 ml-auto flex min-h-[44px] items-center gap-1 px-2 text-xs text-slate-500 transition-colors disabled:opacity-50"
-            title={
-              formattedFetchTime ? `上次更新: ${formattedFetchTime}` : '从 API 获取最新模型'
-            }
+            title={formattedFetchTime ? `上次更新: ${formattedFetchTime}` : '从 API 获取最新模型'}
           >
             {isFetchingModels ? (
               <Loader2 size={11} className="animate-spin" />
@@ -372,10 +369,7 @@ const AiSettings = memo(function AiSettings() {
 
             {showModelSelector && (
               <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setShowModelSelector(false)}
-                />
+                <div className="fixed inset-0 z-40" onClick={() => setShowModelSelector(false)} />
                 <div className="absolute top-full right-0 left-0 z-50 mt-1 max-h-[300px] overflow-y-auto rounded-lg border border-slate-700 bg-slate-800 shadow-xl">
                   {currentProvider.id === 'custom' ? (
                     <button

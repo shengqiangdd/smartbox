@@ -6,14 +6,7 @@
  */
 
 import { useState, useCallback, memo } from 'react'
-import {
-  Download,
-  Upload,
-  Lock,
-  AlertTriangle,
-  Loader2,
-  CheckCircle2,
-} from 'lucide-react'
+import { Download, Upload, Lock, AlertTriangle, Loader2, CheckCircle2 } from 'lucide-react'
 import { exportConfig, importConfigFromFile } from '../../services/importExport'
 import { ConfirmModal } from '../../components/ConfirmModal'
 
@@ -110,11 +103,7 @@ const ImportExport = memo(function ImportExport() {
             disabled={isExporting}
             className="btn btn-primary flex items-center gap-2 text-xs"
           >
-            {isExporting ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <Download size={14} />
-            )}
+            {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
             {isExporting ? '导出中...' : '导出配置'}
           </button>
         </div>
@@ -140,9 +129,7 @@ const ImportExport = memo(function ImportExport() {
               />
             </div>
             {importingFile && (
-              <p className="mt-1 text-[11px] text-slate-500">
-                已选择：{importingFile.name}
-              </p>
+              <p className="mt-1 text-[11px] text-slate-500">已选择：{importingFile.name}</p>
             )}
           </div>
 
@@ -151,11 +138,7 @@ const ImportExport = memo(function ImportExport() {
             disabled={!importingFile || isImporting}
             className="btn btn-primary flex items-center gap-2 text-xs"
           >
-            {isImporting ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <Upload size={14} />
-            )}
+            {isImporting ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
             {isImporting ? '导入中...' : '导入配置'}
           </button>
 

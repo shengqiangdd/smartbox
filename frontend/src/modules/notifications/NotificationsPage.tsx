@@ -89,9 +89,7 @@ const ChannelCard = memo(function ChannelCard({
         <div className="flex items-center gap-1">
           <span
             className={`rounded-full px-2 py-0.5 text-[10px] ${
-              channel.enabled
-                ? 'bg-green-900/30 text-green-400'
-                : 'bg-slate-700/50 text-slate-500'
+              channel.enabled ? 'bg-green-900/30 text-green-400' : 'bg-slate-700/50 text-slate-500'
             }`}
           >
             {channel.enabled ? '已启用' : '已禁用'}
@@ -290,9 +288,7 @@ export default function NotificationsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-full max-w-md rounded-lg border border-slate-700 bg-slate-900 p-6">
             <h2 className="mb-4 text-lg font-semibold text-slate-200">添加通知渠道</h2>
-            <p className="text-sm text-slate-400">
-              通知渠道配置功能开发中，敬请期待...
-            </p>
+            <p className="text-sm text-slate-400">通知渠道配置功能开发中，敬请期待...</p>
             <button
               onClick={() => setShowAddModal(false)}
               className="mt-4 rounded-lg bg-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-600"
