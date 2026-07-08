@@ -63,6 +63,37 @@ export const AI_PROVIDERS: AiProvider[] = [
       { value: 'openrouter/free', label: 'Free Router (自动选免费模型)', free: true },
     ],
   },
+  // ─── Agnes (Sapiens AI) ──
+  {
+    id: 'agnes',
+    name: 'Agnes (Sapiens AI)',
+    baseUrl: 'https://api.agnes.dev/v1',
+    description: 'Agnes AI 系列模型，专注代码智能',
+    defaultModel: 'agnes-2.0-flash',
+    models: [
+      { value: 'agnes-2.0-flash', label: 'Agnes 2.0 Flash', free: true },
+      { value: 'agnes-2.0-pro', label: 'Agnes 2.0 Pro' },
+      { value: 'agnes-1.5', label: 'Agnes 1.5' },
+    ],
+  },
+  // ─── OpenCode ──
+  {
+    id: 'opencode',
+    name: 'OpenCode',
+    baseUrl: 'https://api.opencode.ai/v1',
+    description: 'OpenCode 开源模型平台，提供多种免费模型',
+    defaultModel: 'opencode-m1',
+    models: [
+      { value: 'opencode-m1', label: 'OpenCode M1', free: true },
+      { value: 'opencode-m2', label: 'OpenCode M2' },
+      { value: 'opencode-code-v1', label: 'OpenCode Code V1' },
+      { value: 'deepseek/deepseek-v4-free', label: 'DeepSeek V4 (免费)', free: true },
+      { value: 'deepseek/deepseek-v3-free', label: 'DeepSeek V3 (免费)', free: true },
+      { value: 'deepseek/deepseek-r1-free', label: 'DeepSeek R1 (免费)', free: true },
+      { value: 'mimo/mimo-v1-free', label: 'Mimo V1 (免费)', free: true },
+      { value: 'mimo/mimo-v2-free', label: 'Mimo V2 (免费)', free: true },
+    ],
+  },
   // ─── SiliconFlow（国内免费额度）───
   {
     id: 'siliconflow',
