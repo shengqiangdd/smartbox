@@ -1,5 +1,6 @@
 # ============================================
 # Stage 1: Build React frontend
+# Version: 1.0.3 - Docker Compose & Monitor fixes
 # ============================================
 FROM node:22-alpine AS frontend-builder
 
