@@ -267,7 +267,7 @@ export default function DockerMonitor({ connectionId, containers }: Props) {
   // 解析大小字符串
 
   // 自动轮询
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     if (!autoRefresh) {
       if (timerRef.current) {
@@ -287,6 +287,7 @@ export default function DockerMonitor({ connectionId, containers }: Props) {
       }
     }
   }, [autoRefresh, fetchStats])
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   // 选中容器对应的监控数据
   const selectedMonitors = monitors.filter((m) => selectedIds.has(m.id))
