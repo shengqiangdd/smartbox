@@ -1,5 +1,8 @@
 name: Merge Multi-Arch Manifest
 
+# 暂时禁用 - 等arm64开启后再合并
+if: false
+
 on:
   workflow_run:
     workflows: ["Build arm64 Image"]

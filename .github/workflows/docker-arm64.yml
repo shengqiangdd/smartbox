@@ -1,5 +1,8 @@
 name: Build arm64 Image
 
+# 暂时禁用 - 等所有功能稳定后再开启
+if: false
+
 on:
   push:
     branches: [main]
