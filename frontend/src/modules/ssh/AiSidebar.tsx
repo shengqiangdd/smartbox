@@ -578,7 +578,7 @@ export default function AiSidebar({ sessionId: _sessionId, connectionId, onClose
       </div>
 
       {/* 输入区 */}
-      <div className="border-t border-slate-700/50 p-3">
+      <div className="shrink-0 border-t border-slate-700/50 p-3">
         <div className="flex items-end gap-2">
           <textarea
             ref={inputRef}
