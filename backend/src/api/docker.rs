@@ -52,7 +52,9 @@ pub struct ImageRequest {
 pub struct TagRequest {
     #[serde(alias = "connectionId")]
     pub connection_id: String,
+    #[serde(alias = "source")]
     pub id: String,
+    #[serde(alias = "target")]
     pub tag: String,
 }
 
@@ -101,6 +103,7 @@ pub struct ComposeRequest {
 pub struct ComposeActionRequest {
     #[serde(alias = "connectionId")]
     pub connection_id: String,
+    #[serde(alias = "filePath")]
     pub path: String,
     pub action: String,
     pub service: Option<String>,
@@ -139,13 +142,21 @@ async fn docker_exec(state: &Arc<AppState>, connection_id: &str, docker_args: &[
         s
     };
 
-    let (stdout, stderr, _exit_code) = session
+    let (stdout, stderr, exit_code) = session
         .exec(&command)
         .await
         .map_err(|e| format!("Docker exec failed: {}", e))?;
 
-    if !stderr.is_empty() && stdout.is_empty() {
-        return Err(stderr);
+    if exit_code != 0 {
+        // 命令失败：优先返回 stderr，其次 stdout，最后通用错误
+        let msg = if !stderr.is_empty() {
+            stderr.trim().to_string()
+        } else if !stdout.is_empty() {
+            stdout.trim().to_string()
+        } else {
+            format!("docker command exited with code {}", exit_code)
+        };
+        return Err(msg);
     }
 
     // Audit log mutating docker operations
@@ -177,8 +188,11 @@ pub async fn docker_ps(
     State(state): State<Arc<AppState>>,
     Json(req): Json<PsRequest>,
 ) -> ApiResponse<DockerExecResponse> {
-    let all_flag = if req.all.unwrap_or(false) { "-a" } else { "" };
-    match docker_exec(&state, &req.connection_id, &[all_flag, "ps", "--format", "json", "--no-trunc"]).await {
+    let mut args = vec!["ps", "--format", "json", "--no-trunc"];
+    if req.all.unwrap_or(false) {
+        args.push("-a");
+    }
+    match docker_exec(&state, &req.connection_id, &args).await {
         Ok(data) => ApiResponse::success(DockerExecResponse { data }),
         Err(e) => ApiResponse::error(-1, &e),
     }
@@ -413,9 +427,31 @@ pub async fn container_stats(
 pub async fn compose_list(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ComposeRequest>,
-) -> ApiResponse<DockerExecResponse> {
+) -> ApiResponse<serde_json::Value> {
     match docker_exec(&state, &req.connection_id, &["compose", "ls", "--format", "json"]).await {
-        Ok(data) => ApiResponse::success(DockerExecResponse { data }),
+        Ok(data) => {
+            // 解析 docker compose ls --format json 输出
+            // 格式: [{"ID":"xxx","Name":"project","Status":"Running(2)","ConfigFiles":"/path/to/docker-compose.yml"}]
+            let projects: Vec<serde_json::Value> = data
+                .trim()
+                .lines()
+                .filter(|line| !line.is_empty())
+                .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+                .map(|item| {
+                    let config_files = item.get("ConfigFiles").and_then(|v| v.as_str()).unwrap_or("");
+                    let name = item.get("Name").and_then(|v| v.as_str()).unwrap_or("");
+                    let status = item.get("Status").and_then(|v| v.as_str()).unwrap_or("");
+                    let id = item.get("ID").and_then(|v| v.as_str()).unwrap_or("");
+                    serde_json::json!({
+                        "path": config_files,
+                        "name": name,
+                        "status": status,
+                        "id": id,
+                    })
+                })
+                .collect();
+            ApiResponse::success(serde_json::json!({ "projects": projects }))
+        }
         Err(e) => ApiResponse::error(-1, &e),
     }
 }

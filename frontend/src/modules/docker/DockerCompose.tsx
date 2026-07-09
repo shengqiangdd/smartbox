@@ -94,19 +94,25 @@ function DockerComposeInner({ connectionId }: Props) {
             setProjects([])
             return
           }
-          const projectsData = json.data?.data ?? json.data ?? json.projects ?? []
+          const projectsData =
+            json.data?.projects ?? json.data?.data ?? json.data ?? json.projects ?? []
           const discovered: ComposeProject[] = (
             Array.isArray(projectsData) ? projectsData : []
-          ).map((p: { path: string; name?: string }) => ({
-            path: p.path,
-            name:
+          ).map((p: { path?: string; name?: string; ConfigFiles?: string; Name?: string }) => {
+            const filePath = p.path || p.ConfigFiles || ''
+            const projName =
               p.name ||
-              p.path
+              p.Name ||
+              filePath
                 .split('/')
                 .pop()!
-                .replace(/\.(yml|yaml)$/, ''),
-            services: [],
-          }))
+                .replace(/\.(yml|yaml)$/, '')
+            return {
+              path: filePath,
+              name: projName,
+              services: [],
+            }
+          })
           setProjects(discovered)
         } finally {
           setLoading(false)
