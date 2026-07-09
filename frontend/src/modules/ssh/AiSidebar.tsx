@@ -589,18 +589,49 @@ export default function AiSidebar({ sessionId: _sessionId, connectionId, onClose
                     )
                   : msg.content}
               </div>
-              {/* 执行结果：添加「发送给 AI 分析」按钮 */}
+              {/* 执行中 loading */}
+              {'_executing' in msg && msg._executing && (
+                <div className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-500">
+                  <Loader2 size={12} className="animate-spin" />
+                  命令执行中…
+                </div>
+              )}
+              {/* 执行结果展示 */}
               {'_execResult' in msg && !msg._executing && msg._execResult && (
-                <button
-                  onClick={() => {
-                    const cmd = extractCommands(msg.content).pop() || ''
-                    const execResult = (msg as { _execResult?: string })._execResult || ''
-                    analyzeResult(cmd, execResult, '')
-                  }}
-                  className="border-wrench-600/30 bg-wrench-600/10 text-wrench-400 hover:bg-wrench-600/20 mt-2 flex items-center gap-1 rounded border px-2 py-1 text-[11px]"
-                >
-                  <Send size={10} /> 发送给 AI 分析
-                </button>
+                <div className="mt-2">
+                  {(() => {
+                    const er = msg._execResult as {
+                      command: string
+                      stdout?: string
+                      stderr?: string
+                    }
+                    return (
+                      <>
+                        {er.stdout && (
+                          <pre className="max-h-40 overflow-auto rounded bg-slate-950/60 p-2 font-mono text-[11px] break-all whitespace-pre-wrap text-slate-300">
+                            {er.stdout}
+                          </pre>
+                        )}
+                        {er.stderr && (
+                          <pre className="mt-1 max-h-20 overflow-auto rounded bg-red-950/30 p-2 font-mono text-[11px] break-all whitespace-pre-wrap text-red-400/80">
+                            {er.stderr}
+                          </pre>
+                        )}
+                        {!er.stdout && !er.stderr && (
+                          <p className="text-[11px] text-slate-500">（无输出）</p>
+                        )}
+                        <button
+                          onClick={() =>
+                            analyzeResult(er.command, er.stdout || '', er.stderr || '')
+                          }
+                          className="border-wrench-600/30 bg-wrench-600/10 text-wrench-400 hover:bg-wrench-600/20 mt-2 flex items-center gap-1 rounded border px-2 py-1 text-[11px]"
+                        >
+                          <Send size={10} /> 发送给 AI 分析
+                        </button>
+                      </>
+                    )
+                  })()}
+                </div>
               )}
             </div>
           </div>
