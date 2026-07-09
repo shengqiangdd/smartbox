@@ -179,6 +179,10 @@ pub async fn build_app(state: Arc<AppState>) -> Router {
         .route("/docker/prune", axum::routing::post(api::docker::prune_images))
         .route("/docker/history", axum::routing::post(api::docker::image_history))
         .route("/docker/stats", axum::routing::post(api::docker::container_stats))
+        .route(
+            "/docker/stats/all",
+            axum::routing::post(api::docker::container_stats_all),
+        )
         .route("/docker/exec", axum::routing::post(api::docker::exec_container))
         .route("/docker/compose", axum::routing::post(api::docker::compose_list))
         .route("/docker/compose/action", axum::routing::post(api::docker::compose_action))

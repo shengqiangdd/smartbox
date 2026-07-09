@@ -419,8 +419,14 @@ function DockerComposeInner({ connectionId }: Props) {
 
       {/* 日志面板 */}
       {logData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="mx-4 flex h-[80vh] w-full max-w-4xl flex-col rounded-lg border border-slate-700 bg-slate-900 shadow-2xl">
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50"
+          onClick={() => setLogData(null)}
+        >
+          <div
+            className="mx-4 flex h-[80vh] w-full max-w-4xl flex-col rounded-lg border border-slate-700 bg-slate-900 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex shrink-0 items-center border-b border-slate-700/50 px-4 py-3">
               <FileText size={16} className="text-wrench-400 mr-2" />
               <h2 className="text-sm font-semibold text-slate-200">Compose 日志</h2>

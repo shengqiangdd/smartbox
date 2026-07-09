@@ -157,8 +157,14 @@ export default function DockerTerminal({
   }, [connectionId, containerId, shell])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="mx-2 flex h-[80vh] w-full max-w-5xl flex-col rounded-lg border border-slate-700 bg-slate-900 shadow-2xl">
+    <div
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60"
+      onClick={onClose}
+    >
+      <div
+        className="mx-2 flex h-[80vh] w-full max-w-5xl flex-col rounded-lg border border-slate-700 bg-slate-900 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* 标题栏 */}
         <div className="flex shrink-0 items-center border-b border-slate-700/50 px-4 py-2.5">
           <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />

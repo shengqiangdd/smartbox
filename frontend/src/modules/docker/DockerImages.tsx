@@ -1,5 +1,15 @@
-import { useState, useCallback, memo } from 'react'
-import { Trash2, Search, Download, Upload, Tag as TagIcon, Layers, X } from 'lucide-react'
+import { useState, useCallback, memo, useMemo } from 'react'
+import {
+  Trash2,
+  Search,
+  Download,
+  Upload,
+  Tag as TagIcon,
+  X,
+  Loader2,
+  Info,
+  Trash,
+} from 'lucide-react'
 import type { DockerImage } from './index'
 
 function notify(message: string, type: 'success' | 'error' | 'info' = 'info') {
@@ -24,6 +34,80 @@ interface HistoryLayer {
 
 type ActionType = 'pull' | 'push' | 'tag' | 'prune'
 
+function getActionLabel(type: ActionType) {
+  const map: Record<ActionType, string> = {
+    pull: '拉取',
+    push: '推送',
+    tag: '打标签',
+    prune: '清理',
+  }
+  return map[type] || type
+}
+
+/** 确认删除弹窗 */
+function ConfirmModal({
+  title,
+  message,
+  danger,
+  onConfirm,
+  onCancel,
+}: {
+  title: string
+  message: string
+  danger?: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60"
+      onClick={onCancel}
+    >
+      <div
+        className="mx-4 w-full max-w-sm rounded-lg border border-slate-700 bg-slate-900 p-5 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center gap-3">
+          <div
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+              danger ? 'bg-red-900/30' : 'bg-amber-900/30'
+            }`}
+          >
+            {danger ? (
+              <Trash2 size={18} className="text-red-400" />
+            ) : (
+              <Info size={18} className="text-amber-400" />
+            )}
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-slate-200">{title}</h3>
+            <p className="mt-0.5 text-xs text-slate-400">此操作不可恢复</p>
+          </div>
+        </div>
+        <p className="mb-5 rounded-md bg-slate-800/60 px-3 py-2 text-xs text-slate-300">
+          {message}
+        </p>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="rounded-md px-4 py-2 text-xs text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200"
+          >
+            取消
+          </button>
+          <button
+            onClick={onConfirm}
+            className={`rounded-md px-4 py-2 text-xs text-white transition-colors ${
+              danger ? 'bg-red-600 hover:bg-red-500' : 'bg-wrench-600 hover:bg-wrench-500'
+            }`}
+          >
+            确认
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) {
   const [filter, setFilter] = useState('')
   const [actionLoading, setActionLoading] = useState<string | null>(null)
@@ -34,6 +118,10 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
   const [modalInput2, setModalInput2] = useState('')
   const [modalLoading, setModalLoading] = useState(false)
 
+  // 删除确认
+  const [deleteTarget, setDeleteTarget] = useState<DockerImage | null>(null)
+  const [pruneConfirm, setPruneConfirm] = useState(false)
+
   // 详情面板
   const [selectedImage, setSelectedImage] = useState<DockerImage | null>(null)
   const [history, setHistory] = useState<HistoryLayer[]>([])
@@ -42,30 +130,33 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
   const [inspectLoading, setInspectLoading] = useState(false)
   const [detailTab, setDetailTab] = useState<'history' | 'inspect'>('history')
 
-  const filtered = filter
-    ? images.filter(
-        (img) =>
-          img.Repository.toLowerCase().includes(filter.toLowerCase()) ||
-          img.Tag.toLowerCase().includes(filter.toLowerCase()) ||
-          img.ID.startsWith(filter),
-      )
-    : images
+  const filtered = useMemo(() => {
+    if (!filter) return images
+    return images.filter(
+      (img) =>
+        img.Repository.toLowerCase().includes(filter.toLowerCase()) ||
+        img.Tag.toLowerCase().includes(filter.toLowerCase()) ||
+        img.ID.startsWith(filter),
+    )
+  }, [images, filter])
 
   // 删除镜像
   const doRmi = useCallback(
-    async (id: string, force?: boolean) => {
+    async (img: DockerImage) => {
+      const id = img.Repository === '<none>' ? img.ID : `${img.Repository}:${img.Tag}`
       setActionLoading(id)
       try {
         const res = await fetch('/api/docker/rmi', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ connectionId, id, force }),
+          body: JSON.stringify({ connectionId, id }),
         })
         const json = await res.json()
         if (!json.success) {
-          notify(`删除失败: ${json.error || '未知错误'}`, 'error')
+          notify(`删除失败: ${json.error || json.msg || '未知错误'}`, 'error')
         } else {
-          notify(`已删除镜像 ${id.slice(0, 12)}`, 'success')
+          notify(`已删除镜像 ${id.slice(0, 40)}`, 'success')
+          if (selectedImage?.ID === img.ID) setSelectedImage(null)
           onRefresh()
         }
       } catch (err: unknown) {
@@ -75,7 +166,7 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
         setActionLoading(null)
       }
     },
-    [connectionId, onRefresh],
+    [connectionId, onRefresh, selectedImage],
   )
 
   // 打开操作对话框
@@ -112,7 +203,7 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
         body.target = modalInput2.trim()
       } else if (modal.type === 'prune') {
         url = '/api/docker/prune'
-        body.all = true
+        // 后端 prune_images 只需要 connectionId，不需要 all 字段
       }
 
       const res = await fetch(url, {
@@ -144,6 +235,11 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
   // 查看详情
   const showDetails = useCallback(
     async (img: DockerImage) => {
+      // 如果点击已选中的图片，关闭面板
+      if (selectedImage?.ID === img.ID && selectedImage?.Tag === img.Tag) {
+        setSelectedImage(null)
+        return
+      }
       setSelectedImage(img)
       setDetailTab('history')
       setHistory([])
@@ -175,7 +271,7 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
       }
       setHistoryLoading(false)
     },
-    [connectionId],
+    [connectionId, selectedImage],
   )
 
   const loadInspect = useCallback(async () => {
@@ -189,11 +285,15 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
       })
       const json = await res.json()
       if (json.success) {
-        const output = (json.data?.data ?? json.data ?? '').toString()
-        try {
-          setInspectData(JSON.parse(output))
-        } catch {
-          setInspectData(output)
+        const inner = json.data?.data ?? json.data
+        if (typeof inner === 'string') {
+          try {
+            setInspectData(JSON.parse(inner))
+          } catch {
+            setInspectData({ raw: inner })
+          }
+        } else if (typeof inner === 'object' && inner !== null) {
+          setInspectData(inner as Record<string, unknown>)
         }
       }
     } catch {
@@ -225,10 +325,10 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
           <Download size={14} /> 拉取
         </button>
         <button
-          onClick={() => openModal('prune')}
+          onClick={() => setPruneConfirm(true)}
           className="flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs text-slate-400 transition-colors hover:bg-slate-700 hover:text-slate-200"
         >
-          <Trash2 size={14} /> 清理
+          <Trash size={14} /> 清理
         </button>
       </div>
 
@@ -236,7 +336,9 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
       <div className="flex flex-1 overflow-hidden">
         {/* 镜像列表 */}
         <div
-          className={`flex flex-col overflow-hidden ${selectedImage ? 'w-1/2 border-r border-slate-700/30' : 'flex-1'}`}
+          className={`flex flex-col overflow-hidden ${
+            selectedImage ? 'w-1/2 border-r border-slate-700/30' : 'flex-1'
+          }`}
         >
           <div className="flex-1 overflow-auto">
             {loading && images.length === 0 ? (
@@ -252,8 +354,8 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
                 {filtered.map((img) => {
                   const key = `${img.ID}-${img.Tag}`
                   const shortId = img.ID.replace('sha256:', '').slice(0, 12)
-                  const isLoading =
-                    actionLoading === shortId || actionLoading === `${img.Repository}:${img.Tag}`
+                  const id = img.Repository === '<none>' ? img.ID : `${img.Repository}:${img.Tag}`
+                  const isLoading = actionLoading === id
                   const isActive = selectedImage?.ID === img.ID && selectedImage?.Tag === img.Tag
 
                   return (
@@ -268,7 +370,9 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <span
-                            className={`truncate text-sm font-medium ${isActive ? 'text-wrench-300' : 'text-slate-200'}`}
+                            className={`truncate text-sm font-medium ${
+                              isActive ? 'text-wrench-300' : 'text-slate-200'
+                            }`}
                           >
                             {isDangling(img) ? '<none>:<none>' : `${img.Repository}:${img.Tag}`}
                           </span>
@@ -285,32 +389,34 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
                         </div>
                       </div>
 
-                      {/* 操作按钮（始终可见，兼容移动端） */}
+                      {/* 操作按钮 */}
                       <div
-                        className="flex shrink-0 items-center gap-0.5"
+                        className="flex shrink-0 items-center gap-1"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <button
-                          onClick={() => openModal('push', img)}
-                          className="min-h-[44px] min-w-[44px] rounded p-1.5 text-slate-500 transition-colors hover:bg-slate-700 hover:text-slate-200"
-                          title="推送镜像"
+                          onClick={() => setDeleteTarget(img)}
+                          disabled={isLoading}
+                          className="min-h-[44px] min-w-[44px] rounded p-1 text-slate-500 transition-colors hover:bg-slate-700 hover:text-red-400 disabled:opacity-40"
+                          title="删除"
                         >
-                          <Upload size={13} />
+                          <Trash2 size={14} />
+                        </button>
+                        <button
+                          onClick={() => openModal('push', img)}
+                          disabled={isLoading}
+                          className="min-h-[44px] min-w-[44px] rounded p-1 text-slate-500 transition-colors hover:bg-slate-700 hover:text-slate-300 disabled:opacity-40"
+                          title="推送"
+                        >
+                          <Upload size={14} />
                         </button>
                         <button
                           onClick={() => openModal('tag', img)}
-                          className="min-h-[44px] min-w-[44px] rounded p-1.5 text-slate-500 transition-colors hover:bg-slate-700 hover:text-slate-200"
+                          disabled={isLoading}
+                          className="min-h-[44px] min-w-[44px] rounded p-1 text-slate-500 transition-colors hover:bg-slate-700 hover:text-slate-300 disabled:opacity-40"
                           title="打标签"
                         >
-                          <TagIcon size={13} />
-                        </button>
-                        <button
-                          onClick={() => doRmi(img.ID, true)}
-                          disabled={isLoading}
-                          className="min-h-[44px] min-w-[44px] rounded p-1.5 text-slate-500 transition-colors hover:bg-slate-700 hover:text-red-400 disabled:opacity-40"
-                          title="删除镜像"
-                        >
-                          <Trash2 size={13} />
+                          <TagIcon size={14} />
                         </button>
                       </div>
 
@@ -328,213 +434,178 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
         {/* 详情面板 */}
         {selectedImage && (
           <div className="flex w-1/2 flex-col overflow-hidden">
-            {/* 详情头部 */}
-            <div className="flex shrink-0 items-center border-b border-slate-700/30 px-4 py-2">
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium text-slate-200">
-                  {isDangling(selectedImage)
-                    ? '<none>:<none>'
-                    : `${selectedImage.Repository}:${selectedImage.Tag}`}
-                </div>
-                <div className="text-[11px] text-slate-500">
-                  {selectedImage.ID.replace('sha256:', '').slice(0, 19)} · {selectedImage.Size} ·{' '}
-                  {selectedImage.CreatedSince}
-                </div>
-              </div>
-              <button
-                onClick={() => setSelectedImage(null)}
-                className="min-h-[44px] min-w-[44px] rounded p-1 text-slate-500 hover:bg-slate-700 hover:text-slate-300"
-              >
-                <X size={14} />
-              </button>
-            </div>
-
-            {/* Tab 切换 */}
-            <div className="flex shrink-0 border-b border-slate-700/30 px-4">
+            <div className="flex shrink-0 items-center border-b border-slate-700/30 px-3 py-2">
               <button
                 onClick={() => setDetailTab('history')}
-                className={`flex items-center gap-1 border-b-2 px-3 py-2 text-xs transition-colors ${
+                className={`rounded px-2.5 py-1 text-xs transition-colors ${
                   detailTab === 'history'
-                    ? 'border-wrench-400 text-slate-200'
-                    : 'border-transparent text-slate-500 hover:text-slate-300'
+                    ? 'bg-slate-800 text-slate-200'
+                    : 'text-slate-500 hover:text-slate-300'
                 }`}
               >
-                <Layers size={12} /> 构建历史
+                历史
               </button>
               <button
                 onClick={() => {
                   setDetailTab('inspect')
                   if (!inspectData) loadInspect()
                 }}
-                className={`flex items-center gap-1 border-b-2 px-3 py-2 text-xs transition-colors ${
+                className={`ml-1 rounded px-2.5 py-1 text-xs transition-colors ${
                   detailTab === 'inspect'
-                    ? 'border-wrench-400 text-slate-200'
-                    : 'border-transparent text-slate-500 hover:text-slate-300'
+                    ? 'bg-slate-800 text-slate-200'
+                    : 'text-slate-500 hover:text-slate-300'
                 }`}
               >
-                <Search size={12} /> 详情
+                Inspect
               </button>
-            </div>
-
-            {/* 历史内容 */}
-            {detailTab === 'history' && (
-              <div className="flex-1 overflow-auto">
-                {historyLoading ? (
-                  <div className="flex h-full items-center justify-center">
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-600 border-t-blue-500" />
-                  </div>
-                ) : history.length === 0 ? (
-                  <div className="flex h-full items-center justify-center text-xs text-slate-500">
-                    {selectedImage ? '无法获取构建历史' : '选择一个镜像查看详情'}
-                  </div>
-                ) : (
-                  <div className="divide-y divide-slate-800/50">
-                    {history.map((layer, i) => (
-                      <div key={i} className="px-4 py-2 transition-colors hover:bg-slate-800/30">
-                        <div className="flex items-center gap-2">
-                          <span className="shrink-0 rounded bg-slate-700/50 px-1.5 py-0.5 font-mono text-[10px] text-slate-400">
-                            {layer.ID ? layer.ID.slice(0, 12) : '---'}
-                          </span>
-                          <span className="text-[11px] text-slate-500">{layer.Size || '0 B'}</span>
-                          <span className="text-[11px] text-slate-500">
-                            {layer.CreatedSince || ''}
-                          </span>
-                        </div>
-                        <div className="mt-1 text-[11px] leading-relaxed text-slate-400">
-                          {layer.CreatedBy || '(空)'}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Inspect 内容 */}
-            {detailTab === 'inspect' && (
-              <div className="flex-1 overflow-auto">
-                {inspectLoading ? (
-                  <div className="flex h-full items-center justify-center">
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-600 border-t-blue-500" />
-                  </div>
-                ) : !inspectData ? (
-                  <div className="flex h-full items-center justify-center text-xs text-slate-500">
-                    加载中...
-                  </div>
-                ) : (
-                  <pre className="p-4 font-mono text-[11px] leading-relaxed text-slate-400">
-                    {JSON.stringify(inspectData, null, 2)}
-                  </pre>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* 操作模态框 */}
-      {modal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-[440px] rounded-lg border border-slate-700/50 bg-slate-900 shadow-2xl">
-            <div className="flex items-center border-b border-slate-700/30 px-4 py-3">
-              <h3 className="text-sm font-semibold text-slate-200">{getActionTitle(modal.type)}</h3>
               <button
-                onClick={() => setModal(null)}
-                className="ml-auto min-h-[44px] min-w-[44px] rounded p-1 text-slate-500 hover:bg-slate-700 hover:text-slate-300"
+                onClick={() => setSelectedImage(null)}
+                className="ml-auto rounded p-1 text-slate-500 hover:bg-slate-700 hover:text-slate-300"
               >
                 <X size={14} />
               </button>
             </div>
-
-            <div className="space-y-3 p-4">
-              {modal.type === 'pull' && (
-                <div>
-                  <label className="mb-1 block text-xs text-slate-400">镜像名称</label>
-                  <input
-                    type="text"
-                    value={modalInput}
-                    onChange={(e) => setModalInput(e.target.value)}
-                    placeholder="例如: nginx:latest 或 ubuntu:22.04"
-                    className="focus:border-wrench-500/50 w-full rounded-md border border-slate-700/50 bg-slate-800 px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none"
-                    autoFocus
-                    onKeyDown={(e) => e.key === 'Enter' && doAction()}
-                  />
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    输入完整的镜像名称（支持 registry 地址）
-                  </p>
-                </div>
-              )}
-
-              {modal.type === 'push' && (
-                <div>
-                  <label className="mb-1 block text-xs text-slate-400">镜像名称</label>
-                  <input
-                    type="text"
-                    value={modalInput}
-                    onChange={(e) => setModalInput(e.target.value)}
-                    placeholder="registry.example.com/myimage:latest"
-                    className="focus:border-wrench-500/50 w-full rounded-md border border-slate-700/50 bg-slate-800 px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none"
-                    autoFocus
-                    onKeyDown={(e) => e.key === 'Enter' && doAction()}
-                  />
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    需要先登录目标 registry（在服务器上 docker login）
-                  </p>
-                </div>
-              )}
-
-              {modal.type === 'tag' && (
-                <>
-                  <div>
-                    <label className="mb-1 block text-xs text-slate-400">源镜像</label>
-                    <input
-                      type="text"
-                      value={modalInput}
-                      onChange={(e) => setModalInput(e.target.value)}
-                      className="focus:border-wrench-500/50 w-full rounded-md border border-slate-700/50 bg-slate-800 px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none"
-                    />
+            <div className="flex-1 overflow-auto p-3">
+              {detailTab === 'history' ? (
+                historyLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 size={16} className="animate-spin text-slate-500" />
                   </div>
-                  <div>
-                    <label className="mb-1 block text-xs text-slate-400">新标签</label>
-                    <input
-                      type="text"
-                      value={modalInput2}
-                      onChange={(e) => setModalInput2(e.target.value)}
-                      placeholder="例如: myrepo/myimage:v2"
-                      className="focus:border-wrench-500/50 w-full rounded-md border border-slate-700/50 bg-slate-800 px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none"
-                      autoFocus
-                      onKeyDown={(e) => e.key === 'Enter' && doAction()}
-                    />
+                ) : history.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-500">无历史记录</div>
+                ) : (
+                  <div className="space-y-1">
+                    {history.map((layer, i) => (
+                      <div
+                        key={i}
+                        className="rounded border border-slate-800/50 bg-slate-800/30 p-2"
+                      >
+                        <div className="text-[11px] text-slate-400">{layer.CreatedBy}</div>
+                        <div className="mt-1 flex items-center gap-3 text-[10px] text-slate-600">
+                          <span>{layer.CreatedSince}</span>
+                          <span>{layer.Size}</span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </>
-              )}
-
-              {modal.type === 'prune' && (
-                <div className="rounded-lg border border-amber-900/30 bg-amber-950/20 p-3">
-                  <p className="text-xs text-amber-400">
-                    将清理所有未使用的镜像（dangling images
-                    和未被任何容器引用的镜像）。此操作不可撤销。
-                  </p>
+                )
+              ) : inspectLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 size={16} className="animate-spin text-slate-500" />
                 </div>
+              ) : inspectData ? (
+                <pre className="overflow-auto font-mono text-[11px] leading-relaxed text-slate-400">
+                  {JSON.stringify(inspectData, null, 2)}
+                </pre>
+              ) : (
+                <div className="py-8 text-center text-xs text-slate-500">无数据</div>
               )}
             </div>
+          </div>
+        )}
+      </div>
 
-            <div className="flex items-center justify-end gap-2 border-t border-slate-700/30 px-4 py-3">
+      {/* 删除确认弹窗 */}
+      {deleteTarget && (
+        <ConfirmModal
+          title="确认删除镜像"
+          message={
+            isDangling(deleteTarget)
+              ? `删除悬空镜像 ${deleteTarget.ID.slice(0, 12)}...`
+              : `删除镜像 ${deleteTarget.Repository}:${deleteTarget.Tag}`
+          }
+          danger
+          onConfirm={() => {
+            doRmi(deleteTarget)
+            setDeleteTarget(null)
+          }}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {/* 清理确认弹窗 */}
+      {pruneConfirm && (
+        <ConfirmModal
+          title="确认清理悬空镜像"
+          message="将删除所有未被任何容器使用的悬空镜像（dangling images）"
+          danger
+          onConfirm={() => {
+            setPruneConfirm(false)
+            openModal('prune')
+          }}
+          onCancel={() => setPruneConfirm(false)}
+        />
+      )}
+
+      {/* 操作模态框（pull / push / tag） */}
+      {modal && modal.type !== 'prune' && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60"
+          onClick={() => setModal(null)}
+        >
+          <div
+            className="mx-4 w-full max-w-md rounded-lg border border-slate-700 bg-slate-900 p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-200">
+                {getActionLabel(modal.type)}镜像
+              </h3>
               <button
                 onClick={() => setModal(null)}
-                className="rounded-md px-3 py-1.5 text-xs text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200"
+                className="rounded p-1 text-slate-500 hover:bg-slate-700 hover:text-slate-300"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {modal.type === 'tag' ? (
+              <>
+                <label className="mb-1 block text-xs text-slate-400">源镜像</label>
+                <input
+                  type="text"
+                  value={modalInput}
+                  onChange={(e) => setModalInput(e.target.value)}
+                  className="focus:border-wrench-500/50 mb-3 w-full rounded-md border border-slate-700/50 bg-slate-800/60 px-3 py-2 text-xs text-slate-300 outline-none"
+                  placeholder="nginx:latest"
+                />
+                <label className="mb-1 block text-xs text-slate-400">目标标签</label>
+                <input
+                  type="text"
+                  value={modalInput2}
+                  onChange={(e) => setModalInput2(e.target.value)}
+                  className="focus:border-wrench-500/50 mb-3 w-full rounded-md border border-slate-700/50 bg-slate-800/60 px-3 py-2 text-xs text-slate-300 outline-none"
+                  placeholder="my-registry.com/nginx:v1"
+                />
+              </>
+            ) : (
+              <>
+                <label className="mb-1 block text-xs text-slate-400">镜像名称</label>
+                <input
+                  type="text"
+                  value={modalInput}
+                  onChange={(e) => setModalInput(e.target.value)}
+                  className="focus:border-wrench-500/50 mb-3 w-full rounded-md border border-slate-700/50 bg-slate-800/60 px-3 py-2 text-xs text-slate-300 outline-none"
+                  placeholder="nginx:latest"
+                  autoFocus
+                />
+              </>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setModal(null)}
+                className="rounded-md px-4 py-2 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200"
               >
                 取消
               </button>
               <button
                 onClick={doAction}
-                disabled={modalLoading || (modal.type !== 'prune' && !modalInput.trim())}
-                className="bg-wrench-600 hover:bg-wrench-500 flex items-center gap-1 rounded-md px-3 py-1.5 text-xs text-white transition-colors disabled:opacity-50"
+                disabled={modalLoading || !modalInput.trim()}
+                className="bg-wrench-600 hover:bg-wrench-500 flex items-center gap-1 rounded-md px-4 py-2 text-xs text-white disabled:opacity-50"
               >
-                {modalLoading && (
-                  <div className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                )}
-                {getActionLabel(modal.type)}
+                {modalLoading && <Loader2 size={12} className="animate-spin" />}
+                确认
               </button>
             </div>
           </div>
@@ -542,32 +613,6 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
       )}
     </div>
   )
-}
-
-function getActionLabel(type: ActionType): string {
-  switch (type) {
-    case 'pull':
-      return '拉取'
-    case 'push':
-      return '推送'
-    case 'tag':
-      return '打标签'
-    case 'prune':
-      return '清理'
-  }
-}
-
-function getActionTitle(type: ActionType): string {
-  switch (type) {
-    case 'pull':
-      return '拉取镜像'
-    case 'push':
-      return '推送镜像'
-    case 'tag':
-      return '打标签'
-    case 'prune':
-      return '清理未使用镜像'
-  }
 }
 
 export default memo(DockerImagesInner)

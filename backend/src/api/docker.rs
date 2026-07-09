@@ -425,6 +425,30 @@ pub async fn container_stats(
     }
 }
 
+/// Docker batch stats request (no per-container id, gets all)
+#[derive(Debug, Deserialize)]
+pub struct BatchStatsRequest {
+    #[serde(alias = "connectionId")]
+    pub connection_id: String,
+}
+
+/// POST /api/docker/stats/all — Get stats for all running containers at once
+pub async fn container_stats_all(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<BatchStatsRequest>,
+) -> ApiResponse<DockerExecResponse> {
+    match docker_exec(
+        &state,
+        &req.connection_id,
+        &["stats", "--no-stream", "--format", "json"],
+    )
+    .await
+    {
+        Ok(data) => ApiResponse::success(DockerExecResponse { data }),
+        Err(e) => ApiResponse::error(-1, &e),
+    }
+}
+
 /// POST /api/docker/compose
 pub async fn compose_list(
     State(state): State<Arc<AppState>>,
@@ -494,14 +518,10 @@ pub async fn compose_action(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ComposeActionRequest>,
 ) -> ApiResponse<DockerExecResponse> {
-    let project_dir = std::path::Path::new(&req.path)
-        .parent()
-        .unwrap_or(std::path::Path::new("."));
-    let project_dir_str = project_dir.to_string_lossy();
-
     let action_cmd: &str = &req.action;
 
-    let mut args: Vec<&str> = vec!["compose", "-f", &req.path, "-p", &project_dir_str, action_cmd];
+    // Build args: docker compose -f <path> <action>
+    let mut args: Vec<&str> = vec!["compose", "-f", &req.path, action_cmd];
     if let Some(service) = &req.service {
         args.push(service);
     }

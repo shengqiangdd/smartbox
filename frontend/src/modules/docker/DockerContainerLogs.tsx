@@ -72,8 +72,14 @@ export default function DockerContainerLogs({ connectionId, containerName, onClo
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="mx-4 flex h-[80vh] w-full max-w-4xl flex-col rounded-lg border border-slate-700 bg-slate-900 shadow-2xl">
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50"
+      onClick={onClose}
+    >
+      <div
+        className="mx-4 flex h-[80vh] w-full max-w-4xl flex-col rounded-lg border border-slate-700 bg-slate-900 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* 标题栏 */}
         <div className="flex shrink-0 items-center border-b border-slate-700/50 px-4 py-3">
           <h2 className="text-sm font-semibold text-slate-200">日志 — {containerName}</h2>

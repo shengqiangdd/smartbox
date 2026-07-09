@@ -2,11 +2,6 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { RefreshCw, Cpu, MemoryStick, Activity } from 'lucide-react'
 import type { DockerContainer } from './index'
 
-function notify(message: string, type: 'success' | 'error' | 'info' = 'info') {
-  const ev = new CustomEvent('wrench-toast', { detail: { message, type } })
-  window.dispatchEvent(ev)
-}
-
 interface Props {
   connectionId: string
   containers: DockerContainer[]
@@ -174,14 +169,15 @@ export default function DockerMonitor({ connectionId, containers }: Props) {
     if (!connectionId) return
     setLoading(true)
     try {
-      const res = await fetch('/api/docker/stats', {
+      // Use batch endpoint to get all container stats at once
+      const res = await fetch('/api/docker/stats/all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ connectionId }),
       })
       const json = await res.json()
       if (!json.success) {
-        notify(json.error || json.msg || '获取监控数据失败', 'error')
+        // If batch endpoint fails (e.g. docker stats not supported), silently skip
         return
       }
 
