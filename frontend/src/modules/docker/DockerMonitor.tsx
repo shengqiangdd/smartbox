@@ -145,6 +145,7 @@ export default function DockerMonitor({ connectionId, containers }: Props) {
   }, [])
 
   // 初始化时自动选中所有运行中的容器
+  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     if (containers.length > 0 && selectedIds.size === 0) {
       const running = containers.filter((c) => c.State === 'running')
@@ -152,8 +153,8 @@ export default function DockerMonitor({ connectionId, containers }: Props) {
         setSelectedIds(new Set(running.map((c) => c.ID)))
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [containers])
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   // 获取 stats
   function parseSize(s: string): number {
