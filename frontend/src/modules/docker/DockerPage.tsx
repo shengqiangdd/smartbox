@@ -70,7 +70,8 @@ export default function DockerPage() {
       })
       const json = await res.json()
       if (json.success) {
-        const lines = json.data.trim().split('\n').filter(Boolean)
+        const output = (json.data?.data ?? json.data ?? '').toString()
+        const lines = output.trim().split('\n').filter(Boolean)
         const list: DockerContainer[] = lines
           .map((line: string) => {
             try {
@@ -82,7 +83,7 @@ export default function DockerPage() {
           .filter(Boolean)
         setContainers(list)
       } else {
-        setError(json.error || '获取容器列表失败')
+        setError(json.error || json.msg || '获取容器列表失败')
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '请求失败'
@@ -104,7 +105,8 @@ export default function DockerPage() {
       })
       const json = await res.json()
       if (json.success) {
-        const lines = json.data.trim().split('\n').filter(Boolean)
+        const output = (json.data?.data ?? json.data ?? '').toString()
+        const lines = output.trim().split('\n').filter(Boolean)
         const list: DockerImage[] = lines
           .map((line: string) => {
             try {

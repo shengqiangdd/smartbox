@@ -90,22 +90,23 @@ function DockerComposeInner({ connectionId }: Props) {
           })
           const json = await res.json()
           if (!json.success) {
-            notify(json.error || '获取 Compose 文件失败', 'error')
+            notify(json.error || json.msg || '获取 Compose 文件失败', 'error')
             setProjects([])
             return
           }
-          const discovered: ComposeProject[] = (json.projects || json.data || []).map(
-            (p: { path: string; name?: string }) => ({
-              path: p.path,
-              name:
-                p.name ||
-                p.path
-                  .split('/')
-                  .pop()!
-                  .replace(/\.(yml|yaml)$/, ''),
-              services: [],
-            }),
-          )
+          const projectsData = json.data?.data ?? json.data ?? json.projects ?? []
+          const discovered: ComposeProject[] = (
+            Array.isArray(projectsData) ? projectsData : []
+          ).map((p: { path: string; name?: string }) => ({
+            path: p.path,
+            name:
+              p.name ||
+              p.path
+                .split('/')
+                .pop()!
+                .replace(/\.(yml|yaml)$/, ''),
+            services: [],
+          }))
           setProjects(discovered)
         } finally {
           setLoading(false)
@@ -158,12 +159,13 @@ function DockerComposeInner({ connectionId }: Props) {
       })
       const json = await res.json()
       if (!json.success) {
-        notify(json.error || '获取 Compose 文件失败', 'error')
+        notify(json.error || json.msg || '获取 Compose 文件失败', 'error')
         setProjects([])
         return
       }
 
-      const paths = json.data.trim().split('\n').filter(Boolean)
+      const output = (json.data?.data ?? json.data ?? '').toString()
+      const paths = output.trim().split('\n').filter(Boolean)
       // 解析路径，提取项目名
       const parsed: ComposeProject[] = paths.map((p: string) => {
         // 取文件名做项目名
@@ -196,7 +198,8 @@ function DockerComposeInner({ connectionId }: Props) {
         })
         const json = await res.json()
         if (json.success) {
-          const lines = json.data.trim().split('\n').filter(Boolean)
+          const output = (json.data?.data ?? json.data ?? '').toString()
+          const lines = output.trim().split('\n').filter(Boolean)
           const services: ComposeService[] = lines.map((line: string) => {
             try {
               const parsed = JSON.parse(line)
@@ -255,9 +258,10 @@ function DockerComposeInner({ connectionId }: Props) {
       })
       const json = await res.json()
       if (!json.success) {
-        notify(`${action} 失败: ${json.error || '未知错误'}`, 'error')
+        notify(`${action} 失败: ${json.error || json.msg || '未知错误'}`, 'error')
       } else if (action === 'logs') {
-        setLogData({ key, content: json.data || '(empty)' })
+        const output = (json.data?.data ?? json.data ?? '').toString()
+        setLogData({ key, content: output || '(empty)' })
       } else {
         notify(`${action} 成功`, 'success')
       }

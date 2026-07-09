@@ -181,11 +181,12 @@ export default function DockerMonitor({ connectionId, containers }: Props) {
       })
       const json = await res.json()
       if (!json.success) {
-        notify(json.error || '获取监控数据失败', 'error')
+        notify(json.error || json.msg || '获取监控数据失败', 'error')
         return
       }
 
-      const lines = json.data.trim().split('\n').filter(Boolean)
+      const output = (json.data?.data ?? json.data ?? '').toString()
+      const lines = output.trim().split('\n').filter(Boolean)
       const now = Date.now()
 
       setMonitors((prev) => {

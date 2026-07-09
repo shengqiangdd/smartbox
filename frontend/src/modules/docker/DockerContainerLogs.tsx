@@ -37,9 +37,10 @@ export default function DockerContainerLogs({ connectionId, containerName, onClo
         })
         const json = await res.json()
         if (json.success) {
-          dispatch({ status: 'idle', data: json.data || '(无日志输出)', error: null })
+          const output = (json.data?.data ?? json.data ?? '').toString()
+          dispatch({ status: 'idle', data: output || '(无日志输出)', error: null })
         } else {
-          dispatch({ status: 'error', data: '', error: json.error || '获取日志失败' })
+          dispatch({ status: 'error', data: '', error: json.error || json.msg || '获取日志失败' })
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : '请求失败'

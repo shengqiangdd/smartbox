@@ -30,10 +30,11 @@ export default function DockerDetail({ connectionId, containerId, onClose }: Pro
         })
         const json = await res.json()
         if (json.success) {
-          const parsed = JSON.parse(json.data)
+          const output = (json.data?.data ?? json.data ?? '').toString()
+          const parsed = JSON.parse(output)
           setData(Array.isArray(parsed) ? parsed[0] : parsed)
         } else {
-          notify(json.error || '获取详情失败', 'error')
+          notify(json.error || json.msg || '获取详情失败', 'error')
           onClose()
         }
       } catch (err: unknown) {

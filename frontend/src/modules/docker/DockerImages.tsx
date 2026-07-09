@@ -122,9 +122,13 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
       })
       const json = await res.json()
       if (!json.success) {
-        notify(`${getActionLabel(modal.type)}失败: ${json.error || '未知错误'}`, 'error')
+        notify(
+          `${getActionLabel(modal.type)}失败: ${json.error || json.msg || '未知错误'}`,
+          'error',
+        )
       } else {
-        const msg = json.data ? json.data.trim().split('\n').pop() || '' : ''
+        const output = (json.data?.data ?? json.data ?? '').toString()
+        const msg = output ? output.trim().split('\n').pop() || '' : ''
         notify(`${getActionLabel(modal.type)}成功${msg ? ': ' + msg.slice(0, 80) : ''}`, 'success')
         setModal(null)
         onRefresh()
@@ -153,7 +157,8 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
         })
         const json = await res.json()
         if (json.success) {
-          const lines = json.data.trim().split('\n').filter(Boolean)
+          const output = (json.data?.data ?? json.data ?? '').toString()
+          const lines = output.trim().split('\n').filter(Boolean)
           const list: HistoryLayer[] = lines
             .map((line: string) => {
               try {
@@ -184,10 +189,11 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
       })
       const json = await res.json()
       if (json.success) {
+        const output = (json.data?.data ?? json.data ?? '').toString()
         try {
-          setInspectData(JSON.parse(json.data))
+          setInspectData(JSON.parse(output))
         } catch {
-          setInspectData(json.data)
+          setInspectData(output)
         }
       }
     } catch {
