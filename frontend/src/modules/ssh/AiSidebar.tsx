@@ -339,13 +339,13 @@ export default function AiSidebar({ sessionId: _sessionId, connectionId, onClose
       )
 
       try {
-        const res = await fetch(`/api/ssh/exec?connection_id=${connectionId}`, {
+        const res = await fetch('/api/ssh/exec', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command: cmd }),
+          body: JSON.stringify({ connectionId, command: cmd }),
         })
 
-        const data = await res.json()
+        const data = await res.json().catch(() => ({ error: `HTTP ${res.status}: 非JSON响应` }))
 
         if (res.ok) {
           const resultText = data.stdout || data.stderr || '(无输出)'
@@ -361,7 +361,7 @@ export default function AiSidebar({ sessionId: _sessionId, connectionId, onClose
             return newMessages
           })
         } else {
-          const errMsg = data.error || '执行失败'
+          const errMsg = data.error || data.msg || `HTTP ${res.status}`
           setMessages((prev) => [
             ...prev.slice(0, -1),
             { ...prev[prev.length - 1]!, _executing: false } as AiMessage,

@@ -449,6 +449,25 @@ pub async fn chat_proxy(
     } else {
         // Non-streaming: forward the full response
         let bytes = resp.bytes().await.unwrap_or_default();
+        let body_str = String::from_utf8_lossy(&bytes);
+
+        // If upstream returned an error status, wrap in a JSON envelope
+        // so the frontend can always parse the response as JSON
+        if !status.is_success() {
+            let error_body = serde_json::json!({
+                "error": {
+                    "message": body_str.trim(),
+                    "status": status.as_u16(),
+                    "code": status.canonical_reason().unwrap_or("Unknown"),
+                }
+            });
+            return Response::builder()
+                .status(status.as_u16())
+                .header("content-type", "application/json")
+                .body(Body::from(error_body.to_string()))
+                .unwrap();
+        }
+
         let mut builder = Response::builder().status(status.as_u16());
         if let Some(ct) = content_type {
             builder = builder.header("content-type", ct);

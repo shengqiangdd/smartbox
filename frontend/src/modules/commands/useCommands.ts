@@ -100,13 +100,28 @@ export function useCommands() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ connectionId, command: cmd.command }),
       })
-      const data = await resp.json()
+      const data = await resp.json().catch(() => ({ success: false, error: `HTTP ${resp.status}` }))
+
+      if (!data.success) {
+        const errMsg = data.error || data.msg || '执行失败'
+        const result: CommandResult = {
+          connectionId,
+          command: cmd.command,
+          stdout: '',
+          stderr: errMsg,
+          exitCode: null,
+          timestamp: Date.now(),
+        }
+        setResults((prev) => [result, ...prev].slice(0, 50))
+        return result
+      }
+
       const result: CommandResult = {
         connectionId,
         command: cmd.command,
-        stdout: data.stdout || '',
-        stderr: data.stderr || '',
-        exitCode: data.exitCode ?? null,
+        stdout: data.data?.stdout || '',
+        stderr: data.data?.stderr || '',
+        exitCode: data.data?.exitCode ?? null,
         timestamp: Date.now(),
       }
       setResults((prev) => [result, ...prev].slice(0, 50))
