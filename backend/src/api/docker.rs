@@ -149,6 +149,18 @@ async fn docker_exec(state: &Arc<AppState>, connection_id: &str, docker_args: &[
         .await
         .map_err(|e| format!("Docker exec failed: {}", e))?;
 
+    // Log docker command execution for debugging
+    tracing::info!(
+        "Docker exec: command='{}' exit_code={} stdout_len={} stderr_len={}",
+        command,
+        exit_code,
+        stdout.len(),
+        stderr.len()
+    );
+    if exit_code != 0 && !stderr.is_empty() {
+        tracing::warn!("Docker exec stderr: {}", stderr.chars().take(500).collect::<String>());
+    }
+
     if exit_code != 0 {
         // 命令失败：优先返回 stderr，其次 stdout，最后通用错误
         let msg = if !stderr.is_empty() {
@@ -527,6 +539,10 @@ pub async fn compose_action(
     }
     if req.action == "up" {
         args.push("-d");
+    }
+    if req.action == "ps" {
+        args.push("--format");
+        args.push("json");
     }
     if req.action == "logs" {
         args.push("--tail=200");
