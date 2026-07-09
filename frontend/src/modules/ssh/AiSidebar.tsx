@@ -459,7 +459,7 @@ export default function AiSidebar({ sessionId: _sessionId, connectionId, onClose
   if (!aiConfig.enabled) {
     return (
       <div className="flex min-h-0 flex-1 flex-col border-l border-slate-700/50 bg-slate-900/80 md:w-96">
-        <div className="flex items-center justify-between border-b border-slate-700/50 px-3 py-2">
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-700/50 px-3 py-2">
           <span className="flex items-center gap-1.5 text-xs font-medium text-slate-400">
             <Brain size={14} />
             AI Agent
@@ -482,7 +482,7 @@ export default function AiSidebar({ sessionId: _sessionId, connectionId, onClose
   return (
     <div className="flex min-h-0 flex-1 flex-col border-l border-slate-700/50 bg-slate-900/80 md:w-96">
       {/* 头部 */}
-      <div className="flex items-center justify-between border-b border-slate-700/50 px-3 py-2">
+      <div className="flex shrink-0 items-center justify-between border-b border-slate-700/50 px-3 py-2">
         <span className="flex items-center gap-1.5 text-xs font-medium text-slate-400">
           <Brain size={14} className="text-wrench-400" />
           AI Agent
