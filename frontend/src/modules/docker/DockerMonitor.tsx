@@ -267,6 +267,7 @@ export default function DockerMonitor({ connectionId, containers }: Props) {
   // 解析大小字符串
 
   // 自动轮询
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!autoRefresh) {
       if (timerRef.current) {
