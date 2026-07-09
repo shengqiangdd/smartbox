@@ -42,11 +42,6 @@ fn attrs_to_entry(name: String, parent_path: &str, attrs: &FileAttributes) -> Fi
     FileEntry { name, path, r#type: if is_dir { "directory".to_string() } else { "file".to_string() }, size, permissions: perm_str, modify_time }
 }
 
-fn format_timestamp(secs: u64) -> String {
-    let dt = chrono::DateTime::from_timestamp(secs as i64, 0).unwrap_or_default();
-    dt.format("%Y-%m-%d %H:%M:%S").to_string()
-}
-
 /// Open a cached or new SFTP session for an SSH connection.
 async fn open_sftp(session: &Arc<SshSession>) -> Result<Arc<SftpSession>, String> {
     session
