@@ -16,6 +16,7 @@ import {
   sessionCredentials,
   setSessionCredentials,
   deleteSessionCredentials,
+  resolveSessionCredentials,
 } from '../../services/session-credentials'
 import ConnectionList from './ConnectionList'
 import TerminalView from './Terminal'
@@ -427,6 +428,32 @@ export default function SshPlaceholder() {
     (s) => s.id === selectedConnectionId && s.status === 'connected',
   )
 
+  // ─── 兜底：页面刷新后内存 Map 为空时自动解密凭据 ───
+  // 用 ref 收集异步解密结果，避免在 effect 中直接 setState
+  const [resolvedCreds, setResolvedCreds] = useState<Record<
+    string,
+    import('./Terminal').SshCredentials
+  > | null>(null)
+  const activeSessionId = activeSession?.id
+  useEffect(() => {
+    if (!activeSessionId) return
+    // 同步检查 Map 是否已有凭据
+    if (sessionCredentials.has(activeSessionId)) return
+    // 异步解密兜底
+    let cancelled = false
+    resolveSessionCredentials(activeSessionId).then((creds) => {
+      if (!cancelled && creds) {
+        // 使用 setTimeout 将 setState 移出 effect 同步执行
+        setTimeout(() => {
+          setResolvedCreds((prev) => ({ ...prev, [activeSessionId]: creds }))
+        }, 0)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [activeSessionId, sessions])
+
   const showWsIndicator = () => (
     <button
       onClick={() => {
@@ -620,6 +647,7 @@ export default function SshPlaceholder() {
                   onSetActiveSplit={setActiveSplitId}
                   onTerminalData={handleTerminalData}
                   credentialsMap={sessionCredentials}
+                  resolvedCredentials={resolvedCreds}
                 />
               ) : activeSession ? (
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -627,7 +655,9 @@ export default function SshPlaceholder() {
                     connectionId={activeSession.id}
                     sessionId={activeSession.id}
                     className="flex-1"
-                    credentials={sessionCredentials.get(activeSession.id)}
+                    credentials={
+                      sessionCredentials.get(activeSession.id) || resolvedCreds?.[activeSession.id]
+                    }
                   />
                 </div>
               ) : null}

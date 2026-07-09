@@ -849,6 +849,8 @@ interface SplitContainerProps {
   onTerminalData?: (sessionId: string, data: string) => void
   /** 每个 session 的 SSH 凭据（用于建立独立 WS 连接） */
   credentialsMap?: Map<string, SshCredentials>
+  /** 异步解密兜底凭据（页面刷新后内存 Map 为空时使用） */
+  resolvedCredentials?: Record<string, SshCredentials> | null
 }
 
 export function SplitContainer({
@@ -864,8 +866,13 @@ export function SplitContainer({
   onSetActiveSplit,
   onTerminalData,
   credentialsMap,
+  resolvedCredentials,
 }: SplitContainerProps) {
   if (splits.length === 0) return null
+
+  // 辅助：优先从 Map 取凭据，回退到异步解密兜底
+  const getCreds = (sessionId: string): SshCredentials | undefined =>
+    credentialsMap?.get(sessionId) || resolvedCredentials?.[sessionId]
 
   // 单个分屏或同方向平铺
   if (splits.length === 1) {
@@ -885,6 +892,7 @@ export function SplitContainer({
         onSetActiveSplit={onSetActiveSplit}
         onTerminalData={onTerminalData}
         credentialsMap={credentialsMap}
+        getCreds={getCreds}
       />
     )
   }
@@ -935,6 +943,7 @@ export function SplitContainer({
               onSetActiveSplit={onSetActiveSplit}
               onTerminalData={onTerminalData}
               credentialsMap={credentialsMap}
+              getCreds={getCreds}
             />
           </div>
         ))}
@@ -969,6 +978,7 @@ export function SplitContainer({
           onSetActiveSplit={onSetActiveSplit}
           onTerminalData={onTerminalData}
           credentialsMap={credentialsMap}
+          resolvedCredentials={resolvedCredentials}
         />
       </div>
 
@@ -992,6 +1002,7 @@ export function SplitContainer({
           onSetActiveSplit={onSetActiveSplit}
           onTerminalData={onTerminalData}
           credentialsMap={credentialsMap}
+          resolvedCredentials={resolvedCredentials}
         />
       </div>
     </div>
@@ -1012,6 +1023,7 @@ function SplitPane({
   onSetActiveSplit,
   onTerminalData,
   credentialsMap,
+  getCreds,
 }: {
   split: SplitDef
   onSplit: (id: string, direction: 'vertical' | 'horizontal') => void
@@ -1029,6 +1041,7 @@ function SplitPane({
   onSetActiveSplit?: (id: string) => void
   onTerminalData?: (sessionId: string, data: string) => void
   credentialsMap?: Map<string, SshCredentials>
+  getCreds?: (sessionId: string) => SshCredentials | undefined
 }) {
   const isSyncOn = !!split.syncGroup
   const groupId = split.syncGroup || ''
@@ -1270,7 +1283,7 @@ function SplitPane({
         onTerminalData={
           onTerminalData ? (data: string) => onTerminalData(split.sessionId, data) : undefined
         }
-        credentials={credentialsMap?.get(split.sessionId)}
+        credentials={getCreds?.(split.sessionId) || credentialsMap?.get(split.sessionId)}
       />
     </div>
   )
