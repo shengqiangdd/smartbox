@@ -12,6 +12,11 @@ import {
 import { useAppStore, type SplitDef } from '../../stores/app-store'
 import { useSshStore, decryptConnection } from '../../stores/ssh-store'
 import { getWsClient, type WsClient, type WsStatus } from '../../services/websocket'
+import {
+  sessionCredentials,
+  setSessionCredentials,
+  deleteSessionCredentials,
+} from '../../services/session-credentials'
 import ConnectionList from './ConnectionList'
 import TerminalView from './Terminal'
 import { SplitContainer } from './Terminal'
@@ -19,10 +24,6 @@ import SftpSidebar from './SftpSidebar'
 import AiSidebar from './AiSidebar'
 import type { SshSession } from '../../types/ssh'
 import { useAiStore } from '../../stores/ai-store'
-
-// 模块级凭据存储：每个 session 的解密凭据（供 Terminal 组件建立独立 WS 连接使用）
-// 使用模块级 Map 而非 useRef，避免 React refs-during-render 限制
-const sessionCredentials = new Map<string, import('./Terminal').SshCredentials>()
 
 export default function SshPlaceholder() {
   const connections = useSshStore((s) => s.connections)
@@ -105,7 +106,7 @@ export default function SshPlaceholder() {
         // 注意：不再检查共享 WS 状态，因为每个 Terminal 有自己的 WS 连接。
         // 共享 WS 会在第一个终端连接后被后端阻塞（handle_terminal_connect 接管 I/O），
         // 如果在此检查会导致后续连接/按钮操作全部失败。
-        sessionCredentials.set(sessionId, {
+        setSessionCredentials(sessionId, {
           host: conn.host,
           port: conn.port,
           username: conn.username,
@@ -192,7 +193,7 @@ export default function SshPlaceholder() {
   const handleDisconnect = useCallback(
     (sessionId: string) => {
       // 清理凭据
-      sessionCredentials.delete(sessionId)
+      deleteSessionCredentials(sessionId)
       // 通过共享 WS 发送 disconnect（如果后端仍在该连接上）
       wsClientRef.current?.send({
         type: 'disconnect',

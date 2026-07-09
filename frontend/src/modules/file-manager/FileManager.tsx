@@ -20,6 +20,7 @@ import { useSshStore, decryptConnection } from '../../stores/ssh-store'
 import { useAppStore } from '../../stores/app-store'
 import { useFileStore } from '../../stores/file-store'
 import { getWsClientSync, WsClient } from '../../services/websocket'
+import { setSessionCredentials } from '../../services/session-credentials'
 import SftpBrowser from '../ssh/SftpBrowser'
 import CodeMirrorEditor from '../../components/CodeMirrorEditor'
 import ResizablePanel from '../../components/ResizablePanel'
@@ -165,6 +166,16 @@ async function ensureSftpSession(
       status: 'connected',
       terminalCols: 80,
       terminalRows: 24,
+    })
+
+    // 存储解密凭据（供 SSH 页面 Terminal 组件使用）
+    setSessionCredentials(sessionId, {
+      host: conn.host,
+      port: conn.port,
+      username: conn.username,
+      password: decryptedConn.password,
+      privateKey: decryptedConn.privateKey,
+      sudoPassword: decryptedConn.sudoPassword,
     })
 
     // 等待 sftp-ready 事件（可能在 connect 响应之前/同时/之后到达）
