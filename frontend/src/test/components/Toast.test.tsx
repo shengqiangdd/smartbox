@@ -3,7 +3,7 @@
  *
  * Uses createRoot directly to avoid React 19 CJS act issue.
  */
-import { describe, it, expect, afterEach, beforeEach } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { createRoot, type Root as _Root } from 'react-dom/client'
 import Toast from '../../components/Toast'
 
@@ -23,7 +23,10 @@ afterEach(() => {
 
 async function render(el: React.ReactElement) {
   root.render(el)
-  await new Promise<void>((r) => setTimeout(r, 10))
+  // Wait long enough for React to commit + useEffect to register the listener.
+  // In CI (Node 22) the microtask queue and jsdom event dispatch can be slower,
+  // so a generous sleep eliminates flakiness.
+  await new Promise<void>((r) => setTimeout(r, 50))
 }
 
 function fireNotification(message: string, type: 'success' | 'error' | 'info' = 'info') {
@@ -31,6 +34,15 @@ function fireNotification(message: string, type: 'success' | 'error' | 'info' = 
     new CustomEvent('wrench-notification', {
       detail: { message, type },
     }),
+  )
+}
+
+async function waitForContent(text: string) {
+  await vi.waitFor(
+    () => {
+      expect(container.textContent).toContain(text)
+    },
+    { timeout: 3000 },
   )
 }
 
@@ -43,22 +55,19 @@ describe('Toast', () => {
   it('displays a notification when event is fired', async () => {
     await render(<Toast />)
     fireNotification('Hello World', 'success')
-    await new Promise((r) => setTimeout(r, 20))
-    expect(container.textContent).toContain('Hello World')
+    await waitForContent('Hello World')
   })
 
   it('shows success text', async () => {
     await render(<Toast />)
     fireNotification('Success!', 'success')
-    await new Promise((r) => setTimeout(r, 20))
-    expect(container.textContent).toContain('Success!')
+    await waitForContent('Success!')
   })
 
   it('shows error text', async () => {
     await render(<Toast />)
     fireNotification('Error!', 'error')
-    await new Promise((r) => setTimeout(r, 20))
-    expect(container.textContent).toContain('Error!')
+    await waitForContent('Error!')
   })
 
   it('ignores events without message', async () => {
@@ -68,19 +77,23 @@ describe('Toast', () => {
         detail: { message: '', type: 'info' },
       }),
     )
-    await new Promise((r) => setTimeout(r, 20))
+    await new Promise((r) => setTimeout(r, 50))
     expect(container.innerHTML).toBe('')
   })
 
   it('removes toast when close button is clicked', async () => {
     await render(<Toast />)
     fireNotification('Closable', 'info')
-    await new Promise((r) => setTimeout(r, 20))
+    await waitForContent('Closable')
     const closeBtn = container.querySelector('button')
     expect(closeBtn).toBeTruthy()
     closeBtn!.click()
     // Toast has 300ms exit animation then gets removed
-    await new Promise((r) => setTimeout(r, 400))
-    expect(container.innerHTML).toBe('')
+    await vi.waitFor(
+      () => {
+        expect(container.innerHTML).toBe('')
+      },
+      { timeout: 2000 },
+    )
   })
 })
