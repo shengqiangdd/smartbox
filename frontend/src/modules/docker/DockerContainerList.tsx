@@ -32,6 +32,7 @@ const ContainerRow = memo(function ContainerRow({
   c,
   actionLoading,
   doAction,
+  onConfirmDelete,
   onShowLogs,
   onShowDetail,
   isSelected,
@@ -39,6 +40,7 @@ const ContainerRow = memo(function ContainerRow({
   c: DockerContainer
   actionLoading: string | null
   doAction: (id: string, action: string) => void
+  onConfirmDelete: (id: string, name: string) => void
   onShowLogs: (id: string) => void
   onShowDetail: (id: string) => void
   isSelected: boolean
@@ -102,7 +104,9 @@ const ContainerRow = memo(function ContainerRow({
             )}
             {c.State === 'exited' && (
               <button
-                onClick={() => doAction(c.Names || shortId, 'rm')}
+                onClick={() =>
+                  onConfirmDelete(c.Names || shortId, c.Names || shortId)
+                }
                 disabled={isLoading}
                 className="min-h-[44px] min-w-[44px] rounded p-1 text-slate-500 transition-colors hover:bg-slate-700 hover:text-red-400 disabled:opacity-40"
                 title="删除"
@@ -120,7 +124,7 @@ const ContainerRow = memo(function ContainerRow({
           <FileText size={14} />
         </button>
         <button
-          onClick={() => onShowDetail(c.Names || shortId)}
+          onClick={() => onShowDetail(c.ID)}
           className="min-h-[44px] min-w-[44px] rounded p-1 text-slate-500 transition-colors hover:bg-slate-700 hover:text-slate-300"
           title="查看详情"
         >
@@ -150,6 +154,58 @@ function optimisticToggle(
   })
 }
 
+/** 确认删除弹窗 */
+function ConfirmDeleteModal({
+  name,
+  onConfirm,
+  onCancel,
+}: {
+  name: string
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60"
+      onClick={onCancel}
+    >
+      <div
+        className="mx-4 w-full max-w-sm rounded-lg border border-slate-700 bg-slate-900 p-5 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-900/30">
+            <Trash2 size={18} className="text-red-400" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-slate-200">确认删除容器</h3>
+            <p className="mt-0.5 text-xs text-slate-400">
+              此操作不可恢复
+            </p>
+          </div>
+        </div>
+        <p className="mb-5 rounded-md bg-slate-800/60 px-3 py-2 text-xs text-slate-300">
+          {name}
+        </p>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="rounded-md px-4 py-2 text-xs text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200"
+          >
+            取消
+          </button>
+          <button
+            onClick={onConfirm}
+            className="rounded-md bg-red-600 px-4 py-2 text-xs text-white transition-colors hover:bg-red-500"
+          >
+            确认删除
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function DockerContainerList({
   connectionId,
   containers,
@@ -160,6 +216,7 @@ export default function DockerContainerList({
   const [logTarget, setLogTarget] = useState<string | null>(null)
   const [detailTarget, setDetailTarget] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
   const [optimisticContainers, addOptimistic] = useOptimistic(
     containers,
     (state, { id, action }: { id: string; action: string }) => optimisticToggle(state, id, action),
@@ -205,6 +262,16 @@ export default function DockerContainerList({
     [connectionId, onRefresh, addOptimistic],
   )
 
+  const handleConfirmDelete = useCallback((id: string, name: string) => {
+    setDeleteTarget({ id, name })
+  }, [])
+
+  const handleDelete = useCallback(() => {
+    if (!deleteTarget) return
+    doAction(deleteTarget.id, 'rm')
+    setDeleteTarget(null)
+  }, [deleteTarget, doAction])
+
   return (
     <div className="flex h-full flex-col">
       {/* 搜索栏 */}
@@ -243,6 +310,7 @@ export default function DockerContainerList({
                   c={c}
                   actionLoading={actionLoading}
                   doAction={doAction}
+                  onConfirmDelete={handleConfirmDelete}
                   onShowLogs={setLogTarget}
                   onShowDetail={setDetailTarget}
                   isSelected={isSelected}
@@ -252,6 +320,15 @@ export default function DockerContainerList({
           </div>
         )}
       </div>
+
+      {/* 删除确认弹窗 */}
+      {deleteTarget && (
+        <ConfirmDeleteModal
+          name={deleteTarget.name}
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
 
       {/* 日志弹窗 */}
       {logTarget && (

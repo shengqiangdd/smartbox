@@ -96,6 +96,8 @@ pub struct StatsRequest {
 pub struct ComposeRequest {
     #[serde(alias = "connectionId")]
     pub connection_id: String,
+    #[serde(alias = "filePath")]
+    pub file_path: Option<String>,
 }
 
 /// Docker compose action request
@@ -428,15 +430,46 @@ pub async fn compose_list(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ComposeRequest>,
 ) -> ApiResponse<serde_json::Value> {
+    // 如果有 filePath，直接返回该文件
+    if let Some(file_path) = &req.file_path {
+        let path = std::path::Path::new(file_path);
+        let name = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown");
+        return ApiResponse::success(serde_json::json!({
+            "projects": [{
+                "path": file_path,
+                "name": name,
+                "status": "",
+                "id": "",
+            }]
+        }));
+    }
+
     match docker_exec(&state, &req.connection_id, &["compose", "ls", "--format", "json"]).await {
         Ok(data) => {
-            // 解析 docker compose ls --format json 输出
+            // docker compose ls --format json 输出一个 JSON 数组
             // 格式: [{"ID":"xxx","Name":"project","Status":"Running(2)","ConfigFiles":"/path/to/docker-compose.yml"}]
-            let projects: Vec<serde_json::Value> = data
-                .trim()
-                .lines()
-                .filter(|line| !line.is_empty())
-                .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+            let trimmed = data.trim();
+            if trimmed.is_empty() {
+                return ApiResponse::success(serde_json::json!({ "projects": [] }));
+            }
+
+            // 尝试整体解析为 JSON 数组
+            let items: Vec<serde_json::Value> = if trimmed.starts_with('[') {
+                serde_json::from_str(trimmed).unwrap_or_default()
+            } else {
+                // fallback: 逐行解析（兼容旧版本）
+                trimmed
+                    .lines()
+                    .filter(|line| !line.is_empty())
+                    .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+                    .collect()
+            };
+
+            let projects: Vec<serde_json::Value> = items
+                .iter()
                 .map(|item| {
                     let config_files = item.get("ConfigFiles").and_then(|v| v.as_str()).unwrap_or("");
                     let name = item.get("Name").and_then(|v| v.as_str()).unwrap_or("");
