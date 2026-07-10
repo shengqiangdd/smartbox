@@ -325,51 +325,63 @@ async fn check_host_health(state: &AppState, host_id: &str) -> Result<HealthData
     };
 
     // Parse load
-    if load.exit_code == 0 {
-        let parts: Vec<&str> = load.stdout.split_whitespace().collect();
-        if parts.len() >= 3 {
-            data.cpu_load = parts[0].parse::<f64>().ok();
-            data.cpu_load_5 = parts[1].parse::<f64>().ok();
-            data.cpu_load_15 = parts[2].parse::<f64>().ok();
+    if let Ok(load) = load {
+        if load.exit_code == 0 {
+            let parts: Vec<&str> = load.stdout.split_whitespace().collect();
+            if parts.len() >= 3 {
+                data.cpu_load = parts[0].parse::<f64>().ok();
+                data.cpu_load_5 = parts[1].parse::<f64>().ok();
+                data.cpu_load_15 = parts[2].parse::<f64>().ok();
+            }
         }
     }
 
     // Parse memory
-    if mem.exit_code == 0 {
-        let parts: Vec<&str> = mem.stdout.split_whitespace().collect();
-        if parts.len() >= 3 {
-            data.mem_total_mb = parts[0].parse::<u64>().ok();
-            data.mem_used_mb = parts[1].parse::<u64>().ok();
-            data.mem_percent = parts[2].parse::<f64>().ok();
+    if let Ok(mem) = mem {
+        if mem.exit_code == 0 {
+            let parts: Vec<&str> = mem.stdout.split_whitespace().collect();
+            if parts.len() >= 3 {
+                data.mem_total_mb = parts[0].parse::<u64>().ok();
+                data.mem_used_mb = parts[1].parse::<u64>().ok();
+                data.mem_percent = parts[2].parse::<f64>().ok();
+            }
         }
     }
 
     // Parse disk
-    if disk.exit_code == 0 {
-        let parts: Vec<&str> = disk.stdout.split_whitespace().collect();
-        if parts.len() >= 3 {
-            data.disk_total = Some(parts[0].to_string());
-            data.disk_used = Some(parts[1].to_string());
-            data.disk_percent = Some(parts[2].to_string());
+    if let Ok(disk) = disk {
+        if disk.exit_code == 0 {
+            let parts: Vec<&str> = disk.stdout.split_whitespace().collect();
+            if parts.len() >= 3 {
+                data.disk_total = Some(parts[0].to_string());
+                data.disk_used = Some(parts[1].to_string());
+                data.disk_percent = Some(parts[2].to_string());
+            }
         }
     }
 
     // Parse uptime
-    if uptime_cmd.exit_code == 0 {
-        let trimmed = uptime_cmd.stdout.trim().to_string();
-        if !trimmed.is_empty() {
-            data.uptime = Some(trimmed);
+    if let Ok(uptime_cmd) = uptime_cmd {
+        if uptime_cmd.exit_code == 0 {
+            let trimmed = uptime_cmd.stdout.trim().to_string();
+            if !trimmed.is_empty() {
+                data.uptime = Some(trimmed);
+            }
         }
     }
 
     // Parse process count
-    if procs.exit_code == 0 {
-        data.processes = procs.stdout.trim().parse::<u32>().ok();
+    if let Ok(procs) = procs {
+        if procs.exit_code == 0 {
+            data.processes = procs.stdout.trim().parse::<u32>().ok();
+        }
     }
 
     // Parse CPU cores
-    if cores.exit_code == 0 {
-        data.cpu_cores = cores.stdout.trim().parse::<u32>().ok();
+    if let Ok(cores) = cores {
+        if cores.exit_code == 0 {
+            data.cpu_cores = cores.stdout.trim().parse::<u32>().ok();
+        }
     }
 
     Ok(data)
