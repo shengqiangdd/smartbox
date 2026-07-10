@@ -65,7 +65,11 @@ function LogViewerInner({ connectionId, logPath, onClose }: LogViewerProps) {
       })
       const json = await res.json()
       if (json.success) {
-        dispatch({ status: 'idle', data: json.data, errorMsg: null })
+        // 后端返回 { content, path, lines, total_lines } 对象
+        const logData = json.data
+        const text =
+          typeof logData === 'string' ? logData : (logData?.content ?? JSON.stringify(logData))
+        dispatch({ status: 'idle', data: text, errorMsg: null })
       } else {
         dispatch({ status: 'error', errorMsg: json.error || '获取日志失败' })
       }
@@ -202,7 +206,11 @@ function LogViewerInner({ connectionId, logPath, onClose }: LogViewerProps) {
       })
       const json = await res.json()
       if (json.success) {
-        setSearchResult(json.data.trim() || '未找到匹配内容')
+        // 后端返回 { content, pattern, path } 对象
+        const grepData = json.data
+        const text =
+          typeof grepData === 'string' ? grepData : (grepData?.content ?? JSON.stringify(grepData))
+        setSearchResult(text.trim() || '未找到匹配内容')
       } else {
         setSearchResult(`搜索错误: ${json.error}`)
       }
