@@ -7,16 +7,9 @@ import SourceConfig from './SourceConfig'
 export default function LogsPage() {
   const sessions = useSshStore((s) => s.sessions)
 
-  // 主机选择 — 用 connectionId（后端 SSH 连接 ID），不是前端 session.id
-  const [selectedConnId, setSelectedConnId] = useState<string | null>(null)
-  const currentConnId = selectedConnId || (sessions.length > 0 ? sessions[0]!.connectionId : null)
-
-  // 计算有效连接：如果选中的不在列表中，fallback 到第一个
-  const effectiveConnId = sessions.find((s) => s.connectionId === currentConnId)
-    ? currentConnId
-    : sessions.length > 0
-      ? sessions[0]!.connectionId
-      : null
+  // 后端用 session.id（sess_xxx）作为连接 key，不是 session.connectionId
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const currentId = selectedId || (sessions.length > 0 ? sessions[0]!.id : null)
 
   const [currentPath, setCurrentPath] = useState<string | null>(null)
   const [sourcePanelOpen, setSourcePanelOpen] = useState(true)
@@ -25,13 +18,12 @@ export default function LogsPage() {
     setCurrentPath(path)
   }, [])
 
-  const handleSessionChange = useCallback((connId: string) => {
-    setSelectedConnId(connId)
+  const handleSessionChange = useCallback((id: string) => {
+    setSelectedId(id)
     setCurrentPath(null)
   }, [])
 
-  // 未连接
-  if (!effectiveConnId) {
+  if (!currentId) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 text-slate-500">
         <ScrollText size={48} className="text-slate-600" />
@@ -43,9 +35,8 @@ export default function LogsPage() {
     )
   }
 
-  // 当前选中的主机名
-  const currentSession = sessions.find((s) => s.connectionId === effectiveConnId)
-  const currentHostLabel = currentSession?.connectionName || currentSession?.host || effectiveConnId
+  const currentSession = sessions.find((s) => s.id === currentId)
+  const currentHostLabel = currentSession?.connectionName || currentSession?.host || currentId
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -54,16 +45,15 @@ export default function LogsPage() {
         <ScrollText size={18} className="text-sky-400" />
         <h1 className="text-sm font-semibold text-slate-200">日志聚合</h1>
 
-        {/* 主机选择下拉菜单 */}
         {sessions.length > 1 && (
           <div className="relative">
             <select
-              value={effectiveConnId}
+              value={currentId}
               onChange={(e) => handleSessionChange(e.target.value)}
               className="ml-1 rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-200 focus:ring-1 focus:ring-sky-500 focus:outline-none"
             >
               {sessions.map((s) => (
-                <option key={s.connectionId} value={s.connectionId} className="bg-slate-800">
+                <option key={s.id} value={s.id} className="bg-slate-800">
                   {s.connectionName || s.host}
                 </option>
               ))}
@@ -90,20 +80,17 @@ export default function LogsPage() {
       </div>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        {/* 左侧日志源面板 */}
         {sourcePanelOpen && (
           <div className="w-56 shrink-0 overflow-y-auto border-r border-slate-700/50 bg-slate-900/50">
             <SourceConfig
-              key={effectiveConnId}
-              connectionId={effectiveConnId}
+              key={currentId}
+              connectionId={currentId}
               onSelectPath={handleSelectPath}
             />
           </div>
         )}
-
-        {/* 右侧日志查看器 */}
         <div className="min-w-0 flex-1 overflow-hidden">
-          <LogViewer connectionId={effectiveConnId} logPath={currentPath || ''} />
+          <LogViewer connectionId={currentId} logPath={currentPath || ''} />
         </div>
       </div>
     </div>
