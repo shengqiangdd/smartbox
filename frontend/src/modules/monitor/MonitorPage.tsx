@@ -11,6 +11,7 @@ import {
   Bell,
 } from 'lucide-react'
 import { useSshStore } from '../../stores/ssh-store'
+import { useAppStore } from '../../stores/app-store'
 import { useAlertStore } from '../../stores/alert-store'
 import AlertSettings from './AlertSettings'
 import AlertHistory from './AlertHistory'
@@ -243,6 +244,8 @@ function _mockHistory(): HistoryPoint[] {
 export default function MonitorPage() {
   const sessions = useSshStore((s) => s.sessions)
   const connections = useSshStore((s) => s.connections)
+  const setActiveNav = useAppStore((s) => s.setActiveNav)
+  const setSshSidebarOpen = useAppStore((s) => s.setSshSidebarOpen)
   const [hosts, setHosts] = useState<{ id: string; name: string }[]>([])
   const [selected, setSelected] = useState<string[]>([])
   const [stats, setStats] = useState<Record<string, HostStats>>({})
@@ -597,11 +600,25 @@ export default function MonitorPage() {
   // Bridge 健康信息格式化
   const healthDisplay = useMemo(() => {
     if (!health) return null
-    const d = Math.floor(health.uptime / 86400)
-    const h = Math.floor((health.uptime % 86400) / 3600)
-    const m = Math.floor((health.uptime % 3600) / 60)
+    const totalSec = health.uptime
+    const d = Math.floor(totalSec / 86400)
+    const hr = Math.floor((totalSec % 86400) / 3600)
+    const m = Math.floor((totalSec % 3600) / 60)
+    // 人性化显示
+    let uptimeText: string
+    if (d > 365) {
+      const years = Math.floor(d / 365)
+      const remainDays = d % 365
+      uptimeText = `${years}年${remainDays}天`
+    } else if (d > 0) {
+      uptimeText = hr > 0 ? `${d}天${hr}小时` : `${d}天`
+    } else if (hr > 0) {
+      uptimeText = m > 0 ? `${hr}小时${m}分` : `${hr}小时`
+    } else {
+      uptimeText = `${m}分钟`
+    }
     return {
-      uptime: d > 0 ? `${d}d${h}h${m}m` : `${h}h${m}m`,
+      uptime: uptimeText,
       connections: health.connections?.active ?? 'N/A',
     }
   }, [health])
@@ -677,13 +694,19 @@ export default function MonitorPage() {
             <span className="text-[10px] text-slate-500">运行</span>
             <span className="font-mono text-[11px] text-slate-300">{healthDisplay.uptime}</span>
           </div>
-          <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            className="flex shrink-0 items-center gap-1.5 transition-colors hover:text-blue-400"
+            onClick={() => {
+              setActiveNav('ssh')
+              setTimeout(() => setSshSidebarOpen(true), 100)
+            }}
+          >
             <Network size={12} className="text-amber-400" />
             <span className="text-[10px] text-slate-500">连接</span>
             <span className="font-mono text-[11px] text-slate-300">
               {healthDisplay.connections}
             </span>
-          </div>
+          </button>
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
             <Bell
               size={12}
