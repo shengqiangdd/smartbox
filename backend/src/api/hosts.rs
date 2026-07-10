@@ -4,26 +4,29 @@ use std::sync::Arc;
 use crate::api_types::{HostCreatedResponse, HostEntry};
 use crate::app_state::AppState;
 use crate::response::ApiResponse;
+use crate::ssh::SshSession;
 use futures_util::future::join_all;
+
+/// (id, host, port, username, session)
+type HostSnapshot = (String, String, u16, String, Option<Arc<SshSession>>);
 
 /// List all hosts (GET /api/hosts)
 pub async fn list_hosts(State(state): State<Arc<AppState>>) -> ApiResponse<Vec<HostEntry>> {
     // 先收集基础信息
-    let host_snapshots: Vec<(String, String, u16, String, Option<Arc<crate::ssh::SshSession>>)> =
-        state
-            .connections
-            .iter()
-            .map(|entry| {
-                let conn = entry.value();
-                (
-                    conn.connection_id.clone(),
-                    conn.host.clone(),
-                    conn.port,
-                    conn.username.clone(),
-                    conn.session.clone(),
-                )
-            })
-            .collect();
+    let host_snapshots: Vec<HostSnapshot> = state
+        .connections
+        .iter()
+        .map(|entry| {
+            let conn = entry.value();
+            (
+                conn.connection_id.clone(),
+                conn.host.clone(),
+                conn.port,
+                conn.username.clone(),
+                conn.session.clone(),
+            )
+        })
+        .collect();
 
     // 并行检查连接状态
     let futures: Vec<_> = host_snapshots
