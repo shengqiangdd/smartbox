@@ -14,9 +14,18 @@ use crate::app_state::AppState;
 use crate::error::AppError;
 use crate::response::ApiResponse;
 use crate::ssh::executor;
+use futures_util::future::join_all;
+
+/// Temporary info snapshot to avoid holding DashMap refs across await.
+struct HostInfo {
+    host: String,
+    port: u16,
+    username: String,
+    connected: bool,
+}
 
 /// Health check results for a single host.
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, Default)]
 pub struct HostHealth {
     pub id: String,
     pub host: String,
@@ -39,94 +48,84 @@ pub struct HostHealth {
 }
 
 /// Get health status for all connected hosts (GET /api/hosts/health)
+/// All hosts are checked in parallel for maximum speed.
 pub async fn get_all_health(State(state): State<Arc<AppState>>) -> Result<ApiResponse<Vec<HostHealth>>, AppError> {
-    let connection_ids: Vec<String> = state.connections.iter().map(|entry| entry.key().clone()).collect();
+    // Snapshot host info (avoid holding DashMap refs across await)
+    let hosts: Vec<(String, HostInfo)> = state
+        .connections
+        .iter()
+        .map(|entry| {
+            let conn = entry.value();
+            (
+                entry.key().clone(),
+                HostInfo {
+                    host: conn.host.clone(),
+                    port: conn.port,
+                    username: conn.username.clone(),
+                    connected: conn.is_connected(),
+                },
+            )
+        })
+        .collect();
 
-    if connection_ids.is_empty() {
+    if hosts.is_empty() {
         return Ok(ApiResponse::success(Vec::new()));
     }
 
-    let mut results = Vec::new();
-    for id in &connection_ids {
-        let conn = match state.connections.get(id) {
-            Some(c) => c,
-            None => continue,
-        };
-        let host = conn.host.clone();
-        let port = conn.port;
-        let username = conn.username.clone();
-        let connected = conn.is_connected();
-        drop(conn); // Release DashMap Ref before async
+    // Run all host health checks in parallel
+    let futures: Vec<_> = hosts
+        .into_iter()
+        .map(|(id, info)| {
+            let state = Arc::clone(&state);
+            async move {
+                if !info.connected {
+                    return HostHealth {
+                        id,
+                        host: info.host,
+                        port: info.port,
+                        username: info.username,
+                        connected: false,
+                        error: Some("Not connected".into()),
+                        ..Default::default()
+                    };
+                }
+                match check_host_health(&state, &id).await {
+                    Ok(health) => HostHealth {
+                        id,
+                        host: info.host,
+                        port: info.port,
+                        username: info.username,
+                        connected: true,
+                        error: None,
+                        cpu_load: health.cpu_load,
+                        cpu_load_5: health.cpu_load_5,
+                        cpu_load_15: health.cpu_load_15,
+                        cpu_cores: health.cpu_cores,
+                        mem_total_mb: health.mem_total_mb,
+                        mem_used_mb: health.mem_used_mb,
+                        mem_percent: health.mem_percent,
+                        disk_total: health.disk_total,
+                        disk_used: health.disk_used,
+                        disk_percent: health.disk_percent,
+                        uptime: health.uptime,
+                        processes: health.processes,
+                    },
+                    Err(e) => HostHealth {
+                        id,
+                        host: info.host,
+                        port: info.port,
+                        username: info.username,
+                        connected: false,
+                        error: Some(e),
+                        ..Default::default()
+                    },
+                }
+            }
+        })
+        .collect();
 
-        if !connected {
-            results.push(HostHealth {
-                id: id.clone(),
-                host,
-                port,
-                username,
-                connected: false,
-                error: Some("Not connected".into()),
-                cpu_load: None,
-                cpu_load_5: None,
-                cpu_load_15: None,
-                cpu_cores: None,
-                mem_total_mb: None,
-                mem_used_mb: None,
-                mem_percent: None,
-                disk_total: None,
-                disk_used: None,
-                disk_percent: None,
-                uptime: None,
-                processes: None,
-            });
-            continue;
-        }
+    let results = join_all(futures).await;
 
-        match check_host_health(&state, id).await {
-            Ok(health) => results.push(HostHealth {
-                id: id.clone(),
-                host,
-                port,
-                username,
-                connected: true,
-                error: None,
-                cpu_load: health.cpu_load,
-                cpu_load_5: health.cpu_load_5,
-                cpu_load_15: health.cpu_load_15,
-                cpu_cores: health.cpu_cores,
-                mem_total_mb: health.mem_total_mb,
-                mem_used_mb: health.mem_used_mb,
-                mem_percent: health.mem_percent,
-                disk_total: health.disk_total,
-                disk_used: health.disk_used,
-                disk_percent: health.disk_percent,
-                uptime: health.uptime,
-                processes: health.processes,
-            }),
-            Err(e) => results.push(HostHealth {
-                id: id.clone(),
-                host,
-                port,
-                username,
-                connected: true,
-                error: Some(e),
-                cpu_load: None,
-                cpu_load_5: None,
-                cpu_load_15: None,
-                cpu_cores: None,
-                mem_total_mb: None,
-                mem_used_mb: None,
-                mem_percent: None,
-                disk_total: None,
-                disk_used: None,
-                disk_percent: None,
-                uptime: None,
-                processes: None,
-            }),
-        }
-    }
-
-    // Auto-analyze health results and create alerts for anomalies
     auto_alert_health_anomalies(&state, &results);
 
     Ok(ApiResponse::success(results))
@@ -288,7 +287,7 @@ pub async fn diagnose_host(
     }))
 }
 
-/// Run health check commands on a single host via SSH.
+/// Run health check commands on a single host via SSH (all commands in parallel).
 async fn check_host_health(state: &AppState, host_id: &str) -> Result<HealthData, String> {
     let conn = state
         .connections
@@ -300,18 +299,15 @@ async fn check_host_health(state: &AppState, host_id: &str) -> Result<HealthData
         .clone()
         .ok_or_else(|| "No active SSH session".to_string())?;
 
-    // Collect data from multiple commands
-    let load = executor::execute_command(&session, "cat /proc/loadavg | awk '{print $1, $2, $3}'").await?;
-    let mem = executor::execute_command(&session, "free -m | awk 'NR==2{printf \"%d %d %.1f\", $2, $3, ($3/$2)*100}'")
-        .await?;
-    let disk = executor::execute_command(&session, "df -h / | awk 'NR==2{printf \"%s %s %s\", $2, $3, $5}'").await?;
-    let uptime_cmd = executor::execute_command(
-        &session,
-        "uptime -p 2>/dev/null || uptime | sed 's/.*up //' | awk '{print $1, $2, $3, $4}'",
-    )
-    .await?;
-    let procs = executor::execute_command(&session, "ps --no-headers -eo pid 2>/dev/null | wc -l").await?;
-    let cores = executor::execute_command(&session, "nproc 2>/dev/null || echo 1").await?;
+    // Run all commands in parallel (~6x faster than sequential)
+    let (load, mem, disk, uptime_cmd, procs, cores) = tokio::join!(
+        executor::execute_command(&session, "cat /proc/loadavg | awk '{print $1, $2, $3}'"),
+        executor::execute_command(&session, "free -m | awk 'NR==2{printf \"%d %d %.1f\", $2, $3, ($3/$2)*100}'"),
+        executor::execute_command(&session, "df -h / | awk 'NR==2{printf \"%s %s %s\", $2, $3, $5}'"),
+        executor::execute_command(&session, "uptime -p 2>/dev/null || uptime | sed 's/.*up //' | awk '{print $1, $2, $3, $4}'"),
+        executor::execute_command(&session, "ps --no-headers -eo pid 2>/dev/null | wc -l"),
+        executor::execute_command(&session, "nproc 2>/dev/null || echo 1"),
+    );
 
     let mut data = HealthData {
         cpu_load: None,

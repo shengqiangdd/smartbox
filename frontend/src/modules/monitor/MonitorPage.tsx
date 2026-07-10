@@ -538,7 +538,6 @@ export default function MonitorPage() {
     const m = Math.floor((health.uptime % 3600) / 60)
     return {
       uptime: d > 0 ? `${d}d${h}h${m}m` : `${h}h${m}m`,
-      version: health.version,
       connections: health.connections?.active ?? 'N/A',
     }
   }, [health])
@@ -611,11 +610,6 @@ export default function MonitorPage() {
             <Activity size={12} className="text-green-400" />
             <span className="text-[10px] text-slate-500">运行</span>
             <span className="font-mono text-[11px] text-slate-300">{healthDisplay.uptime}</span>
-          </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <Server size={12} className="text-cyan-400" />
-            <span className="text-[10px] text-slate-500">Node</span>
-            <span className="font-mono text-[11px] text-slate-300">{healthDisplay.version}</span>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             <Network size={12} className="text-amber-400" />

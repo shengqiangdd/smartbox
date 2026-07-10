@@ -5,7 +5,6 @@
 export interface HealthData {
   status: string
   uptime: number
-  version: string
   connections: { active: number }
 }
 

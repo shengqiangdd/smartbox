@@ -230,7 +230,18 @@ function HostHealthOverviewInner({ onSelectHost }: { onSelectHost?: (hostId: str
   const [collapsed, setCollapsed] = useState(false)
   const [diagnosing, setDiagnosing] = useState<string | null>(null)
   const [diagnosis, setDiagnosis] = useState<Record<string, string>>({})
-  const { hosts, status, errorMsg } = healthState
+  const { hosts: rawHosts, status, errorMsg } = healthState
+
+  // Deduplicate by host:port
+  const hosts = useMemo(() => {
+    const seen = new Set<string>()
+    return rawHosts.filter((h) => {
+      const key = `${h.host}:${h.port}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }, [rawHosts])
 
   const loadHealth = useCallback(async () => {
     try {
@@ -318,23 +329,25 @@ function HostHealthOverviewInner({ onSelectHost }: { onSelectHost?: (hostId: str
       </div>
 
       {/* Host cards */}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {hosts.length === 0 && (
-          <div className="col-span-full py-8 text-center text-sm text-slate-500">
-            No hosts connected. Add a host in the SSH connection panel.
-          </div>
-        )}
-        {hosts.map((host) => (
-          <HostCard
-            key={host.id}
-            host={host}
-            collapsed={collapsed}
-            diagnosing={diagnosing}
-            diagnosis={diagnosis}
-            onDiagnose={() => runDiagnosis(host.id)}
-            onSelect={() => onSelectHost?.(host.id)}
-          />
-        ))}
+      <div className="max-h-[500px] overflow-auto">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {hosts.length === 0 && (
+            <div className="col-span-full py-8 text-center text-sm text-slate-500">
+              No hosts connected. Add a host in the SSH connection panel.
+            </div>
+          )}
+          {hosts.map((host) => (
+            <HostCard
+              key={host.id}
+              host={host}
+              collapsed={collapsed}
+              diagnosing={diagnosing}
+              diagnosis={diagnosis}
+              onDiagnose={() => runDiagnosis(host.id)}
+              onSelect={() => onSelectHost?.(host.id)}
+            />
+          ))}
+        </div>
       </div>
     </div>
   )
