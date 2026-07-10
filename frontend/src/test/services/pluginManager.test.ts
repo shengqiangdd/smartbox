@@ -37,6 +37,7 @@ const mockPluginCatalog = {
       description: 'View JSON files',
       author: 'Wrench',
       icon: '🔍',
+      entry: '/plugins/json-viewer/index.js',
       commands: [{ id: 'format', label: 'Format JSON', description: 'Format JSON content' }],
       panels: [{ id: 'json-panel', title: 'JSON Tree', icon: '🔍' }],
     },
