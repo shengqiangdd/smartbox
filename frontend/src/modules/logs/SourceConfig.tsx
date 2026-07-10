@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import {
   ChevronRight,
   ChevronDown,
@@ -11,76 +11,54 @@ import {
 } from 'lucide-react'
 import type { LogSource } from './index'
 
-// 按类别分组的预设日志路径（作为参考标签，实际以扫描结果为准）
-const LOG_CATEGORIES = [
-  {
-    label: '系统日志',
-    icon: '🖥',
-    keywords: ['syslog', 'messages', 'kern', 'dmesg', 'boot', 'maillog'],
-  },
-  {
-    label: '认证日志',
-    icon: '🔐',
-    keywords: ['auth', 'secure', 'btmp', 'wtmp', 'lastlog', 'faillog'],
-  },
-  {
-    label: 'Web 服务',
-    icon: '🌐',
-    keywords: ['nginx', 'apache', 'httpd', 'caddy', 'lighttpd'],
-  },
-  {
-    label: '数据库',
-    icon: '🗄',
-    keywords: ['mysql', 'mariadb', 'postgres', 'mongo', 'redis', 'sqlite'],
-  },
-  {
-    label: '应用日志',
-    icon: '📦',
-    keywords: ['docker', 'pm2', 'supervisor', 'cron', 'node', 'java', 'tomcat'],
-  },
-  {
-    label: '包管理',
-    icon: '📥',
-    keywords: ['apt', 'dpkg', 'yum', 'dnf', 'rpm', 'pacman'],
-  },
-  {
-    label: '安全审计',
-    icon: '🛡',
-    keywords: ['audit', 'fail2ban', 'ufw', 'firewall', 'selinux', 'apparmor'],
-  },
-]
-
-interface Props {
-  connectionId: string
-  onSelectPath: (path: string) => void
+// 过滤掉压缩/轮转日志
+function isReadableLogFile(path: string): boolean {
+  // 排除 .gz .bz2 .xz .zst .1 .2 .3 ... .99 等轮转/压缩文件
+  return !/\.(gz|bz2|xz|zst|Z|zip)$|\.log\.\d+$|\.log\.\d{4}/.test(path)
 }
 
-// 根据文件路径匹配分类
+// 按关键词分类
 function matchCategory(path: string): string {
   const lower = path.toLowerCase()
-  for (const cat of LOG_CATEGORIES) {
-    if (cat.keywords.some((kw) => lower.includes(kw))) {
-      return cat.label
-    }
-  }
+  if (/syslog|messages|kern|dmesg|boot|maillog/.test(lower)) return '系统日志'
+  if (/auth|secure|btmp|wtmp|lastlog|faillog/.test(lower)) return '认证日志'
+  if (/nginx|apache|httpd|caddy|lighttpd/.test(lower)) return 'Web 服务'
+  if (/mysql|mariadb|postgres|mongo|redis/.test(lower)) return '数据库'
+  if (/docker|pm2|supervisor|cron|node|java|tomcat/.test(lower)) return '应用日志'
+  if (/apt|dpkg|yum|dnf|rpm/.test(lower)) return '包管理'
+  if (/audit|fail2ban|ufw|firewall|selinux|apparmor/.test(lower)) return '安全审计'
   return '其他日志'
 }
 
-// 根据路径生成友好标签
+// 生成友好标签
 function makeLabel(path: string): string {
   const parts = path.split('/')
   const name = parts[parts.length - 1] || path
-  // 去掉常见后缀
-  const base = name
-    .replace(/\.log$/, '')
-    .replace(/\.log\.\d+$/, '')
-    .replace(/\.log\.gz$/, '')
+  const base = name.replace(/\.log$/, '').replace(/\.log\.\d+$/, '')
   const parent = parts.length > 3 ? parts[parts.length - 2] : ''
   if (parent && parent !== 'log') return `${parent}/${base}`
   return base
 }
 
-export default function SourceConfig({ connectionId, onSelectPath }: Props) {
+const CATEGORY_ICONS: Record<string, string> = {
+  系统日志: '🖥',
+  认证日志: '🔐',
+  'Web 服务': '🌐',
+  数据库: '🗄',
+  应用日志: '📦',
+  包管理: '📥',
+  安全审计: '🛡',
+  其他日志: '📄',
+}
+
+interface Props {
+  connectionId: string
+  onSelectPath: (path: string) => void
+  /** 变化时触发重新扫描 */
+  scanKey?: number
+}
+
+export default function SourceConfig({ connectionId, onSelectPath, scanKey }: Props) {
   const [activePath, setActivePath] = useState<string | null>(null)
   const [allFiles, setAllFiles] = useState<LogSource[]>([])
   const [discovering, setDiscovering] = useState(false)
@@ -101,54 +79,26 @@ export default function SourceConfig({ connectionId, onSelectPath }: Props) {
     try {
       localStorage.setItem('wrench_log_custom', JSON.stringify(list))
     } catch {
-      /* ignore */
+      /* */
     }
   }, [])
 
   // 远程扫描
-  const doScan = useCallback(async () => {
+  const doScan = useCallback(async (connId: string) => {
     setDiscovering(true)
     try {
-      const allPaths = LOG_CATEGORIES.flatMap((cat) => cat.keywords.map((kw) => `/var/log/${kw}`))
-      const exactPaths = [
-        '/var/log/syslog',
-        '/var/log/messages',
-        '/var/log/auth.log',
-        '/var/log/secure',
-        '/var/log/kern.log',
-        '/var/log/dmesg',
-        '/var/log/nginx/access.log',
-        '/var/log/nginx/error.log',
-        '/var/log/apache2/access.log',
-        '/var/log/apache2/error.log',
-        '/var/log/httpd/access_log',
-        '/var/log/httpd/error_log',
-        '/var/log/mysql/error.log',
-        '/var/log/postgresql/postgresql.log',
-        '/var/log/docker.log',
-        '/var/log/cron.log',
-        '/var/log/cron',
-        '/var/log/boot.log',
-        '/var/log/audit/audit.log',
-        '/var/log/fail2ban.log',
-        '/var/log/ufw.log',
-        '/var/log/dpkg.log',
-        '/var/log/apt/history.log',
-        '/var/log/yum.log',
-        '/var/log/tomcat/',
-        '/var/log/cassandra/',
-      ]
-      const all = [...new Set([...allPaths, ...exactPaths])]
-
       const res = await fetch('/api/logs/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ connectionId, paths: all }),
+        body: JSON.stringify({ connectionId: connId, paths: [] }),
       })
       const json = await res.json()
       if (json.success && Array.isArray(json.data)) {
         const files: LogSource[] = json.data
-          .filter((item: { exists: boolean }) => item.exists)
+          .filter(
+            (item: { exists: boolean; path: string }) =>
+              item.exists && isReadableLogFile(item.path),
+          )
           .map((item: { path: string; size: string }) => ({
             path: item.path,
             label: makeLabel(item.path),
@@ -161,19 +111,28 @@ export default function SourceConfig({ connectionId, onSelectPath }: Props) {
           return true
         })
         setAllFiles(unique)
-        const cats = new Set(unique.map((f) => matchCategory(f.path)))
         const expanded: Record<string, boolean> = {}
-        cats.forEach((c) => (expanded[c] = true))
+        unique.forEach((f) => {
+          expanded[matchCategory(f.path)] = true
+        })
         setExpandedCategories(expanded)
       }
     } catch {
-      /* ignore */
+      /* */
     } finally {
       setDiscovering(false)
     }
-  }, [connectionId])
+  }, [])
 
-  const handleRemoteScan = doScan
+  // 首次挂载扫描 + connectionId/scanKey 变化时重新扫描
+  const mountedRef = useRef(false)
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- doScan 是 async，setState 在微任务中执行
+    void doScan(connectionId)
+  }, [connectionId, scanKey, doScan])
 
   const handleClick = (path: string) => {
     setActivePath(path)
@@ -202,17 +161,25 @@ export default function SourceConfig({ connectionId, onSelectPath }: Props) {
     if (!grouped[cat]) grouped[cat] = []
     grouped[cat]!.push(file)
   }
-
-  const categoryOrder = [...LOG_CATEGORIES.map((c) => c.label), '其他日志']
+  const categoryOrder = [
+    '系统日志',
+    '认证日志',
+    'Web 服务',
+    '数据库',
+    '应用日志',
+    '包管理',
+    '安全审计',
+    '其他日志',
+  ]
   const sortedCategories = categoryOrder.filter((c) => grouped[c] && grouped[c]!.length > 0)
 
   return (
-    <div className="flex h-full flex-col text-xs">
+    <div className="flex h-full w-56 flex-col text-xs">
       {/* 标题栏 */}
       <div className="flex items-center justify-between border-b border-slate-700/50 px-3 py-2">
         <span className="font-medium text-slate-300">日志源</span>
         <button
-          onClick={handleRemoteScan}
+          onClick={() => doScan(connectionId)}
           disabled={discovering}
           className="flex items-center gap-1 rounded px-1.5 py-0.5 text-slate-500 hover:text-sky-400 disabled:opacity-50"
           title="扫描远程主机"
@@ -223,12 +190,10 @@ export default function SourceConfig({ connectionId, onSelectPath }: Props) {
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 py-1">
-        {/* 按类别显示 */}
         {sortedCategories.map((cat) => {
           const files = grouped[cat]!
           const isExpanded = expandedCategories[cat] ?? false
-          const catInfo = LOG_CATEGORIES.find((c) => c.label === cat)
-          const icon = catInfo?.icon || '📄'
+          const icon = CATEGORY_ICONS[cat] || '📄'
 
           return (
             <div key={cat} className="mb-1">
@@ -270,19 +235,20 @@ export default function SourceConfig({ connectionId, onSelectPath }: Props) {
           )
         })}
 
-        {/* 扫描中提示 */}
         {discovering && allFiles.length === 0 && (
           <div className="flex items-center justify-center gap-2 py-8 text-slate-500">
             <Loader2 size={14} className="animate-spin" />
-            <span className="text-xs">正在扫描远程主机...</span>
+            <span className="text-xs">扫描中...</span>
           </div>
         )}
 
-        {/* 空状态 */}
         {!discovering && allFiles.length === 0 && (
           <div className="py-8 text-center text-slate-500">
             <p className="text-xs">未发现日志文件</p>
-            <button onClick={handleRemoteScan} className="mt-2 text-sky-400 hover:text-sky-300">
+            <button
+              onClick={() => doScan(connectionId)}
+              className="mt-2 text-sky-400 hover:text-sky-300"
+            >
               重新扫描
             </button>
           </div>

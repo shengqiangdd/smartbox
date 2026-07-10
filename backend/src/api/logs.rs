@@ -47,8 +47,8 @@ pub async fn scan_log_sources(
         }
     };
 
-    // 两条简单命令：1) find 发现 .log 文件  2) 检查预定义路径
-    let find_cmd = "find /var/log -maxdepth 3 -type f -name '*.log' -o -name '*.log.*' 2>/dev/null | head -50";
+    // 两条简单命令：1) find 发现 .log 文件（排除压缩/轮转）  2) 检查预定义路径
+    let find_cmd = "find /var/log -maxdepth 3 -type f -name '*.log' ! -name '*.gz' ! -name '*.bz2' ! -name '*.xz' ! -name '*.zst' ! -name '*.log.*' 2>/dev/null | head -50";
 
     let mut results: Vec<LogScanResult> = Vec::new();
 
@@ -211,7 +211,7 @@ pub async fn list_sources(
     let mut sources: Vec<LogSource> = Vec::new();
 
     if let Some(s) = get_session(&state, connection_id) {
-        let cmd = "find /var/log -maxdepth 2 -type f -name '*.log' 2>/dev/null | head -30";
+        let cmd = "find /var/log -maxdepth 2 -type f -name '*.log' ! -name '*.gz' ! -name '*.bz2' ! -name '*.xz' ! -name '*.zst' ! -name '*.log.*' 2>/dev/null | head -30";
         if let Ok(Ok((stdout, _, _))) = tokio::time::timeout(
             std::time::Duration::from_secs(10),
             s.exec(cmd),

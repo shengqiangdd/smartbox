@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { ScrollText, ChevronDown } from 'lucide-react'
 import { useSshStore } from '../../stores/ssh-store'
 import LogViewer from './LogViewer'
@@ -7,12 +7,20 @@ import SourceConfig from './SourceConfig'
 export default function LogsPage() {
   const sessions = useSshStore((s) => s.sessions)
 
-  // 后端用 session.id（sess_xxx）作为连接 key，不是 session.connectionId
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const currentId = selectedId || (sessions.length > 0 ? sessions[0]!.id : null)
 
   const [currentPath, setCurrentPath] = useState<string | null>(null)
   const [sourcePanelOpen, setSourcePanelOpen] = useState(true)
+
+  // 追踪 connectionId 变化，通知 SourceConfig 重新扫描
+  const prevConnIdRef = useRef(currentId)
+  const [scanKey, setScanKey] = useState(0)
+  if (currentId !== prevConnIdRef.current) {
+    prevConnIdRef.current = currentId
+    setCurrentPath(null)
+    setScanKey((k) => k + 1)
+  }
 
   const handleSelectPath = useCallback((path: string) => {
     setCurrentPath(path)
@@ -80,15 +88,17 @@ export default function LogsPage() {
       </div>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        {sourcePanelOpen && (
-          <div className="w-56 shrink-0 overflow-y-auto border-r border-slate-700/50 bg-slate-900/50">
-            <SourceConfig
-              key={currentId}
-              connectionId={currentId}
-              onSelectPath={handleSelectPath}
-            />
-          </div>
-        )}
+        {/* 始终渲染 SourceConfig，用 CSS 隐藏，避免重建丢失状态 */}
+        <div
+          className="shrink-0 overflow-y-auto border-r border-slate-700/50 bg-slate-900/50 transition-all"
+          style={{ width: sourcePanelOpen ? 224 : 0, overflow: 'hidden' }}
+        >
+          <SourceConfig
+            scanKey={scanKey}
+            connectionId={currentId}
+            onSelectPath={handleSelectPath}
+          />
+        </div>
         <div className="min-w-0 flex-1 overflow-hidden">
           <LogViewer connectionId={currentId} logPath={currentPath || ''} />
         </div>
