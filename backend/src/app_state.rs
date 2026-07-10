@@ -21,6 +21,8 @@ pub struct AppState {
     pub jwt_service: RwLock<Option<JwtService>>,
     pub marketplace_cache: RwLock<Option<Vec<crate::models::PluginManifest>>>,
     pub active_logtails: DashMap<String, tokio::sync::oneshot::Sender<()>>,
+    /// 服务器启动时间，用于计算 uptime
+    pub start_time: std::time::Instant,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -97,6 +99,7 @@ impl AppState {
             db,
             jwt_service: RwLock::new(JwtService::from_secret(&config.jwt_secret).ok()),
             config,
+            start_time: std::time::Instant::now(),
         })
     }
 

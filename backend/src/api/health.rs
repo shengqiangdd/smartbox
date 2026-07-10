@@ -10,10 +10,7 @@ pub async fn health_check(State(state): State<Arc<AppState>>) -> ApiResponse<Hea
     let conn_count = state.connections.len();
     ApiResponse::success(HealthResponse {
         status: "ok".into(),
-        uptime: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs(),
+        uptime: state.start_time.elapsed().as_secs(),
         version: env!("CARGO_PKG_VERSION"),
         connections: ConnectionsInfo { active: conn_count },
     })

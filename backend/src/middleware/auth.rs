@@ -145,6 +145,7 @@ mod tests {
             marketplace_cache: parking_lot::RwLock::new(None),
             active_logtails: dashmap::DashMap::new(),
             jwt_service: parking_lot::RwLock::new(None),
+            start_time: std::time::Instant::now(),
         })
     }
 
