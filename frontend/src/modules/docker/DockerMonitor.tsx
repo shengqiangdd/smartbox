@@ -122,7 +122,7 @@ export default function DockerMonitor({ connectionId, containers: propContainers
   const [monitors, setMonitors] = useState<MonitorState[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [autoRefresh, setAutoRefresh] = useState(false)
+  const [autoRefresh, setAutoRefresh] = useState(true)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const dataRef = useRef<MonitorState[]>([])
   const selectedRef = useRef<Set<string>>(new Set())
@@ -328,6 +328,16 @@ export default function DockerMonitor({ connectionId, containers: propContainers
       }
     }
   }, [autoRefresh, fetchStats])
+
+  // 选中容器变化时立即获取一次数据（不等轮询间隔）
+  const prevSelectedRef = useRef<string>('')
+  useEffect(() => {
+    const key = Array.from(selectedIds).sort().join(',')
+    if (selectedIds.size > 0 && key !== prevSelectedRef.current) {
+      prevSelectedRef.current = key
+      fetchStats()
+    }
+  }, [selectedIds, fetchStats])
 
   // 选中容器对应的监控数据
   const selectedMonitors = monitors.filter((m) => selectedIds.has(m.id))

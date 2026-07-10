@@ -196,8 +196,12 @@ function DockerComposeInner({ connectionId }: Props) {
         if (!json.success) {
           notify(`${action} 失败: ${json.error || json.msg || '未知错误'}`, 'error')
         } else if (action === 'logs') {
-          const output = (json.data?.data ?? json.data ?? '').toString()
-          setLogData({ key, content: output || '(empty)' })
+          // 后端返回 { success, data: { output: "..." } } 或旧格式 { success, data: { data: "..." } }
+          const output = json.data?.output ?? json.data?.data ?? json.data ?? ''
+          setLogData({
+            key,
+            content: typeof output === 'string' ? output : JSON.stringify(output) || '(empty)',
+          })
         } else {
           notify(`${action} 成功`, 'success')
           // 操作完成后自动刷新状态

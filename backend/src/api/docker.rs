@@ -628,11 +628,17 @@ pub async fn compose_list(
     }
 }
 
+/// Response for compose actions that return raw text output
+#[derive(Serialize)]
+pub struct DockerComposeRawResponse {
+    pub output: String,
+}
+
 /// POST /api/docker/compose/action
 pub async fn compose_action(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ComposeActionRequest>,
-) -> ApiResponse<DockerComposePsResponse> {
+) -> Result<axum::Json<serde_json::Value>, axum::Json<serde_json::Value>> {
     let action_cmd: &str = &req.action;
 
     // Build args: docker compose -f <path> <action>
@@ -656,13 +662,22 @@ pub async fn compose_action(
         Ok(data) => {
             if action_cmd == "ps" {
                 let services = parse_compose_ps(&data);
-                ApiResponse::success(DockerComposePsResponse { services })
+                Ok(axum::Json(serde_json::json!({
+                    "success": true,
+                    "data": { "services": services }
+                })))
             } else {
-                // For non-ps actions (up, down, logs), return raw output wrapped
-                ApiResponse::success(DockerComposePsResponse { services: vec![] })
+                // For non-ps actions (up, down, logs, start, stop), return raw output
+                Ok(axum::Json(serde_json::json!({
+                    "success": true,
+                    "data": { "output": data }
+                })))
             }
         }
-        Err(e) => ApiResponse::error(-1, &e),
+        Err(e) => Ok(axum::Json(serde_json::json!({
+            "success": false,
+            "error": e
+        }))),
     }
 }
 
