@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   Puzzle,
   Check,
@@ -26,31 +26,28 @@ export default function PluginsPage() {
   const [catalog, setCatalog] = useState<PluginCatalogItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
-  // 用 ref 存储沙箱状态，避免 state 更新引发循环
   const [sandboxCodes, setSandboxCodes] = useState<Record<string, string>>({})
   const [sandboxReady, setSandboxReady] = useState<Record<string, boolean>>({})
   const [sandboxKeys, setSandboxKeys] = useState<Record<string, number>>({})
-  const loadedRef = useRef(false)
-  // 用 ref 存储 catalog，避免 useCallback 闭包过期问题
-  const catalogRef = useRef<PluginCatalogItem[]>([])
-
-  // 用 state 触发 UI 更新，但仅在首次加载和刷新时改变
-  const [renderTick, setRenderTick] = useState(0)
 
   const storePlugins = usePluginStore((s) => s.plugins)
   const enablePlugin = usePluginStore((s) => s.enablePlugin)
   const disablePlugin = usePluginStore((s) => s.disablePlugin)
 
+  // 用 ref 避免闭包问题
+  const loadingRef = useRef(false)
+  const catalogRef = useRef<PluginCatalogItem[]>([])
+
   const loadPlugins = useCallback(async () => {
+    if (loadingRef.current) return // 防止重复调用
+    loadingRef.current = true
     setLoading(true)
     setError(null)
     try {
       const plugins = await fetchPlugins()
       setCatalog(plugins)
-      catalogRef.current = plugins // 同步更新 ref 供 handleSandboxReady 使用
+      catalogRef.current = plugins
 
-      // 下载所有插件 JS 代码
       const codes: Record<string, string> = {}
       const keys: Record<string, number> = {}
 
@@ -98,59 +95,54 @@ export default function PluginsPage() {
           )
         }
       }
-
-      setRenderTick((t) => t + 1)
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : '加载插件失败'
       setError(errMsg)
     } finally {
       setLoading(false)
+      loadingRef.current = false
     }
   }, [])
 
-  const isPluginEnabled = (pluginId: string) => {
-    return storePlugins.some((p) => p.manifest.id === pluginId && p.enabled)
-  }
+  const handleToggle = useCallback(
+    (pluginId: string, currentlyEnabled: boolean) => {
+      if (currentlyEnabled) {
+        disablePlugin(pluginId)
+      } else {
+        enablePlugin(pluginId)
+      }
+    },
+    [enablePlugin, disablePlugin],
+  )
 
-  const handleToggle = (pluginId: string, currentlyEnabled: boolean) => {
-    if (currentlyEnabled) {
-      disablePlugin(pluginId)
-    } else {
-      enablePlugin(pluginId)
-    }
-  }
-
+  // 刷新：清理旧插件后重新加载
   const handleReload = useCallback(() => {
-    // 清理
-    for (const plugin of catalog) {
+    loadingRef.current = false // 重置防重入
+    for (const plugin of catalogRef.current) {
       unloadPlugin(plugin.id)
     }
     setSandboxCodes({})
     setSandboxReady({})
     setSandboxKeys({})
-    loadedRef.current = false
     setCatalog([])
-    setRenderTick(0)
     loadPlugins()
-  }, [catalog, loadPlugins])
-  // 加载插件
-  useEffect(() => {
-    const t = setTimeout(() => loadPlugins(), 0)
+  }, [loadPlugins])
 
-    // 监听插件热加载通知（开发模式）
+  // 首次加载 + 监听热加载通知
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loadPlugins 是 async，setState 在微任务中
+    loadPlugins()
+
     const unsub = getWsClientSync().on('plugins-changed', () => {
       handleReload()
     })
     return () => {
-      clearTimeout(t)
       unsub()
     }
   }, [loadPlugins, handleReload])
 
   const handleSandboxReady = useCallback((pluginId: string, handle: PluginSandboxHandle) => {
     setSandboxReady((prev) => ({ ...prev, [pluginId]: true }))
-    setRenderTick((t) => t + 1)
-    // 注册到 sandbox manager，使 pluginSandboxManager.executeCommand() 可工作
     const plugin = catalogRef.current.find((p) => p.id === pluginId)
     if (plugin) {
       pluginSandboxManager.register(
@@ -183,6 +175,21 @@ export default function PluginsPage() {
       )
     }
   }, [])
+
+  // 缓存启用状态计算
+  const enabledMap = useMemo(() => {
+    const map: Record<string, boolean> = {}
+    for (const p of storePlugins) {
+      if (p.enabled) map[p.manifest.id] = true
+    }
+    return map
+  }, [storePlugins])
+
+  const readyCount = useMemo(
+    () => Object.values(sandboxReady).filter(Boolean).length,
+    [sandboxReady],
+  )
+  const codesCount = useMemo(() => Object.keys(sandboxCodes).length, [sandboxCodes])
 
   return (
     <div className="flex h-full flex-col p-4 sm:p-6">
@@ -262,7 +269,7 @@ export default function PluginsPage() {
           )}
 
           {/* 错误状态 */}
-          {error && !loading && renderTick >= 0 && (
+          {error && !loading && (
             <div className="flex flex-1 items-center justify-center">
               <div className="text-center">
                 <AlertCircle size={40} className="mx-auto mb-3 text-red-400" />
@@ -294,7 +301,7 @@ export default function PluginsPage() {
               {/* 左侧：插件列表 */}
               <div className="max-h-[40vh] w-full shrink-0 space-y-3 overflow-y-auto sm:max-h-none sm:w-72 sm:pr-2">
                 {catalog.map((plugin) => {
-                  const enabled = isPluginEnabled(plugin.id)
+                  const enabled = enabledMap[plugin.id] ?? false
                   const ready = sandboxReady[plugin.id]
 
                   return (
@@ -313,7 +320,7 @@ export default function PluginsPage() {
                             <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-500">
                               v{plugin.version}
                             </span>
-                            {!ready && sandboxCodes[plugin.id] && (
+                            {sandboxCodes[plugin.id] && !ready && (
                               <Loader2 size={12} className="animate-spin text-amber-400" />
                             )}
                             {!sandboxCodes[plugin.id] && (
@@ -336,7 +343,6 @@ export default function PluginsPage() {
                                   onClick={() => {
                                     if (enabled) {
                                       pluginSandboxManager.executeCommand(plugin.id, cmd.id)
-                                      // 触发全局通知 - 引导用户查看沙箱输出
                                       window.dispatchEvent(
                                         new CustomEvent('wrench-notification', {
                                           detail: {
@@ -346,7 +352,6 @@ export default function PluginsPage() {
                                           },
                                         }),
                                       )
-                                      // 移动端自动滚动到沙箱区域
                                       if (window.innerWidth < 640) {
                                         setTimeout(() => {
                                           document
@@ -398,12 +403,11 @@ export default function PluginsPage() {
                 <div className="flex shrink-0 items-center justify-between border-b border-slate-700/30 px-4 py-2">
                   <h3 className="text-xs font-medium text-slate-400">沙箱运行状态</h3>
                   <span className="text-[10px] text-slate-600">
-                    {Object.keys(sandboxReady).filter((k) => sandboxReady[k]).length}/
-                    {catalog.filter((p) => sandboxCodes[p.id]).length} 就绪
+                    {readyCount}/{codesCount} 就绪
                   </span>
                 </div>
                 <div className="flex-1 overflow-y-auto p-3 sm:p-4">
-                  {catalog.filter((p) => sandboxCodes[p.id]).length === 0 ? (
+                  {codesCount === 0 ? (
                     <div className="flex items-center justify-center py-12 text-center">
                       <p className="text-xs text-slate-600">沙箱加载中，请稍候...</p>
                     </div>
