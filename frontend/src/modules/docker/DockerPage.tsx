@@ -319,7 +319,7 @@ export default function DockerPage() {
       )}
 
       {/* 内容 */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-hidden">
         <Suspense
           fallback={
             <div className="flex h-full items-center justify-center">

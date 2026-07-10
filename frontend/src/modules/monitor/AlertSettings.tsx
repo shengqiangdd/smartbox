@@ -315,7 +315,7 @@ export default function AlertSettings() {
 
       {/* 展开内容 */}
       {expanded && (
-        <div className="space-y-2 border-t border-slate-700/30 px-3 py-3">
+        <div className="max-h-72 space-y-2 overflow-auto border-t border-slate-700/30 px-3 py-3">
           {/* 规则列表 */}
           {rules.length === 0 ? (
             <p className="py-4 text-center text-[11px] text-slate-600">暂无告警规则</p>

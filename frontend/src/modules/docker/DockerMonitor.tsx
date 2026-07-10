@@ -120,7 +120,7 @@ function MiniChart({
 
 export default function DockerMonitor({ connectionId, containers: propContainers }: Props) {
   const [monitors, setMonitors] = useState<MonitorState[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [autoRefresh, setAutoRefresh] = useState(true)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -225,7 +225,6 @@ export default function DockerMonitor({ connectionId, containers: propContainers
 
   const fetchStats = useCallback(async () => {
     if (!connectionId) return
-    setLoading(true)
     try {
       // Use batch endpoint to get all container stats at once
       const res = await fetch('/api/docker/stats/all', {
@@ -413,7 +412,7 @@ export default function DockerMonitor({ connectionId, containers: propContainers
       </div>
 
       {/* 监控图表区域 */}
-      <div className="flex-1 overflow-auto p-3">
+      <div className="min-h-0 flex-1 overflow-auto p-3">
         {selectedMonitors.length === 0 ? (
           <div className="flex h-full items-center justify-center text-xs text-slate-500">
             {runningContainers.length === 0
