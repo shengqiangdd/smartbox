@@ -101,7 +101,11 @@ export default function LogsPage() {
         </div>
         <div className="min-w-0 flex-1 overflow-hidden">
           {currentPath ? (
-            <LogViewer connectionId={currentId} logPath={currentPath} onClose={() => setCurrentPath(null)} />
+            <LogViewer
+              connectionId={currentId}
+              logPath={currentPath}
+              onClose={() => setCurrentPath(null)}
+            />
           ) : (
             <div className="flex h-full items-center justify-center text-slate-500">
               <p className="text-xs">← 选择一个日志文件开始查看</p>
