@@ -5,61 +5,78 @@ use crate::api_types::{GrepResponse, LogScanResult, LogSource, LogTailResponse};
 use crate::app_state::AppState;
 use crate::response::ApiResponse;
 
+fn get_session(state: &Arc<AppState>, connection_id: &str) -> Option<Arc<crate::ssh::SshSession>> {
+    if !connection_id.is_empty() {
+        state.connections.get(connection_id).and_then(|c| c.session.clone())
+    } else {
+        state.connections.iter().next().and_then(|e| e.value().session.clone())
+    }
+}
+
+/// Helper: 尝试读取日志文件，自动降级 sudo
+async fn read_log_file(session: &crate::ssh::SshSession, path: &str, cmd_builder: impl Fn(&str) -> String) -> Option<String> {
+    let direct = cmd_builder(path);
+    if let Ok(Ok((stdout, _, code))) = tokio::time::timeout(
+        std::time::Duration::from_secs(15),
+        session.exec(&direct),
+    ).await {
+        if code == 0 && !stdout.trim().is_empty() {
+            return Some(stdout);
+        }
+    }
+    // fallback: sudo
+    let sudo_cmd = format!("sudo -n sh -c '{}'", direct.replace('\'', "'\\''"));
+    if let Ok(Ok((stdout, _, code))) = tokio::time::timeout(
+        std::time::Duration::from_secs(15),
+        session.exec(&sudo_cmd),
+    ).await {
+        if code == 0 && !stdout.trim().is_empty() {
+            return Some(stdout);
+        }
+    }
+    None
+}
+
 /// List available log sources (POST /api/logs/list-sources)
 pub async fn list_sources(
     State(state): State<Arc<AppState>>,
     Json(body): Json<serde_json::Value>,
 ) -> ApiResponse<Vec<LogSource>> {
     let connection_id = body.get("connectionId").and_then(|v| v.as_str()).unwrap_or("");
-
-    let common_logs = [
-        ("/var/log/syslog", "System Log (syslog)"),
-        ("/var/log/messages", "System Log (messages)"),
-        ("/var/log/auth.log", "Authentication Log"),
-        ("/var/log/kern.log", "Kernel Log"),
-        ("/var/log/dmesg", "Kernel Boot Messages"),
-        ("/var/log/nginx/access.log", "Nginx Access Log"),
-        ("/var/log/nginx/error.log", "Nginx Error Log"),
-        ("/var/log/apache2/access.log", "Apache Access Log"),
-        ("/var/log/apache2/error.log", "Apache Error Log"),
-        ("/var/log/mysql/error.log", "MySQL Error Log"),
-        ("/var/log/postgresql/postgresql.log", "PostgreSQL Log"),
-        ("/var/log/docker.log", "Docker Daemon Log"),
-    ];
-
-    // 通过 SSH 检查远程主机上哪些日志文件存在
-    let session = if !connection_id.is_empty() {
-        state.connections.get(connection_id).and_then(|c| c.session.clone())
-    } else {
-        state.connections.iter().next().and_then(|e| e.value().session.clone())
-    };
+    let session = get_session(&state, connection_id);
 
     let mut sources: Vec<LogSource> = Vec::new();
 
     if let Some(s) = session {
-        // 用一条命令检查所有文件是否存在
-        let checks: Vec<String> = common_logs.iter()
-            .map(|(path, _)| format!("[ -f {} ] && echo {} || true", path, path))
-            .collect();
-        let cmd = checks.join("; ");
-        if let Ok((stdout, _, _)) = tokio::time::timeout(
+        // 简单直接：用 find 发现所有日志文件
+        let cmd = concat!(
+            "find /var/log -maxdepth 3 -type f \\( -name '*.log' -o -name '*.log.*' -o -name 'syslog' -o -name 'messages' -o -name 'auth.log' -o -name 'secure' -o -name 'kern.log' -o -name 'dmesg' -o -name 'cron.log' -o -name 'cron' -o -name 'boot.log' -o -name 'maillog' -o -name 'yum.log' -o -name 'apt/history.log' -o -name 'dpkg.log' \\) 2>/dev/null ",
+            "| sort -u | head -50"
+        );
+        if let Ok(Ok((stdout, _, _))) = tokio::time::timeout(
             std::time::Duration::from_secs(10),
-            s.exec(&cmd),
-        ).await.unwrap_or(Ok((String::new(), String::new(), 0))) {
-            let existing: Vec<&str> = stdout.lines()
-                .filter(|l| l.starts_with('/') && !l.contains("File not found"))
-                .collect();
-            for log_path in existing {
-                for (p, label) in &common_logs {
-                    if *p == log_path {
-                        sources.push(LogSource { path: log_path.to_string(), label: label.to_string() });
-                        break;
-                    }
+            s.exec(cmd),
+        ).await {
+            for line in stdout.lines() {
+                let path = line.trim().to_string();
+                if !path.is_empty() && path.starts_with('/') {
+                    let label = make_label(&path);
+                    sources.push(LogSource { path, label });
                 }
             }
         }
     } else {
         // 本地 fallback
+        let common_logs = [
+            ("/var/log/syslog", "System Log (syslog)"),
+            ("/var/log/messages", "System Log (messages)"),
+            ("/var/log/auth.log", "Authentication Log"),
+            ("/var/log/kern.log", "Kernel Log"),
+            ("/var/log/nginx/access.log", "Nginx Access Log"),
+            ("/var/log/nginx/error.log", "Nginx Error Log"),
+            ("/var/log/apache2/access.log", "Apache Access Log"),
+            ("/var/log/apache2/error.log", "Apache Error Log"),
+        ];
         for (path, label) in &common_logs {
             if std::path::Path::new(path).exists() {
                 sources.push(LogSource { path: path.to_string(), label: label.to_string() });
@@ -67,7 +84,6 @@ pub async fn list_sources(
         }
     }
 
-    // 始终包含 syslog 作为兜底
     if sources.is_empty() {
         sources.push(LogSource { path: "/var/log/syslog".into(), label: "System Log (syslog)".into() });
     }
@@ -81,41 +97,34 @@ pub async fn tail_log(
     Json(body): Json<serde_json::Value>,
 ) -> ApiResponse<LogTailResponse> {
     let path = body.get("path").and_then(|v| v.as_str()).unwrap_or("/var/log/syslog");
-    let lines = body.get("lines").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
-    let connection_id = body
-        .get("connectionId")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let lines = body.get("lines").and_then(|v| v.as_u64()).unwrap_or(200) as usize;
+    let connection_id = body.get("connectionId").and_then(|v| v.as_str()).unwrap_or("");
 
-    // 按 connectionId 查找指定主机的 SSH 连接
-    let session = if !connection_id.is_empty() {
-        state.connections.get(connection_id).and_then(|c| c.session.clone())
-    } else {
-        state.connections.iter().next().and_then(|e| e.value().session.clone())
-    };
+    let session = get_session(&state, connection_id);
 
     let content = match session {
         Some(s) => {
-            // 先尝试直接读取，失败则用 sudo
-            let escaped_path = path.replace('\'', "'\\''");
-            let cmd = format!(
-                "tail -n {lines} '{path}' 2>/dev/null || sudo -n tail -n {lines} '{path}' 2>/dev/null || sudo tail -n {lines} '{path}' 2>&1 || echo 'Unable to read: {path}'",
-                lines = lines, path = escaped_path
-            );
-            match tokio::time::timeout(std::time::Duration::from_secs(15), s.exec(&cmd)).await {
-                Ok(Ok((stdout, _, _))) => Some(stdout),
-                _ => None,
+            let cmd = format!("tail -n {} {}", lines, shell_quote(path));
+            if let Some(out) = read_log_file(&s, path, |_| cmd.clone()).await {
+                out
+            } else {
+                // 尝试 cat（某些文件 tail 不支持，如二进制 btmp）
+                let cat_cmd = format!("cat {} 2>&1 | tail -n {}", shell_quote(path), lines);
+                match tokio::time::timeout(std::time::Duration::from_secs(10), s.exec(&cat_cmd)).await {
+                    Ok(Ok((stdout, _, _))) if !stdout.contains("Permission denied") && !stdout.contains("No such file") => stdout,
+                    _ => format!("无法读取: {}（文件不存在或无权限）", path),
+                }
             }
         }
-        None => None,
+        None => "无 SSH 连接".to_string(),
     };
 
-    let content = content.unwrap_or_else(|| format!("Unable to read: {}", path));
+    let total = content.lines().count();
     ApiResponse::success(LogTailResponse {
-        content: Some(content.clone()),
+        content: Some(content),
         path: path.to_string(),
-        lines: content.lines().count(),
-        total_lines: content.lines().count(),
+        lines: total,
+        total_lines: total,
     })
 }
 
@@ -126,40 +135,34 @@ pub async fn grep_log(
 ) -> ApiResponse<GrepResponse> {
     let pattern = body.get("pattern").and_then(|v| v.as_str()).unwrap_or("");
     let path = body.get("path").and_then(|v| v.as_str()).unwrap_or("/var/log/syslog");
-    let connection_id = body
-        .get("connectionId")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let connection_id = body.get("connectionId").and_then(|v| v.as_str()).unwrap_or("");
 
     if pattern.is_empty() {
         return ApiResponse::error(-1, "pattern required");
     }
 
-    // 按 connectionId 查找指定主机的 SSH 连接
-    let session = if !connection_id.is_empty() {
-        state.connections.get(connection_id).and_then(|c| c.session.clone())
-    } else {
-        state.connections.iter().next().and_then(|e| e.value().session.clone())
-    };
+    let session = get_session(&state, connection_id);
 
     let content = match session {
         Some(s) => {
-            let escaped_pattern = pattern.replace('\'', "'\\''");
-            let escaped_path = path.replace('\'', "'\\''");
-            // 先尝试直接 grep，失败则用 sudo
-            let cmd = format!(
-                "grep -i '{pat}' '{path}' 2>/dev/null | tail -200 || sudo -n grep -i '{pat}' '{path}' 2>/dev/null | tail -200 || sudo grep -i '{pat}' '{path}' 2>&1 | tail -200 || echo 'No matches or file not found'",
-                pat = escaped_pattern, path = escaped_path
-            );
+            let pat = shell_quote(pattern);
+            let pth = shell_quote(path);
+            let cmd = format!("grep -i {} {} 2>/dev/null | tail -200", pat, pth);
             match tokio::time::timeout(std::time::Duration::from_secs(15), s.exec(&cmd)).await {
-                Ok(Ok((stdout, _, _))) => Some(stdout),
-                _ => None,
+                Ok(Ok((stdout, _, code))) if code == 0 && !stdout.trim().is_empty() => stdout,
+                _ => {
+                    // fallback: sudo
+                    let sudo_cmd = format!("sudo -n grep -i {} {} 2>/dev/null | tail -200", pat, pth);
+                    match tokio::time::timeout(std::time::Duration::from_secs(15), s.exec(&sudo_cmd)).await {
+                        Ok(Ok((stdout, _, _))) => stdout,
+                        _ => "未找到匹配内容或无权限读取".to_string(),
+                    }
+                }
             }
         }
-        None => None,
+        None => "无 SSH 连接".to_string(),
     };
 
-    let content = content.unwrap_or_else(|| format!("Unable to grep: {}", path));
     ApiResponse::success(GrepResponse { content, pattern: pattern.to_string(), path: path.to_string() })
 }
 
@@ -180,49 +183,41 @@ pub async fn scan_log_sources(
         return ApiResponse::success(Vec::new());
     }
 
-    // 获取 SSH session
-    let session = if !connection_id.is_empty() {
-        state.connections.get(connection_id).and_then(|c| c.session.clone())
-    } else {
-        state.connections.iter().next().and_then(|e| e.value().session.clone())
-    };
+    let session = get_session(&state, connection_id);
 
     let mut results: Vec<LogScanResult> = Vec::new();
 
     if let Some(s) = session {
-        // 用一条命令检查所有文件：存在则输出 "path\tsize"，否则输出空
-        // 支持 sudo：先尝试直接访问，失败则用 sudo
-        let checks: Vec<String> = paths.iter()
-            .map(|p| {
-                let ep = p.replace('\'', "'\\''");
-                format!(
-                    "sz=''; \
-                     if [ -r '{p}' ]; then sz=$(du -sh '{p}' 2>/dev/null | cut -f1); \
-                     elif sudo -n [ -r '{p}' ] 2>/dev/null; then sz=$(sudo -n du -sh '{p}' 2>/dev/null | cut -f1); \
-                     elif command -v sudo >/dev/null 2>&1; then sz=$(echo | sudo -S du -sh '{p}' 2>/dev/null | cut -f1); fi; \
-                     [ -n \"$sz\" ] && printf '{p}\\t%s\\n' \"$sz\"",
-                    p = ep
-                )
-            })
-            .collect();
-        let cmd = checks.join("; ");
+        // 构建简单的检查脚本，每行输出 "path\tsize\treadable"
+        // 先用 find 发现真实存在的文件，再与预定义列表交叉
+        let mut script = String::new();
+        // 1. 先执行 find 发现 /var/log 下实际存在的日志文件
+        script.push_str("find /var/log -maxdepth 3 -type f \\( -name '*.log' -o -name '*.log.*' -o -name 'syslog' -o -name 'messages' -o -name 'auth.log' -o -name 'secure' -o -name 'kern.log' -o -name 'dmesg' -o -name 'boot.log' -o -name 'maillog' -o -name 'cron.log' -o -name 'cron' -o -name 'dpkg.log' -o -name 'apt.history.log' -o -name 'yum.log' -o -name 'wtmp' -o -name 'btmp' -o -name 'lastlog' \\) 2>/dev/null | while read f; do sz=$(du -sh \"$f\" 2>/dev/null | cut -f1); [ -n \"$sz\" ] && printf \"%s\\t%s\\n\" \"$f\" \"$sz\"; done\n");
+        // 2. 也检查前端传来的路径
+        for p in &paths {
+            let ep = p.replace('\\', "\\\\").replace('"', "\\\"");
+            script.push_str(&format!(
+                "[ -e \"{p}\" ] && sz=$(du -sh \"{p}\" 2>/dev/null | cut -f1) && printf \"{p}\\t%s\\n\" \"${{sz:-?}}\" || true\n",
+                p = ep
+            ));
+        }
 
-        if let Ok((stdout, _, _)) = tokio::time::timeout(
+        if let Ok(Ok((stdout, _, _))) = tokio::time::timeout(
             std::time::Duration::from_secs(15),
-            s.exec(&cmd),
-        ).await.unwrap_or(Ok((String::new(), String::new(), 0))) {
-            // 解析输出
+            s.exec(&script),
+        ).await {
             let found: std::collections::HashMap<String, String> = stdout.lines()
                 .filter_map(|line| {
                     let parts: Vec<&str> = line.split('\t').collect();
-                    if parts.len() >= 2 {
-                        Some((parts[0].to_string(), parts[1].to_string()))
+                    if parts.len() >= 2 && parts[0].starts_with('/') {
+                        Some((parts[0].to_string(), parts[1].trim().to_string()))
                     } else {
                         None
                     }
                 })
                 .collect();
 
+            // 对前端传来的路径标记 exists
             for path in &paths {
                 if let Some(size) = found.get(path) {
                     results.push(LogScanResult { path: path.clone(), size: size.clone(), exists: true });
@@ -230,8 +225,14 @@ pub async fn scan_log_sources(
                     results.push(LogScanResult { path: path.clone(), size: String::new(), exists: false });
                 }
             }
+
+            // 追加 find 发现的、不在预定义列表中的文件（作为额外发现）
+            for (found_path, size) in &found {
+                if !paths.iter().any(|p| p == found_path) {
+                    results.push(LogScanResult { path: found_path.clone(), size: size.clone(), exists: true });
+                }
+            }
         } else {
-            // 超时或错误，全部标记为不存在
             for path in &paths {
                 results.push(LogScanResult { path: path.clone(), size: String::new(), exists: false });
             }
@@ -240,15 +241,7 @@ pub async fn scan_log_sources(
         // 本地 fallback
         for path in &paths {
             if let Ok(meta) = std::fs::metadata(path) {
-                let size = if meta.len() >= 1_073_741_824 {
-                    format!("{:.1}G", meta.len() as f64 / 1_073_741_824.0)
-                } else if meta.len() >= 1_048_576 {
-                    format!("{:.1}M", meta.len() as f64 / 1_048_576.0)
-                } else if meta.len() >= 1024 {
-                    format!("{:.1}K", meta.len() as f64 / 1024.0)
-                } else {
-                    format!("{}B", meta.len())
-                };
+                let size = format_size(meta.len());
                 results.push(LogScanResult { path: path.clone(), size, exists: true });
             } else {
                 results.push(LogScanResult { path: path.clone(), size: String::new(), exists: false });
@@ -257,4 +250,36 @@ pub async fn scan_log_sources(
     }
 
     ApiResponse::success(results)
+}
+
+fn shell_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+fn make_label(path: &str) -> String {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    // 去掉 .log 后缀和旋转后缀如 .1 .gz
+    let base = name
+        .strip_suffix(".log")
+        .or_else(|| name.strip_suffix(".log.1"))
+        .or_else(|| name.strip_suffix(".log.gz"))
+        .unwrap_or(name);
+    let parent = path.split('/').nth(3).unwrap_or("");
+    if parent == "log" || parent.is_empty() {
+        base.to_string()
+    } else {
+        format!("{}/{}", parent, base)
+    }
+}
+
+fn format_size(bytes: u64) -> String {
+    if bytes >= 1_073_741_824 {
+        format!("{:.1}G", bytes as f64 / 1_073_741_824.0)
+    } else if bytes >= 1_048_576 {
+        format!("{:.1}M", bytes as f64 / 1_048_576.0)
+    } else if bytes >= 1024 {
+        format!("{:.1}K", bytes as f64 / 1024.0)
+    } else {
+        format!("{}B", bytes)
+    }
 }

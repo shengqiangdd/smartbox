@@ -7,74 +7,46 @@ import {
   Plus,
   FileText,
   FolderOpen,
-  Settings,
   Loader2,
 } from 'lucide-react'
 import type { LogSource } from './index'
 
-// 按类别分组的预设日志路径
+// 按类别分组的预设日志路径（作为参考标签，实际以扫描结果为准）
 const LOG_CATEGORIES = [
   {
     label: '系统日志',
     icon: '🖥',
-    paths: [
-      { path: '/var/log/syslog', label: 'syslog' },
-      { path: '/var/log/messages', label: 'messages' },
-      { path: '/var/log/kern.log', label: 'kern.log' },
-      { path: '/var/log/dmesg', label: 'dmesg' },
-    ],
+    keywords: ['syslog', 'messages', 'kern', 'dmesg', 'boot', 'maillog'],
   },
   {
     label: '认证日志',
     icon: '🔐',
-    paths: [
-      { path: '/var/log/auth.log', label: 'auth.log' },
-      { path: '/var/log/secure', label: 'secure' },
-      { path: '/var/log/btmp', label: 'btmp (登录失败)' },
-    ],
+    keywords: ['auth', 'secure', 'btmp', 'wtmp', 'lastlog', 'faillog'],
   },
   {
     label: 'Web 服务',
     icon: '🌐',
-    paths: [
-      { path: '/var/log/nginx/access.log', label: 'Nginx 访问' },
-      { path: '/var/log/nginx/error.log', label: 'Nginx 错误' },
-      { path: '/var/log/apache2/access.log', label: 'Apache 访问' },
-      { path: '/var/log/apache2/error.log', label: 'Apache 错误' },
-      { path: '/var/log/httpd/access_log', label: 'httpd 访问' },
-      { path: '/var/log/httpd/error_log', label: 'httpd 错误' },
-    ],
+    keywords: ['nginx', 'apache', 'httpd', 'caddy', 'lighttpd'],
   },
   {
     label: '数据库',
     icon: '🗄',
-    paths: [
-      { path: '/var/log/mysql/error.log', label: 'MySQL 错误' },
-      { path: '/var/log/mariadb/mariadb.log', label: 'MariaDB' },
-      { path: '/var/log/postgresql/postgresql.log', label: 'PostgreSQL' },
-      { path: '/var/lib/mongodb/mongod.log', label: 'MongoDB' },
-      { path: '/var/log/redis/redis-server.log', label: 'Redis' },
-    ],
+    keywords: ['mysql', 'mariadb', 'postgres', 'mongo', 'redis', 'sqlite'],
   },
   {
     label: '应用日志',
     icon: '📦',
-    paths: [
-      { path: '/var/log/docker.log', label: 'Docker 守护进程' },
-      { path: '/var/log/pm2/', label: 'PM2 日志目录' },
-      { path: '/var/log/supervisor/', label: 'Supervisor 日志目录' },
-      { path: '/var/log/cron.log', label: 'Cron 日志' },
-      { path: '/var/log/cron', label: 'Cron (RHEL)' },
-    ],
+    keywords: ['docker', 'pm2', 'supervisor', 'cron', 'node', 'java', 'tomcat'],
+  },
+  {
+    label: '包管理',
+    icon: '📥',
+    keywords: ['apt', 'dpkg', 'yum', 'dnf', 'rpm', 'pacman'],
   },
   {
     label: '安全审计',
     icon: '🛡',
-    paths: [
-      { path: '/var/log/audit/audit.log', label: 'auditd 审计' },
-      { path: '/var/log/fail2ban.log', label: 'fail2ban' },
-      { path: '/var/log/ufw.log', label: 'UFW 防火墙' },
-    ],
+    keywords: ['audit', 'fail2ban', 'ufw', 'firewall', 'selinux', 'apparmor'],
   },
 ]
 
@@ -83,13 +55,36 @@ interface Props {
   onSelectPath: (path: string) => void
 }
 
+// 根据文件路径匹配分类
+function matchCategory(path: string): string {
+  const lower = path.toLowerCase()
+  for (const cat of LOG_CATEGORIES) {
+    if (cat.keywords.some((kw) => lower.includes(kw))) {
+      return cat.label
+    }
+  }
+  return '其他日志'
+}
+
+// 根据路径生成友好标签
+function makeLabel(path: string): string {
+  const parts = path.split('/')
+  const name = parts[parts.length - 1] || path
+  // 去掉常见后缀
+  const base = name
+    .replace(/\.log$/, '')
+    .replace(/\.log\.\d+$/, '')
+    .replace(/\.log\.gz$/, '')
+  const parent = parts.length > 3 ? parts[parts.length - 2] : ''
+  if (parent && parent !== 'log') return `${parent}/${base}`
+  return base
+}
+
 export default function SourceConfig({ connectionId, onSelectPath }: Props) {
   const [activePath, setActivePath] = useState<string | null>(null)
-  const [discoverResults, setDiscoverResults] = useState<LogSource[]>([])
+  const [allFiles, setAllFiles] = useState<LogSource[]>([])
   const [discovering, setDiscovering] = useState(false)
-  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
-    系统日志: true,
-  })
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({})
   const [customPath, setCustomPath] = useState('')
   const [customLabel, setCustomLabel] = useState('')
   const [customSources, setCustomSources] = useState<LogSource[]>(() => {
@@ -101,7 +96,6 @@ export default function SourceConfig({ connectionId, onSelectPath }: Props) {
     }
   })
 
-  // 保存自定义日志源
   const saveCustom = useCallback((list: LogSource[]) => {
     setCustomSources(list)
     try {
@@ -111,37 +105,75 @@ export default function SourceConfig({ connectionId, onSelectPath }: Props) {
     }
   }, [])
 
-  // 远程扫描：检查所有预设路径哪些存在
-  const handleRemoteScan = useCallback(async () => {
+  // 远程扫描
+  const doScan = useCallback(async () => {
     setDiscovering(true)
     try {
-      // 将所有路径一次性发给后端扫描
-      const allPaths = LOG_CATEGORIES.flatMap((c) => c.paths.map((p) => p.path))
+      const allPaths = LOG_CATEGORIES.flatMap((cat) => cat.keywords.map((kw) => `/var/log/${kw}`))
+      const exactPaths = [
+        '/var/log/syslog',
+        '/var/log/messages',
+        '/var/log/auth.log',
+        '/var/log/secure',
+        '/var/log/kern.log',
+        '/var/log/dmesg',
+        '/var/log/nginx/access.log',
+        '/var/log/nginx/error.log',
+        '/var/log/apache2/access.log',
+        '/var/log/apache2/error.log',
+        '/var/log/httpd/access_log',
+        '/var/log/httpd/error_log',
+        '/var/log/mysql/error.log',
+        '/var/log/postgresql/postgresql.log',
+        '/var/log/docker.log',
+        '/var/log/cron.log',
+        '/var/log/cron',
+        '/var/log/boot.log',
+        '/var/log/audit/audit.log',
+        '/var/log/fail2ban.log',
+        '/var/log/ufw.log',
+        '/var/log/dpkg.log',
+        '/var/log/apt/history.log',
+        '/var/log/yum.log',
+        '/var/log/tomcat/',
+        '/var/log/cassandra/',
+      ]
+      const all = [...new Set([...allPaths, ...exactPaths])]
+
       const res = await fetch('/api/logs/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ connectionId, paths: allPaths }),
+        body: JSON.stringify({ connectionId, paths: all }),
       })
       const json = await res.json()
       if (json.success && Array.isArray(json.data)) {
-        const existing: LogSource[] = json.data
+        const files: LogSource[] = json.data
           .filter((item: { exists: boolean }) => item.exists)
-          .map((item: { path: string; size: string }) => {
-            const preset = LOG_CATEGORIES.flatMap((c) => c.paths).find((p) => p.path === item.path)
-            return {
-              path: item.path,
-              label: preset?.label || item.path.split('/').pop() || item.path,
-              size: item.size || '',
-            }
-          })
-        setDiscoverResults(existing)
+          .map((item: { path: string; size: string }) => ({
+            path: item.path,
+            label: makeLabel(item.path),
+            size: item.size || '',
+          }))
+        const seen = new Set<string>()
+        const unique = files.filter((f) => {
+          if (seen.has(f.path)) return false
+          seen.add(f.path)
+          return true
+        })
+        setAllFiles(unique)
+        const cats = new Set(unique.map((f) => matchCategory(f.path)))
+        const expanded: Record<string, boolean> = {}
+        cats.forEach((c) => (expanded[c] = true))
+        setExpandedCategories(expanded)
       }
     } catch {
-      // ignore
+      /* ignore */
     } finally {
       setDiscovering(false)
     }
   }, [connectionId])
+
+  const handleRemoteScan = doScan
 
   const handleClick = (path: string) => {
     setActivePath(path)
@@ -154,7 +186,7 @@ export default function SourceConfig({ connectionId, onSelectPath }: Props) {
 
   const handleAddCustom = () => {
     if (!customPath.trim()) return
-    const label = customLabel.trim() || customPath.split('/').pop() || customPath
+    const label = customLabel.trim() || makeLabel(customPath.trim())
     const newSource = { path: customPath.trim(), label, size: '' }
     const updated = [...customSources.filter((s) => s.path !== newSource.path), newSource]
     saveCustom(updated)
@@ -163,9 +195,16 @@ export default function SourceConfig({ connectionId, onSelectPath }: Props) {
     handleClick(newSource.path)
   }
 
-  // 检查某个路径是否在扫描结果中存在
-  const isPathAvailable = (path: string) => discoverResults.some((r) => r.path === path)
-  const getPathSize = (path: string) => discoverResults.find((r) => r.path === path)?.size || ''
+  // 按分类分组
+  const grouped: Record<string, LogSource[]> = {}
+  for (const file of allFiles) {
+    const cat = matchCategory(file.path)
+    if (!grouped[cat]) grouped[cat] = []
+    grouped[cat]!.push(file)
+  }
+
+  const categoryOrder = [...LOG_CATEGORIES.map((c) => c.label), '其他日志']
+  const sortedCategories = categoryOrder.filter((c) => grouped[c] && grouped[c]!.length > 0)
 
   return (
     <div className="flex h-full flex-col text-xs">
@@ -184,61 +223,46 @@ export default function SourceConfig({ connectionId, onSelectPath }: Props) {
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 py-1">
-        {/* 按类别显示预设日志 */}
-        {LOG_CATEGORIES.map((cat) => {
-          const available = cat.paths.filter((p) => isPathAvailable(p.path))
-          const unavailable = cat.paths.filter((p) => !isPathAvailable(p.path))
-          const isExpanded = expandedCategories[cat.label] ?? false
+        {/* 按类别显示 */}
+        {sortedCategories.map((cat) => {
+          const files = grouped[cat]!
+          const isExpanded = expandedCategories[cat] ?? false
+          const catInfo = LOG_CATEGORIES.find((c) => c.label === cat)
+          const icon = catInfo?.icon || '📄'
 
           return (
-            <div key={cat.label} className="mb-1">
+            <div key={cat} className="mb-1">
               <button
-                onClick={() => toggleCategory(cat.label)}
+                onClick={() => toggleCategory(cat)}
                 className="flex w-full items-center gap-1 rounded px-2 py-1 text-left hover:bg-slate-800"
               >
                 {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                <span className="mr-1">{cat.icon}</span>
-                <span className="text-slate-300">{cat.label}</span>
-                {available.length > 0 && (
-                  <span className="ml-auto rounded-full bg-emerald-900/50 px-1.5 py-0 text-[10px] text-emerald-400">
-                    {available.length}
-                  </span>
-                )}
-                {available.length === 0 && unavailable.length > 0 && (
-                  <span className="ml-auto text-[10px] text-slate-600">无</span>
-                )}
+                <span className="mr-1">{icon}</span>
+                <span className="text-slate-300">{cat}</span>
+                <span className="ml-auto rounded-full bg-emerald-900/50 px-1.5 py-0 text-[10px] text-emerald-400">
+                  {files.length}
+                </span>
               </button>
 
               {isExpanded && (
                 <div className="ml-4">
-                  {/* 可用的日志文件 */}
-                  {available.map((p) => (
+                  {files.map((f) => (
                     <button
-                      key={p.path}
-                      onClick={() => handleClick(p.path)}
+                      key={f.path}
+                      onClick={() => handleClick(f.path)}
                       className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-slate-800 ${
-                        activePath === p.path ? 'bg-sky-900/30 text-sky-300' : 'text-slate-400'
+                        activePath === f.path ? 'bg-sky-900/30 text-sky-300' : 'text-slate-400'
                       }`}
+                      title={f.path}
                     >
                       <FileText size={12} className="shrink-0 text-emerald-500" />
-                      <span className="truncate">{p.label}</span>
-                      {getPathSize(p.path) && (
+                      <span className="truncate">{f.label}</span>
+                      {f.size && (
                         <span className="ml-auto shrink-0 text-[10px] text-slate-600">
-                          {getPathSize(p.path)}
+                          {f.size}
                         </span>
                       )}
                     </button>
-                  ))}
-                  {/* 不可用的日志文件（灰色） */}
-                  {unavailable.map((p) => (
-                    <div
-                      key={p.path}
-                      className="flex w-full items-center gap-2 px-2 py-1 text-left text-slate-600"
-                    >
-                      <FileText size={12} className="shrink-0 opacity-30" />
-                      <span className="truncate text-slate-700">{p.label}</span>
-                      <span className="ml-auto text-[10px] text-slate-800">未找到</span>
-                    </div>
                   ))}
                 </div>
               )}
@@ -246,11 +270,29 @@ export default function SourceConfig({ connectionId, onSelectPath }: Props) {
           )
         })}
 
+        {/* 扫描中提示 */}
+        {discovering && allFiles.length === 0 && (
+          <div className="flex items-center justify-center gap-2 py-8 text-slate-500">
+            <Loader2 size={14} className="animate-spin" />
+            <span className="text-xs">正在扫描远程主机...</span>
+          </div>
+        )}
+
+        {/* 空状态 */}
+        {!discovering && allFiles.length === 0 && (
+          <div className="py-8 text-center text-slate-500">
+            <p className="text-xs">未发现日志文件</p>
+            <button onClick={handleRemoteScan} className="mt-2 text-sky-400 hover:text-sky-300">
+              重新扫描
+            </button>
+          </div>
+        )}
+
         {/* 自定义日志源 */}
         {customSources.length > 0 && (
-          <div className="mb-1">
+          <div className="mt-2 mb-1 border-t border-slate-700/30 pt-2">
             <div className="flex items-center gap-1 px-2 py-1 text-slate-300">
-              <Settings size={12} />
+              <FolderOpen size={12} />
               <span>自定义日志</span>
             </div>
             <div className="ml-4">
@@ -319,8 +361,8 @@ export default function SourceConfig({ connectionId, onSelectPath }: Props) {
             onChange={(e) => {
               const q = e.target.value.toLowerCase()
               if (q) {
-                const match = LOG_CATEGORIES.flatMap((c) => c.paths).find(
-                  (p) => p.path.toLowerCase().includes(q) || p.label.toLowerCase().includes(q),
+                const match = allFiles.find(
+                  (f) => f.path.toLowerCase().includes(q) || f.label.toLowerCase().includes(q),
                 )
                 if (match) handleClick(match.path)
               }
