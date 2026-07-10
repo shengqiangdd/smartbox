@@ -138,9 +138,9 @@ pub async fn scan_log_sources(
         }
     }
 
-    // 5. 追加 find 发现的额外文件
+    // 5. 追加 find 发现的额外文件（排除 0 大小的空文件）
     for (found_path, size) in &found_map {
-        if !paths.iter().any(|p| p == found_path) {
+        if !paths.iter().any(|p| p == found_path) && size != "0" && !size.is_empty() {
             results.push(LogScanResult { path: found_path.clone(), size: size.clone(), exists: true });
         }
     }
@@ -160,30 +160,16 @@ pub async fn tail_log(
     let content = match get_session(&state, connection_id) {
         Some(s) => {
             let p = sq(path);
-            // 先判断是否为二进制文件，二进制用 strings 过滤可读内容
+            // 最简方案：|| 链式降级，兼容 BusyBox
             let cmd = format!(
-                "if file {p} 2>/dev/null | grep -q 'text\\|ASCII\\|UTF'; then \
-                   tail -n {lines} {p} 2>&1; __rc=$?; \
-                 else \
-                   strings {p} 2>/dev/null | tail -n {lines}; __rc=$?; \
-                 fi; \
-                 if [ $__rc -ne 0 ]; then \
-                   sudo -n tail -n {lines} {p} 2>/dev/null || sudo -n strings {p} 2>/dev/null | tail -n {lines}; \
-                   __rc2=$?; \
-                   if [ $__rc2 -ne 0 ]; then echo ''; echo '--- 读取失败（文件不存在或无权限） ---'; fi; \
-                 fi",
+                "tail -n {lines} {p} 2>/dev/null || sudo -n tail -n {lines} {p} 2>/dev/null || echo '--- 读取失败（文件不存在或无权限） ---'",
                 p = p, lines = lines
             );
             match tokio::time::timeout(std::time::Duration::from_secs(15), s.exec(&cmd)).await {
                 Ok(Ok((stdout, _, _))) => {
                     let trimmed = stdout.trim();
-                    if trimmed.ends_with("读取失败（文件不存在或无权限）") {
-                        let body = trimmed.strip_suffix("--- 读取失败（文件不存在或无权限） ---").unwrap_or("").trim();
-                        if body.is_empty() {
-                            format!("无法读取: {path}\n\n可能原因：文件不存在或权限不足（无 sudo）")
-                        } else {
-                            format!("{body}\n\n--- 读取失败（文件不存在或无权限） ---")
-                        }
+                    if trimmed == "--- 读取失败（文件不存在或无权限） ---" {
+                        format!("无法读取: {path}\n\n可能原因：文件不存在或权限不足（无 sudo）")
                     } else {
                         stdout
                     }
@@ -220,19 +206,8 @@ pub async fn grep_log(
         Some(s) => {
             let pat = sq(pattern);
             let pth = sq(path);
-            // 先判断是否为文本文件，二进制用 strings 过滤
             let cmd = format!(
-                "if file {pth} 2>/dev/null | grep -q 'text\\|ASCII\\|UTF'; then \
-                   grep -i {pat} {pth} 2>&1 | tail -200; __rc=$?; \
-                 else \
-                   strings {pth} 2>/dev/null | grep -i {pat} | tail -200; __rc=$?; \
-                 fi; \
-                 if [ $__rc -ne 0 ]; then \
-                   sudo -n grep -i {pat} {pth} 2>/dev/null | tail -200 || \
-                   sudo -n strings {pth} 2>/dev/null | grep -i {pat} | tail -200; \
-                   __rc2=$?; \
-                   if [ $__rc2 -ne 0 ]; then echo '--- 搜索失败（文件不存在或无权限） ---'; fi; \
-                 fi",
+                "grep -i {pat} {pth} 2>/dev/null | tail -200 || sudo -n grep -i {pat} {pth} 2>/dev/null | tail -200 || echo '--- 搜索失败（文件不存在或无权限） ---'",
                 pat = pat, pth = pth
             );
             match tokio::time::timeout(std::time::Duration::from_secs(15), s.exec(&cmd)).await {
