@@ -51,12 +51,18 @@ export default function PluginSandbox({
     container.appendChild(rootEl)
 
     const pluginAPI = {
-      registerCommand: (idOrDef: string | { id: string; label?: string; description?: string }, secondArg?: unknown) => {
+      registerCommand: (
+        idOrDef: string | { id: string; label?: string; description?: string },
+        secondArg?: unknown,
+      ) => {
         let id: string, handler: (args: unknown[]) => void
         if (typeof idOrDef === 'string') {
           id = idOrDef
           const def = secondArg as Record<string, unknown> | undefined
-          handler = ((def?.execute as (args: unknown[]) => void) || (def as unknown as (args: unknown[]) => void)) || (() => {})
+          handler =
+            (def?.execute as (args: unknown[]) => void) ||
+            (def as unknown as (args: unknown[]) => void) ||
+            (() => {})
         } else {
           id = idOrDef.id
           handler = (secondArg as (args: unknown[]) => void) || (() => {})
@@ -77,13 +83,25 @@ export default function PluginSandbox({
         const PREFIX = `wrench_plugin_${manifest.id}_`
         return {
           get: (key: string) => {
-            try { return localStorage.getItem(PREFIX + key) } catch { return null }
+            try {
+              return localStorage.getItem(PREFIX + key)
+            } catch {
+              return null
+            }
           },
           set: (key: string, value: string) => {
-            try { localStorage.setItem(PREFIX + key, value) } catch { /* */ }
+            try {
+              localStorage.setItem(PREFIX + key, value)
+            } catch {
+              /* */
+            }
           },
           remove: (key: string) => {
-            try { localStorage.removeItem(PREFIX + key) } catch { /* */ }
+            try {
+              localStorage.removeItem(PREFIX + key)
+            } catch {
+              /* */
+            }
           },
           clear: () => {
             try {
@@ -93,7 +111,9 @@ export default function PluginSandbox({
                 if (k?.startsWith(PREFIX)) keys.push(k)
               }
               keys.forEach((k) => localStorage.removeItem(k))
-            } catch { /* */ }
+            } catch {
+              /* */
+            }
           },
         }
       })(),
@@ -125,7 +145,9 @@ export default function PluginSandbox({
       executeCommand: (commandId, args) => {
         const handler = commandHandlers[commandId]
         if (handler) {
-          try { handler(args || []) } catch (err) {
+          try {
+            handler(args || [])
+          } catch (err) {
             console.error(`[PluginSandbox] Command ${commandId} error:`, err)
           }
         }
@@ -146,7 +168,11 @@ export default function PluginSandbox({
     cleanupRef.current = () => {
       if (!destroyed) {
         destroyed = true
-        try { container.removeChild(rootEl) } catch { /* */ }
+        try {
+          container.removeChild(rootEl)
+        } catch {
+          /* */
+        }
       }
     }
 
@@ -156,10 +182,5 @@ export default function PluginSandbox({
     }
   }, [manifest, pluginCode, onReady, onError])
 
-  return (
-    <div
-      ref={containerRef}
-      style={{ width: '100%', height: '100%', overflow: 'auto' }}
-    />
-  )
+  return <div ref={containerRef} style={{ width: '100%', height: '100%', overflow: 'auto' }} />
 }

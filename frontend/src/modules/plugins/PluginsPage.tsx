@@ -131,7 +131,9 @@ export default function PluginsPage() {
     const unsub = getWsClientSync().on('plugins-changed', () => {
       handleReload()
     })
-    return () => { unsub() }
+    return () => {
+      unsub()
+    }
   }, [loadPlugins, handleReload])
 
   // 为每个插件创建稳定的 onReady 回调

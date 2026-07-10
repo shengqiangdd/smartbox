@@ -45,7 +45,11 @@ class PluginSandboxManager {
   unregister(pluginId: string) {
     const inst = this.instances.get(pluginId)
     if (inst) {
-      try { inst.handle.destroy() } catch { /* */ }
+      try {
+        inst.handle.destroy()
+      } catch {
+        /* */
+      }
       this.instances.delete(pluginId)
     }
   }
@@ -71,7 +75,9 @@ class PluginSandboxManager {
     for (const inst of this.instances.values()) {
       try {
         inst.handle.updateEditorContent(content, language)
-      } catch { /* */ }
+      } catch {
+        /* */
+      }
     }
   }
 }
