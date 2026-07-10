@@ -268,8 +268,20 @@ function HostHealthOverviewInner({ onSelectHost }: { onSelectHost?: (hostId: str
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hostId }),
       })
-      const data = await res.json()
-      setDiagnosis((prev) => ({ ...prev, [hostId]: data.data ?? 'No diagnosis available' }))
+      const json = await res.json()
+      // 后端返回 ApiResponse<{health, raw_report, ai_diagnosis}>
+      // ApiResponse.data → json.data → {health, raw_report, ai_diagnosis}
+      const diagObj = json.data
+      let text: string
+      if (diagObj && typeof diagObj === 'object' && 'ai_diagnosis' in diagObj) {
+        // 结构化响应：优先使用 ai_diagnosis，回退到 raw_report
+        text = diagObj.ai_diagnosis || diagObj.raw_report || 'No diagnosis available'
+      } else if (typeof diagObj === 'string') {
+        text = diagObj
+      } else {
+        text = 'No diagnosis available'
+      }
+      setDiagnosis((prev) => ({ ...prev, [hostId]: text }))
     } catch {
       setDiagnosis((prev) => ({ ...prev, [hostId]: 'Diagnosis failed' }))
     } finally {

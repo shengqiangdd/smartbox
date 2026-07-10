@@ -277,19 +277,48 @@ export default function MonitorPage() {
         id: h.id,
         name: h.host.length > 20 ? h.host.slice(0, 18) + '…' : h.host,
       }))
-      // 去重
+      // 去重（基于 id）
       const seen = new Set<string>()
       const deduped = list.filter((h) => {
         if (seen.has(h.id)) return false
         seen.add(h.id)
         return true
       })
+
+      // 清理已移除主机的旧数据
+      const newIds = new Set(deduped.map((h) => h.id))
+      setStats((prev) => {
+        const cleaned: Record<string, HostStats> = {}
+        for (const [k, v] of Object.entries(prev)) {
+          if (newIds.has(k)) cleaned[k] = v
+        }
+        return cleaned
+      })
+      setHistory((prev) => {
+        const cleaned: Record<string, HistoryPoint[]> = {}
+        for (const [k, v] of Object.entries(prev)) {
+          if (newIds.has(k)) cleaned[k] = v
+        }
+        return cleaned
+      })
+      // 清理网络速度缓存
+      for (const k of Object.keys(prevNetRef.current)) {
+        if (!newIds.has(k)) delete prevNetRef.current[k]
+      }
+
       setHosts(deduped)
       if (deduped.length > 0) {
-        setSelected((prev) => (prev.length === 0 ? [deduped[0]!.id] : prev))
+        setSelected((prev) => {
+          // 只保留仍存在的主机
+          const valid = prev.filter((id) => newIds.has(id))
+          if (valid.length === 0) return [deduped[0]!.id]
+          return valid
+        })
+      } else {
+        setSelected([])
       }
     } catch {
-      // 回退到前端 store
+      // 回退到前端 store（同样需要去重 + 清理）
       const seen = new Set<string>()
       const list: { id: string; name: string }[] = []
       for (const sess of sessions) {
@@ -305,9 +334,32 @@ export default function MonitorPage() {
         list.push({ id: conn.id, name: conn.name })
         seen.add(hostKey)
       }
+
+      const newIds = new Set(list.map((h) => h.id))
+      setStats((prev) => {
+        const cleaned: Record<string, HostStats> = {}
+        for (const [k, v] of Object.entries(prev)) {
+          if (newIds.has(k)) cleaned[k] = v
+        }
+        return cleaned
+      })
+      setHistory((prev) => {
+        const cleaned: Record<string, HistoryPoint[]> = {}
+        for (const [k, v] of Object.entries(prev)) {
+          if (newIds.has(k)) cleaned[k] = v
+        }
+        return cleaned
+      })
+
       setHosts(list)
       if (list.length > 0) {
-        setSelected((prev) => (prev.length === 0 ? [list[0]!.id] : prev))
+        setSelected((prev) => {
+          const valid = prev.filter((id) => newIds.has(id))
+          if (valid.length === 0) return [list[0]!.id]
+          return valid
+        })
+      } else {
+        setSelected([])
       }
     }
   }, [connections, sessions])
@@ -459,7 +511,24 @@ export default function MonitorPage() {
         const hostName = hostInfo?.name || hostId.slice(0, 8)
         const h = healthMap.get(hostId)
 
-        if (!h || !h.connected) continue
+        // 主机离线或不在健康列表中 → 创建离线占位数据
+        if (!h || !h.connected) {
+          newStats[hostId] = {
+            host: hostName,
+            name: hostName,
+            cpu: 0,
+            memory: { total: 0, used: 0, pct: 0 },
+            disk: { total: 0, used: 0, pct: 0 },
+            uptime: '离线',
+            loadAvg: '—',
+            netRx: 0,
+            netTx: 0,
+            topProcs: [],
+            io: { readBps: 0, writeBps: 0 },
+            timestamp: now,
+          }
+          continue
+        }
 
         // 从后端结构化数据构建基础指标
         const cpuCores = h.cpu_cores || 1
@@ -574,6 +643,18 @@ export default function MonitorPage() {
     }
   }, [fetchHealth])
 
+  // Keep-Alive: 页面重新可见时重新扫描主机列表（清理旧数据）
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        scanHosts()
+        fetchHealth()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [scanHosts, fetchHealth])
+
   useEffect(() => {
     return () => stopAutoRefresh()
   }, [stopAutoRefresh])
@@ -585,9 +666,10 @@ export default function MonitorPage() {
   // 手动刷新
   const handleRefresh = useCallback(async () => {
     stopAutoRefresh()
+    await scanHosts()
     await collectAll()
     startAutoRefresh()
-  }, [stopAutoRefresh, collectAll, startAutoRefresh])
+  }, [stopAutoRefresh, scanHosts, collectAll, startAutoRefresh])
 
   // 主机列表映射为 id → name 的缓存
   const hostNameMap = useMemo(() => {
