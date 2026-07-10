@@ -53,8 +53,33 @@ export async function fetchPlugins(): Promise<PluginCatalogItem[]> {
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`)
     }
-    const data = await response.json()
-    return data.plugins || []
+    const json = await response.json()
+    // 后端返回 ApiResponse<Vec<PluginManifest>>，即 { success, data: [...] }
+    const rawPlugins = json.data || []
+    return rawPlugins.map((p: Record<string, unknown>) => ({
+      id: p.id as string,
+      name: p.name as string,
+      version: p.version as string,
+      description: (p.description as string) || '',
+      author: (p.author as string) || 'Unknown',
+      icon: (p.icon as string) || 'puzzle',
+      entry: `/api/plugins/${p.id}/plugin.js`,
+      commands: Array.isArray(p.commands)
+        ? (p.commands as Array<Record<string, unknown>>).map((c) => ({
+            id: c.id as string,
+            label: (c.label as string) || (c.id as string),
+            description: (c.description as string) || '',
+            icon: (c.icon as string) || 'play',
+          }))
+        : [],
+      panels: Array.isArray(p.panels)
+        ? (p.panels as Array<Record<string, unknown>>).map((p2) => ({
+            id: p2.id as string,
+            title: (p2.title as string) || (p2.id as string),
+            icon: (p2.icon as string) || 'layout',
+          }))
+        : [],
+    }))
   } catch (err) {
     console.error('[PluginManager] Failed to fetch plugins:', err)
     return []

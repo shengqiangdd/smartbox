@@ -1,6 +1,5 @@
 use crate::app_state::AppState;
 use axum::extract::State;
-use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use std::sync::Arc;
 
@@ -13,87 +12,101 @@ pub struct MarketPluginListing {
     pub description: String,
     pub author: String,
     pub icon: String,
+    #[serde(default)]
     pub tags: Option<Vec<String>>,
+    #[serde(default)]
     pub manifest_url: String,
+    #[serde(default)]
     pub plugin_url: String,
+    #[serde(default)]
     pub downloads: Option<u64>,
+    #[serde(default)]
     pub updated_at: Option<String>,
-}
-
-/// Marketplace index response
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct MarketIndex {
-    pub plugins: Vec<MarketPluginListing>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub updated_at: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
-}
-
-/// Fetch marketplace index from remote source
-async fn fetch_marketplace_index_inner() -> Result<Vec<MarketPluginListing>, String> {
-    // Default marketplace index URL — replace with actual marketplace URL
-    let index_url = "https://wrench-market.example.com/index.json";
-
-    let resp = reqwest::get(index_url)
-        .await
-        .map_err(|e| format!("Failed to fetch marketplace index: {}", e))?;
-
-    if !resp.status().is_success() {
-        return Err(format!("Marketplace index returned status: {}", resp.status()));
-    }
-
-    let index: MarketIndex = resp
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse marketplace index: {}", e))?;
-
-    Ok(index.plugins)
 }
 
 /// Get marketplace index (GET /api/market/index)
+/// 策略：先尝试远程市场，失败则返回本地内置插件列表
 pub async fn get_market_index(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    // Check cache first
-    {
-        let cache = state.marketplace_cache.read();
-        if let Some(cached) = cache.as_ref() {
-            if !cached.is_empty() {
-                // Return cached data serialized as MarketPluginListing-compatible format
-                let listings: Vec<MarketPluginListing> = cached
-                    .iter()
-                    .map(|p| MarketPluginListing {
-                        id: p.id.clone(),
-                        name: p.name.clone(),
-                        version: p.version.clone(),
-                        description: p.description.clone(),
-                        author: p.author.clone(),
-                        icon: p.icon.clone(),
-                        tags: None,
-                        manifest_url: String::new(),
-                        plugin_url: String::new(),
-                        downloads: None,
-                        updated_at: None,
-                    })
-                    .collect();
-                drop(cache);
-                return axum::Json(serde_json::json!({
-                    "plugins": listings,
-                    "message": "Cached marketplace index"
-                }))
-                .into_response();
+    // 1. 尝试从远程市场获取
+    if let Ok(index_url) = std::env::var("MARKET_INDEX_URL") {
+        if !index_url.is_empty() {
+            if let Ok(resp) = reqwest::get(&index_url).await {
+                if resp.status().is_success() {
+                    if let Ok(data) = resp.json::<serde_json::Value>().await {
+                        if let Some(arr) = data.get("plugins").and_then(|v| v.as_array()) {
+                            let plugins: Vec<MarketPluginListing> = arr
+                                .iter()
+                                .filter_map(|p| serde_json::from_value(p.clone()).ok())
+                                .collect();
+                            if !plugins.is_empty() {
+                                // 缓存
+                                let manifests: Vec<crate::models::PluginManifest> = plugins
+                                    .iter()
+                                    .map(|p| crate::models::PluginManifest {
+                                        id: p.id.clone(),
+                                        name: p.name.clone(),
+                                        version: p.version.clone(),
+                                        description: p.description.clone(),
+                                        author: p.author.clone(),
+                                        icon: p.icon.clone(),
+                                        commands: vec![],
+                                        panels: vec![],
+                                    })
+                                    .collect();
+                                *state.marketplace_cache.write() = Some(manifests);
+
+                                return axum::Json(serde_json::json!({
+                                    "plugins": plugins,
+                                    "updated_at": chrono::Utc::now().to_rfc3339(),
+                                    "source": "remote"
+                                }))
+                                .into_response();
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 
-    // Fetch from remote
-    let plugins = match fetch_marketplace_index_inner().await {
-        Ok(p) => p,
-        Err(e) => {
-            return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to fetch marketplace: {}", e)).into_response();
-        }
-    };
+    // 2. 远程不可用，从本地插件目录生成市场列表
+    let plugins_dir = &state.config.plugins_dir;
+    let mut plugins: Vec<MarketPluginListing> = Vec::new();
 
-    // Convert to PluginManifest and cache
+    if let Ok(entries) = std::fs::read_dir(plugins_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let manifest_path = path.join("manifest.json");
+            let js_path = path.join("plugin.js");
+            if !js_path.exists() || !manifest_path.exists() {
+                continue;
+            }
+            if let Ok(content) = std::fs::read_to_string(&manifest_path) {
+                if let Ok(manifest) =
+                    serde_json::from_str::<crate::models::PluginManifest>(&content)
+                {
+                    plugins.push(MarketPluginListing {
+                        id: manifest.id.clone(),
+                        name: manifest.name.clone(),
+                        version: manifest.version.clone(),
+                        description: manifest.description.clone(),
+                        author: manifest.author.clone(),
+                        icon: manifest.icon.clone(),
+                        tags: Some(vec!["内置".to_string()]),
+                        manifest_url: String::new(),
+                        plugin_url: String::new(),
+                        downloads: None,
+                        updated_at: None,
+                    });
+                }
+            }
+        }
+    }
+
+    // 缓存
     let manifests: Vec<crate::models::PluginManifest> = plugins
         .iter()
         .map(|p| crate::models::PluginManifest {
@@ -107,14 +120,12 @@ pub async fn get_market_index(State(state): State<Arc<AppState>>) -> impl IntoRe
             panels: vec![],
         })
         .collect();
-
-    {
-        *state.marketplace_cache.write() = Some(manifests);
-    }
+    *state.marketplace_cache.write() = Some(manifests);
 
     axum::Json(serde_json::json!({
         "plugins": plugins,
-        "updated_at": chrono::Utc::now().to_rfc3339()
+        "updated_at": chrono::Utc::now().to_rfc3339(),
+        "source": "local"
     }))
     .into_response()
 }
