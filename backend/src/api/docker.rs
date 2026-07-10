@@ -250,14 +250,14 @@ fn parse_docker_ps(output: &str) -> Vec<DockerContainerInfo> {
         .filter_map(|line| {
             let v: serde_json::Value = serde_json::from_str(line).ok()?;
             Some(DockerContainerInfo {
-                id: extract_json_str(&v, &["ID", "Id", "id"]),
-                name: extract_json_str(&v, &["Names", "Name", "names", "name"]),
-                image: extract_json_str(&v, &["Image", "image"]),
-                state: extract_json_str(&v, &["State", "state"]),
-                status: extract_json_str(&v, &["Status", "status"]),
-                ports: extract_json_str(&v, &["Ports", "ports"]),
-                created: extract_json_str(&v, &["CreatedAt", "Created", "created_at"]),
-                command: extract_json_str(&v, &["Command", "command"]),
+                id: extract_json_str(&v, &["ID"]),
+                name: extract_json_str(&v, &["Names"]),
+                image: extract_json_str(&v, &["Image"]),
+                state: extract_json_str(&v, &["State"]),
+                status: extract_json_str(&v, &["Status"]),
+                ports: extract_json_str(&v, &["Ports"]),
+                created: extract_json_str(&v, &["CreatedAt"]),
+                command: extract_json_str(&v, &["Command"]),
             })
         })
         .collect()
@@ -272,14 +272,14 @@ fn parse_docker_stats(output: &str) -> Vec<DockerContainerStats> {
         .filter_map(|line| {
             let v: serde_json::Value = serde_json::from_str(line).ok()?;
             Some(DockerContainerStats {
-                id: extract_json_str(&v, &["ID", "Container", "id", "container"]),
-                name: extract_json_str(&v, &["Name", "name"]),
-                cpu_percent: extract_json_str(&v, &["CPUPerc", "cpu_percent"]),
-                mem_usage: extract_json_str(&v, &["MemUsage", "mem_usage"]),
-                mem_percent: extract_json_str(&v, &["MemPerc", "mem_percent"]),
-                net_io: extract_json_str(&v, &["NetIO", "net_io"]),
-                block_io: extract_json_str(&v, &["BlockIO", "block_io"]),
-                pids: extract_json_str(&v, &["PIDs", "pids"]),
+                id: extract_json_str(&v, &["Container"]),
+                name: extract_json_str(&v, &["Name"]),
+                cpu_percent: extract_json_str(&v, &["CPUPerc"]),
+                mem_usage: extract_json_str(&v, &["MemUsage"]),
+                mem_percent: extract_json_str(&v, &["MemPerc"]),
+                net_io: extract_json_str(&v, &["NetIO"]),
+                block_io: extract_json_str(&v, &["BlockIO"]),
+                pids: extract_json_str(&v, &["PIDs"]),
             })
         })
         .collect()
@@ -303,10 +303,10 @@ fn parse_compose_ls(output: &str) -> Vec<DockerComposeProject> {
     items
         .into_iter()
         .map(|v| DockerComposeProject {
-            id: extract_json_str(&v, &["ID", "id"]),
-            name: extract_json_str(&v, &["Name", "name"]),
-            status: extract_json_str(&v, &["Status", "status"]),
-            config_files: extract_json_str(&v, &["ConfigFiles", "config_files"]),
+            id: extract_json_str(&v, &["ID"]),
+            name: extract_json_str(&v, &["Name"]),
+            status: extract_json_str(&v, &["Status"]),
+            config_files: extract_json_str(&v, &["ConfigFiles"]),
         })
         .collect()
 }
@@ -320,12 +320,12 @@ fn parse_compose_ps(output: &str) -> Vec<DockerComposeService> {
         .filter_map(|line| {
             let v: serde_json::Value = serde_json::from_str(line).ok()?;
             Some(DockerComposeService {
-                name: extract_json_str(&v, &["Name", "Service", "name", "service"]),
-                image: extract_json_str(&v, &["Image", "image"]),
-                state: extract_json_str(&v, &["State", "state"]),
-                status: extract_json_str(&v, &["Status", "status"]),
-                ports: extract_json_str(&v, &["Publishers", "Ports", "ports"]),
-                command: extract_json_str(&v, &["Command", "command"]),
+                name: extract_json_str(&v, &["Name", "Service"]),
+                image: extract_json_str(&v, &["Image"]),
+                state: extract_json_str(&v, &["State"]),
+                status: extract_json_str(&v, &["Status"]),
+                ports: extract_json_str(&v, &["Publishers", "Ports"]),
+                command: extract_json_str(&v, &["Command"]),
             })
         })
         .collect()

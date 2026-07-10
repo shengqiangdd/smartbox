@@ -173,46 +173,72 @@ pub struct DockerExecResponse {
 /// Structured container info from `docker ps --format json`
 #[derive(Serialize)]
 pub struct DockerContainerInfo {
+    #[serde(rename = "ID")]
     pub id: String,
+    #[serde(rename = "Names")]
     pub name: String,
+    #[serde(rename = "Image")]
     pub image: String,
+    #[serde(rename = "State")]
     pub state: String,
+    #[serde(rename = "Status")]
     pub status: String,
+    #[serde(rename = "Ports")]
     pub ports: String,
+    #[serde(rename = "CreatedAt")]
     pub created: String,
+    #[serde(rename = "Command")]
     pub command: String,
 }
 
 /// Structured container stats from `docker stats --no-stream --format json`
 #[derive(Serialize)]
 pub struct DockerContainerStats {
+    #[serde(rename = "Container")]
     pub id: String,
+    #[serde(rename = "Name")]
     pub name: String,
+    #[serde(rename = "CPUPerc")]
     pub cpu_percent: String,
+    #[serde(rename = "MemUsage")]
     pub mem_usage: String,
+    #[serde(rename = "MemPerc")]
     pub mem_percent: String,
+    #[serde(rename = "NetIO")]
     pub net_io: String,
+    #[serde(rename = "BlockIO")]
     pub block_io: String,
+    #[serde(rename = "PIDs")]
     pub pids: String,
 }
 
 /// Structured compose project info
 #[derive(Serialize)]
 pub struct DockerComposeProject {
+    #[serde(rename = "ID")]
     pub id: String,
+    #[serde(rename = "Name")]
     pub name: String,
+    #[serde(rename = "Status")]
     pub status: String,
+    #[serde(rename = "ConfigFiles")]
     pub config_files: String,
 }
 
 /// Structured compose service info from `docker compose ps --format json`
 #[derive(Serialize)]
 pub struct DockerComposeService {
+    #[serde(rename = "Name")]
     pub name: String,
+    #[serde(rename = "Image")]
     pub image: String,
+    #[serde(rename = "State")]
     pub state: String,
+    #[serde(rename = "Status")]
     pub status: String,
+    #[serde(rename = "Publishers")]
     pub ports: String,
+    #[serde(rename = "Command")]
     pub command: String,
 }
 

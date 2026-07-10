@@ -239,14 +239,14 @@ export default function DockerMonitor({ connectionId, containers: propContainers
         return
       }
 
-      // 后端返回结构化数据: { stats: [...] }
+      // 后端返回结构化数据: { stats: [{Container, Name, CPUPerc, MemUsage, PIDs}] }
       const statsList: Array<{
-        id?: string
-        name?: string
-        cpu_percent?: string
-        mem_usage?: string
-        mem_percent?: string
-        pids?: string
+        Container?: string
+        Name?: string
+        CPUPerc?: string
+        MemUsage?: string
+        MemPerc?: string
+        PIDs?: string
       }> = json.data?.stats ?? []
       const now = Date.now()
 
@@ -255,22 +255,22 @@ export default function DockerMonitor({ connectionId, containers: propContainers
         const newMonitors: MonitorState[] = []
 
         for (const s of statsList) {
-          const id = s.id || ''
-          const name = s.name || id
+          const id = s.Container || ''
+          const name = s.Name || id
 
-          const cpuPct = parseFloat(s.cpu_percent || '0') || 0
+          const cpuPct = parseFloat(s.CPUPerc || '0') || 0
 
           let memPct = 0
           let memUsed = 0
           let memTotal = 0
-          if (s.mem_usage) {
-            const parts = s.mem_usage.split('/')
+          if (s.MemUsage) {
+            const parts = s.MemUsage.split('/')
             memUsed = parseSize(parts[0]?.trim() || '0B')
             memTotal = parseSize(parts[1]?.trim() || '0B')
             memPct = memTotal > 0 ? (memUsed / memTotal) * 100 : 0
           }
 
-          const pids = parseInt(s.pids || '0') || 0
+          const pids = parseInt(s.PIDs || '0') || 0
           const point: DataPoint = {
             time: now,
             cpu: cpuPct,

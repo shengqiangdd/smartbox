@@ -64,16 +64,16 @@ function DockerComposeInner({ connectionId }: Props) {
         return
       }
 
-      // 后端返回结构化数据: { projects: [{ id, name, status, config_files }] }
+      // 后端返回结构化数据: { projects: [{ID, Name, Status, ConfigFiles}] }
       const projectsData: Array<{
-        id?: string
-        name?: string
-        status?: string
-        config_files?: string
+        ID?: string
+        Name?: string
+        Status?: string
+        ConfigFiles?: string
       }> = json.data?.projects ?? []
       const parsed: ComposeProject[] = projectsData.map((p) => ({
-        path: p.config_files || '',
-        name: p.name || 'unknown',
+        path: p.ConfigFiles || '',
+        name: p.Name || 'unknown',
         services: [],
       }))
 
@@ -139,20 +139,20 @@ function DockerComposeInner({ connectionId }: Props) {
         })
         const json = (await res.json()) as ApiResponse
         if (json.success) {
-          // 后端返回结构化数据: { services: [...] }
+          // 后端返回结构化数据: { services: [{Name, Image, State, Status, Publishers}] }
           const servicesData: Array<{
-            name?: string
-            image?: string
-            state?: string
-            status?: string
-            ports?: string
+            Name?: string
+            Image?: string
+            State?: string
+            Status?: string
+            Publishers?: string
           }> = json.data?.services ?? []
           const services: ComposeService[] = servicesData.map((s) => ({
-            name: s.name || '-',
-            status: s.status || '-',
-            image: s.image || '-',
-            ports: s.ports || '',
-            state: (s.state || '').toLowerCase(),
+            name: s.Name || '-',
+            status: s.Status || '-',
+            image: s.Image || '-',
+            ports: s.Publishers || '',
+            state: (s.State || '').toLowerCase(),
           }))
           setProjects((prev) => prev.map((p) => (p.path === path ? { ...p, services } : p)))
         } else {
