@@ -152,8 +152,17 @@ export default function DockerTerminal({
   }, [connectionId, containerId, shell])
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60">
-      <div className="mx-2 flex h-[80vh] w-full max-w-5xl flex-col rounded-lg border border-slate-700 bg-slate-900 shadow-2xl">
+    <div
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60"
+      onClick={(e) => {
+        // 点击背景才关闭，点击内容区不关闭
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div
+        className="mx-2 flex h-[80vh] w-full max-w-5xl flex-col rounded-lg border border-slate-700 bg-slate-900 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* 标题栏 */}
         <div className="flex shrink-0 items-center border-b border-slate-700/50 px-4 py-2.5">
           <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
@@ -163,7 +172,10 @@ export default function DockerTerminal({
           <span className="ml-2 text-xs text-slate-500">{shell}</span>
           <div className="ml-auto flex items-center gap-2">
             <button
-              onClick={() => fitAddonRef.current?.fit()}
+              onClick={(e) => {
+                e.stopPropagation()
+                fitAddonRef.current?.fit()
+              }}
               className="flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200"
               title="适应窗口大小"
             >
@@ -171,7 +183,10 @@ export default function DockerTerminal({
               适应
             </button>
             <button
-              onClick={onClose}
+              onClick={(e) => {
+                e.stopPropagation()
+                onClose()
+              }}
               className="flex items-center gap-1 rounded px-2.5 py-1 text-xs text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200"
               title="关闭终端"
             >

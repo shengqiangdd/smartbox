@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense, useMemo } from 'react'
 import { Container, RefreshCw, Activity, AlertCircle } from 'lucide-react'
 import { useAppStore } from '../../stores/app-store'
-import { useSshStore, decryptConnection } from '../../stores/ssh-store'
+import { useSshStore } from '../../stores/ssh-store'
 import type { DockerContainer, DockerImage } from './index'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -28,6 +28,7 @@ export default function DockerPage() {
   // 获取当前 SSH 连接 ID
   const sessions = useSshStore((s) => s.sessions)
   const connections = useSshStore((s) => s.connections)
+  const selectConnection = useSshStore((s) => s.selectConnection)
   const setActiveNav = useAppStore((s) => s.setActiveNav)
 
   // 所有可用连接：活跃 session + 已保存的连接
@@ -51,74 +52,20 @@ export default function DockerPage() {
   }, [sessions, connections])
 
   const [selectedHost, setSelectedHost] = useState<string | null>(null)
-  const [connecting, setConnecting] = useState(false)
-  // 通过后端 REST API 建立的 SSH 连接 ID
-  const [restConnId, setRestConnId] = useState<string | null>(null)
-  // currentConnId: 优先用已有 session，其次用 REST API 建立的连接
+  // currentConnId: 优先用 selectedHost 对应的 session，否则取第一个活跃 session
   const currentConnId = useMemo(() => {
     if (selectedHost && sessions.some((s) => s.id === selectedHost)) return selectedHost
-    if (restConnId) return restConnId
     return sessions.length > 0 ? sessions[0]!.id : null
-  }, [selectedHost, sessions, restConnId])
+  }, [selectedHost, sessions])
 
-  // 选中未连接的主机时，通过后端 /api/ssh/connect 建立真实 SSH 连接
-  useEffect(() => {
-    if (!selectedHost || connecting) return
-    if (sessions.some((s) => s.id === selectedHost)) return // 已有 session
-    if (restConnId) return // 已通过 REST 连接
-    const conn = connections.find((c) => c.id === selectedHost)
-    if (!conn) return
-
-    let cancelled = false
-    ;(async () => {
-      setConnecting(true)
-      try {
-        const decrypted = await decryptConnection(conn)
-        if (cancelled) return
-
-        const res = await fetch('/api/ssh/connect', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            host: conn.host,
-            port: conn.port,
-            username: conn.username,
-            password: decrypted.password || '',
-            privateKey: decrypted.privateKey || '',
-          }),
-        })
-        const json = (await res.json()) as {
-          success?: boolean
-          data?: { connection_id?: string }
-          error?: string
-        }
-        if (cancelled) return
-
-        if (json.success && json.data?.connection_id) {
-          setRestConnId(json.data.connection_id)
-          // 同时更新 SSH store，让其他页面也能看到这个连接
-          const session = {
-            id: json.data.connection_id,
-            connectionId: conn.id,
-            connectionName: conn.name,
-            host: conn.host,
-            status: 'connected' as const,
-            terminalCols: 80,
-            terminalRows: 24,
-          }
-          useSshStore.getState().addSession(session)
-          useAppStore.getState().addSshSession(json.data.connection_id)
-        }
-      } catch {
-        // ignore
-      } finally {
-        if (!cancelled) setConnecting(false)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [selectedHost, sessions, connections, connecting, restConnId])
+  // 跳转到 SSH 页并预选指定连接
+  const goToSshAndConnect = useCallback(
+    (connId: string) => {
+      selectConnection(connId)
+      setActiveNav('ssh')
+    },
+    [selectConnection, setActiveNav],
+  )
 
   const fetchContainers = useCallback(async () => {
     if (!currentConnId) return
@@ -227,19 +174,21 @@ export default function DockerPage() {
       <div className="flex h-full flex-col items-center justify-center gap-4 text-slate-500">
         <Container size={48} className="text-slate-600" />
         <div className="text-center">
-          <p className="text-sm font-medium text-slate-400">
-            {connecting ? '正在连接...' : '未连接到任何 SSH'}
-          </p>
-          {!connecting && (
-            <p className="mt-1 text-xs text-slate-600">选择一个主机自动连接，或前往 SSH 页面</p>
-          )}
+          <p className="text-sm font-medium text-slate-400">未连接到任何 SSH</p>
+          <p className="mt-1 text-xs text-slate-600">选择一个主机连接后即可管理 Docker</p>
         </div>
-        {availableHosts.length > 0 && !connecting && (
+        {availableHosts.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {availableHosts.map((host) => (
               <button
                 key={host.id}
-                onClick={() => setSelectedHost(host.id)}
+                onClick={() => {
+                  if (host.connected) {
+                    setSelectedHost(host.id)
+                  } else {
+                    goToSshAndConnect(host.id)
+                  }
+                }}
                 className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-xs transition-colors ${
                   host.connected
                     ? 'border-emerald-700/50 bg-emerald-900/20 text-emerald-400 hover:bg-emerald-900/40'
@@ -250,7 +199,7 @@ export default function DockerPage() {
                   className={`h-2 w-2 rounded-full ${host.connected ? 'bg-emerald-500' : 'bg-slate-600'}`}
                 />
                 {host.name}
-                {host.connected ? ' (已连接)' : ' → 连接'}
+                {host.connected ? ' (已连接)' : ' → 去连接'}
               </button>
             ))}
           </div>
