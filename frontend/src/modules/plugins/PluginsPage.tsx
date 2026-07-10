@@ -34,12 +34,11 @@ export default function PluginsPage() {
   const enablePlugin = usePluginStore((s) => s.enablePlugin)
   const disablePlugin = usePluginStore((s) => s.disablePlugin)
 
-  // 用 ref 避免闭包问题
   const loadingRef = useRef(false)
   const catalogRef = useRef<PluginCatalogItem[]>([])
 
   const loadPlugins = useCallback(async () => {
-    if (loadingRef.current) return // 防止重复调用
+    if (loadingRef.current) return
     loadingRef.current = true
     setLoading(true)
     setError(null)
@@ -65,7 +64,6 @@ export default function PluginsPage() {
       setSandboxKeys(keys)
       setSandboxReady({})
 
-      // 在 Store 中注册
       const store = usePluginStore.getState()
       for (const plugin of plugins) {
         if (!store.getPlugin(plugin.id)) {
@@ -115,9 +113,8 @@ export default function PluginsPage() {
     [enablePlugin, disablePlugin],
   )
 
-  // 刷新：清理旧插件后重新加载
   const handleReload = useCallback(() => {
-    loadingRef.current = false // 重置防重入
+    loadingRef.current = false
     for (const plugin of catalogRef.current) {
       unloadPlugin(plugin.id)
     }
@@ -128,55 +125,54 @@ export default function PluginsPage() {
     loadPlugins()
   }, [loadPlugins])
 
-  // 首次加载 + 监听热加载通知
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- loadPlugins 是 async，setState 在微任务中
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadPlugins()
-
     const unsub = getWsClientSync().on('plugins-changed', () => {
       handleReload()
     })
-    return () => {
-      unsub()
-    }
+    return () => { unsub() }
   }, [loadPlugins, handleReload])
 
-  const handleSandboxReady = useCallback((pluginId: string, handle: PluginSandboxHandle) => {
-    setSandboxReady((prev) => ({ ...prev, [pluginId]: true }))
-    const plugin = catalogRef.current.find((p) => p.id === pluginId)
-    if (plugin) {
-      pluginSandboxManager.register(
-        pluginId,
-        {
-          id: plugin.id,
-          name: plugin.name,
-          version: plugin.version,
-          description: plugin.description,
-          author: plugin.author,
-          icon: plugin.icon,
-          entry: plugin.entry,
-          commands: (plugin.commands || []).map(
-            (c: { id: string; label?: string; description?: string; icon?: string }) => ({
-              id: c.id,
-              name: c.label || c.id,
-              label: c.label,
-              description: c.description,
-              icon: c.icon,
-            }),
-          ),
-          panels: (plugin.panels || []).map((p: { id: string; title?: string; icon?: string }) => ({
-            id: p.id,
-            name: p.title || p.id,
-            icon: p.icon,
-            position: 'main' as const,
-          })),
-        },
-        handle,
-      )
+  // 为每个插件创建稳定的 onReady 回调
+  const onReadyCallbacks = useMemo(() => {
+    const map: Record<string, (handle: PluginSandboxHandle) => void> = {}
+    for (const plugin of catalog) {
+      map[plugin.id] = (handle: PluginSandboxHandle) => {
+        setSandboxReady((prev) => ({ ...prev, [plugin.id]: true }))
+        const p = catalogRef.current.find((x) => x.id === plugin.id)
+        if (p) {
+          pluginSandboxManager.register(
+            {
+              id: p.id,
+              name: p.name,
+              version: p.version,
+              description: p.description,
+              author: p.author,
+              icon: p.icon,
+              entry: p.entry,
+              commands: (p.commands || []).map((c) => ({
+                id: c.id,
+                name: c.label || c.id,
+                label: c.label,
+                description: c.description,
+                icon: c.icon,
+              })),
+              panels: (p.panels || []).map((p2) => ({
+                id: p2.id,
+                name: p2.title || p2.id,
+                icon: p2.icon,
+                position: 'main' as const,
+              })),
+            },
+            handle,
+          )
+        }
+      }
     }
-  }, [])
+    return map
+  }, [catalog])
 
-  // 缓存启用状态计算
   const enabledMap = useMemo(() => {
     const map: Record<string, boolean> = {}
     for (const p of storePlugins) {
@@ -193,7 +189,6 @@ export default function PluginsPage() {
 
   return (
     <div className="flex h-full flex-col p-4 sm:p-6">
-      {/* 标题栏 + 标签切换 */}
       <div className="mb-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-3">
@@ -201,8 +196,6 @@ export default function PluginsPage() {
               <Puzzle size={20} className="text-slate-400" />
               <h2 className="text-lg font-semibold text-slate-200">插件</h2>
             </div>
-
-            {/* 标签页切换 */}
             <div className="flex rounded-lg border border-slate-700/50 bg-slate-900 p-0.5">
               <button
                 onClick={() => setTab('installed')}
@@ -233,7 +226,6 @@ export default function PluginsPage() {
               </button>
             </div>
           </div>
-
           {tab === 'installed' && (
             <div className="flex items-center gap-2">
               {catalog.length > 0 && (
@@ -255,10 +247,8 @@ export default function PluginsPage() {
         </div>
       </div>
 
-      {/* 已安装标签页 */}
       {tab === 'installed' && (
         <>
-          {/* 加载中 */}
           {loading && catalog.length === 0 && (
             <div className="flex flex-1 items-center justify-center">
               <div className="text-center">
@@ -268,7 +258,6 @@ export default function PluginsPage() {
             </div>
           )}
 
-          {/* 错误状态 */}
           {error && !loading && (
             <div className="flex flex-1 items-center justify-center">
               <div className="text-center">
@@ -284,7 +273,6 @@ export default function PluginsPage() {
             </div>
           )}
 
-          {/* 空状态 */}
           {!loading && !error && catalog.length === 0 && (
             <div className="flex flex-1 items-center justify-center rounded-lg border-2 border-dashed border-slate-700/50">
               <div className="text-center">
@@ -295,7 +283,6 @@ export default function PluginsPage() {
             </div>
           )}
 
-          {/* 插件列表 */}
           {catalog.length > 0 && (
             <div className="flex flex-1 flex-col gap-4 overflow-hidden sm:flex-row">
               {/* 左侧：插件列表 */}
@@ -303,7 +290,6 @@ export default function PluginsPage() {
                 {catalog.map((plugin) => {
                   const enabled = enabledMap[plugin.id] ?? false
                   const ready = sandboxReady[plugin.id]
-
                   return (
                     <div
                       key={plugin.id}
@@ -334,7 +320,6 @@ export default function PluginsPage() {
                               <span>{plugin.commands.length} 个命令</span>
                             )}
                           </div>
-
                           {plugin.commands && plugin.commands.length > 0 && (
                             <div className="mt-2 flex flex-wrap gap-1.5">
                               {plugin.commands.map((cmd) => (
@@ -346,19 +331,12 @@ export default function PluginsPage() {
                                       window.dispatchEvent(
                                         new CustomEvent('wrench-notification', {
                                           detail: {
-                                            message: `已执行: ${plugin.name} → ${cmd.label || cmd.id}（查看下方沙箱输出）`,
-                                            type: 'info',
-                                            duration: 4000,
+                                            message: `已执行: ${plugin.name} → ${cmd.label || cmd.id}`,
+                                            type: 'success',
+                                            duration: 3000,
                                           },
                                         }),
                                       )
-                                      if (window.innerWidth < 640) {
-                                        setTimeout(() => {
-                                          document
-                                            .querySelector('[data-sandbox-area]')
-                                            ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                                        }, 200)
-                                      }
                                     }
                                   }}
                                   disabled={!enabled}
@@ -376,7 +354,6 @@ export default function PluginsPage() {
                             </div>
                           )}
                         </div>
-
                         <button
                           onClick={() => handleToggle(plugin.id, enabled)}
                           disabled={!ready}
@@ -443,7 +420,7 @@ export default function PluginsPage() {
                                     entry: plugin.entry,
                                   }}
                                   pluginCode={sandboxCodes[plugin.id] || ''}
-                                  onReady={(handle) => handleSandboxReady(plugin.id, handle)}
+                                  onReady={onReadyCallbacks[plugin.id]}
                                   onError={(err) =>
                                     console.error(`[Plugins] ${plugin.name} error:`, err)
                                   }
@@ -465,7 +442,6 @@ export default function PluginsPage() {
         </>
       )}
 
-      {/* 市场标签页 */}
       {tab === 'market' && (
         <div className="flex-1 overflow-hidden">
           <PluginMarket />

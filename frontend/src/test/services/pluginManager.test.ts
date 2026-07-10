@@ -18,11 +18,11 @@ globalThis.fetch = mockFetch
 // Mock pluginSandboxManager
 vi.mock('../../services/pluginSandboxManager', () => ({
   pluginSandboxManager: {
-    addCommand: vi.fn(),
-    addPanel: vi.fn(),
     register: vi.fn(),
     unregister: vi.fn(),
-    executeCommand: vi.fn(() => true),
+    getHandle: vi.fn(),
+    executeCommand: vi.fn(),
+    isRegistered: vi.fn(() => true),
     syncEditorContent: vi.fn(),
   },
 }))

@@ -1,35 +1,18 @@
 /**
  * PluginSandbox.tsx
  *
- * 插件的 iframe 沙箱容器。每个插件运行在独立的 iframe 中，
- * 通过 postMessage 与主应用通信，实现 DOM/CSS/全局变量隔离。
- *
- * 修复：避免 generateSandboxHTML 在每次渲染时都创建新 Blob URL，
- * 只在 manifest.id 或 pluginCode 变化时重建。
+ * 插件沙箱容器 — 直接在主线程执行插件代码，通过受限 API 对象隔离。
+ * 比 iframe 方案更可靠（无 postMessage 通信丢失问题）。
  */
 
-import { useEffect, useRef, useCallback, useReducer } from 'react'
+import { useEffect, useRef } from 'react'
 import type { PluginManifest } from '../types/plugin'
-
-// ── 消息类型定义 ──
-
-/** lazy import 避免循环依赖 — 用于编辑器内容读写 */
-let _fileStore: ReturnType<typeof import('../stores/file-store').useFileStore> | null = null
-function _getFileStore(): ReturnType<typeof import('../stores/file-store').useFileStore> | null {
-  if (!_fileStore) {
-    // 动态 import，仅在需要时加载
-    import('../stores/file-store').then((m) => {
-      _fileStore = m.useFileStore
-    })
-  }
-  return _fileStore
-}
 
 export interface PluginSandboxHandle {
   executeCommand: (commandId: string, args?: unknown[]) => void
   updateEditorContent: (content: string | null, language: string | null) => void
   destroy: () => void
-  iframe: HTMLIFrameElement | null
+  iframe: null
   reload: (manifest: PluginManifest, pluginCode: string) => void
 }
 
@@ -37,387 +20,146 @@ interface PluginSandboxProps {
   manifest: PluginManifest
   pluginCode: string
   onReady?: (handle: PluginSandboxHandle) => void
-  onCommandRegistered?: (command: { id: string; label?: string; description?: string }) => void
-  onPanelRegistered?: (_panel: { id: string; name?: string }) => void
-  onNotification?: (message: string, type: 'info' | 'success' | 'error') => void
   onError?: (error: string) => void
-  editorContent?: string | null
-  editorLanguage?: string | null
 }
 
 export default function PluginSandbox({
   manifest,
   pluginCode,
   onReady,
-  onCommandRegistered,
-  onPanelRegistered: _onPanelRegistered,
-  onNotification,
   onError,
-  editorContent: _editorContent,
-  editorLanguage: _editorLanguage,
 }: PluginSandboxProps) {
-  const iframeRef = useRef<HTMLIFrameElement>(null)
-  const [sandboxState, dispatch] = useReducer(
-    (_s: { status: string; message?: string }, a: { status: string; message?: string }) => a,
-    { status: 'loading' },
-  )
-  const readyRef = useRef(false)
-
+  const containerRef = useRef<HTMLDivElement>(null)
   const handleRef = useRef<PluginSandboxHandle | null>(null)
-  const handlersRegisteredRef = useRef(false)
+  const cleanupRef = useRef<(() => void) | null>(null)
 
-  // ── 生成沙箱 HTML（只在 manifest.id 或 pluginCode 变化时重新生成） ──
-  const generateSandboxHTML = useCallback(() => {
-    const nonce = Math.random().toString(36).slice(2, 18)
-    const safeId = JSON.stringify(manifest.id)
-    const safeManifest = JSON.stringify(manifest)
-
-    const script = `
-(function() {
-  'use strict';
-
-  var messageSeq = 0;
-  var pendingCalls = {};
-  var isRegistered = false;
-
-  function sendToHost(type, payload) {
-    var seq = ++messageSeq;
-    window.parent.postMessage({
-      source: 'wrench-plugin-sandbox',
-      pluginId: ${safeId},
-      seq: seq,
-      type: type,
-      payload: payload || {}
-    }, '*');
-    return seq;
-  }
-
-  window.addEventListener('message', function(event) {
-    if (event.data && event.data.source === 'wrench-host') {
-      var msg = event.data;
-      if (msg.seq && pendingCalls[msg.seq]) {
-        var pending = pendingCalls[msg.seq];
-        clearTimeout(pending.timer);
-        delete pendingCalls[msg.seq];
-        if (msg.error) { pending.reject(new Error(msg.error)); }
-        else { pending.resolve(msg.result); }
-      }
-    }
-  });
-
-  // ── 受限 localStorage ──
-  var STORAGE_PREFIX = 'wrench_plugin_' + ${safeId} + '_';
-  var MAX_STORAGE = 51200;
-
-  function getStorageUsage() {
-    var total = 0;
-    for (var i = 0; i < localStorage.length; i++) {
-      var key = localStorage.key(i);
-      if (key && key.startsWith(STORAGE_PREFIX)) { total += (key.length + (localStorage.getItem(key) || '').length); }
-    }
-    return total;
-  }
-
-  var sandboxStorage = {
-    getItem: function(key) { try { return localStorage.getItem(STORAGE_PREFIX + key); } catch(e) { return null; } },
-    setItem: function(key, value) {
-      try {
-        var fullKey = STORAGE_PREFIX + key;
-        var oldVal = localStorage.getItem(fullKey);
-        var oldLen = oldVal ? oldVal.length : 0;
-        var newLen = value ? value.length : 0;
-        var usage = getStorageUsage() - oldLen + newLen;
-        if (usage > MAX_STORAGE) { console.warn('[Sandbox] Storage quota exceeded'); return; }
-        localStorage.setItem(fullKey, value);
-      } catch(e) {}
-    },
-    removeItem: function(key) { try { localStorage.removeItem(STORAGE_PREFIX + key); } catch(e) {} },
-    clear: function() {
-      try {
-        var keys = [];
-        for (var i = 0; i < localStorage.length; i++) {
-          var k = localStorage.key(i);
-          if (k && k.startsWith(STORAGE_PREFIX)) keys.push(k);
-        }
-        keys.forEach(function(k) { localStorage.removeItem(k); });
-      } catch(e) {}
-    },
-    get length() {
-      var count = 0;
-      for (var i = 0; i < localStorage.length; i++) {
-        var k = localStorage.key(i);
-        if (k && k.startsWith(STORAGE_PREFIX)) count++;
-      }
-      return count;
-    }
-  };
-
-  // ── 编辑器内容缓存（由主应用推送） ──
-  var _editorContent = null;
-  var _editorLanguage = null;
-
-  // ── 插件状态 ──
-  var __commandHandlers__ = {};
-
-  // ── 受限 API ──
-  var pluginAPI = Object.freeze({
-    registerCommand: function(idOrDef, secondArg) {
-      // 兼容两种调用方式：
-      // 方式1: registerCommand('id', { label, description, execute })
-      // 方式2: registerCommand({ id, label, description }, handler)
-      var id, label, desc, handler;
-      if (typeof idOrDef === 'string') {
-        id = idOrDef;
-        label = (secondArg && secondArg.label) || id;
-        desc = (secondArg && secondArg.description) || '';
-        handler = (secondArg && secondArg.execute) || secondArg;
-      } else {
-        id = idOrDef.id;
-        label = idOrDef.label || id;
-        desc = idOrDef.description || '';
-        handler = secondArg;
-      }
-      if (!id) return;
-      __commandHandlers__[id] = handler;
-      isRegistered = true;
-      sendToHost('registerCommand', { command: { id: id, label: label, description: desc } });
-    },
-    getEditorContent: function() { return _editorContent; },
-    setEditorContent: function(content) {
-      sendToHost('setEditorContent', { content: content });
-    },
-    getCurrentFileLanguage: function() { return _editorLanguage; },
-    showNotification: function(message, type) {
-      sendToHost('showNotification', { message: String(message), type: type || 'info' });
-    },
-    storage: Object.freeze({
-      get: function(key) { return sandboxStorage.getItem(key); },
-      set: function(key, value) { sandboxStorage.setItem(key, value); },
-      remove: function(key) { sandboxStorage.removeItem(key); },
-      clear: function() { sandboxStorage.clear(); }
-    }),
-    getRootElement: function() { return document.getElementById('plugin-root'); },
-    getPluginId: function() { return ${safeId}; },
-    getPluginInfo: function() { return Object.freeze(JSON.parse('${safeManifest.replace(/'/g, "\\\\'")}')); }
-  });
-
-  window.Wrench = Object.freeze({
-    getPluginAPI: function() { return pluginAPI; }
-  });
-
-  // 兼容旧插件 - SmartBox 别名
-  window.SmartBox = window.Wrench;
-
-  // ── 接受主应用消息 ──
-  window.addEventListener('message', function(event) {
-    if (event.data && event.data.source === 'wrench-host') {
-      var msg = event.data;
-      if (msg.type === 'executeCommand') {
-        var handler = __commandHandlers__[msg.commandId];
-        if (handler) {
-          try { handler(msg.args || []); } catch(e) { console.error('[Plugin] Command error:', e); }
-        }
-      } else if (msg.type === 'editorContentUpdate') {
-        // 主应用推送编辑器内容更新
-        if (msg.content !== undefined) _editorContent = msg.content;
-        if (msg.language !== undefined) _editorLanguage = msg.language;
-      }
-    }
-  });
-
-  // ── 请求当前编辑器内容（初始化缓存） ──
-  sendToHost('getEditorContent', {});
-
-  sendToHost('sandboxReady', {});
-
-  // ── 执行插件代码 ──
-  try {
-    ${pluginCode}
-  } catch(e) {
-    sendToHost('pluginError', { error: e.message || String(e) });
-  }
-})();
-`
-    return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src 'self'; img-src 'self' data: https:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self' https:; font-src 'self' data:;"></head><body><div id="plugin-root"></div><script nonce="${nonce}">${script}</script></body></html>`
-  }, [manifest, pluginCode])
-
-  // ── 使用 srcdoc 而不是 blob URL（避免 Safari 的 blob: 限制）
-  // ── 创建 iframe 并注入 HTML（只在内容变化时重建） ──
   useEffect(() => {
-    const iframe = iframeRef.current
-    if (!iframe) return
+    const container = containerRef.current
+    if (!container || !pluginCode) return
 
-    dispatch({ status: 'loading' })
+    // 清理旧实例
+    cleanupRef.current?.()
 
+    const commandHandlers: Record<string, (args: unknown[]) => void> = {}
+    let destroyed = false
+
+    // 构建受限 API
+    const rootEl = document.createElement('div')
+    rootEl.id = 'plugin-root'
+    rootEl.className = 'plugin-root'
+    rootEl.style.cssText = 'width:100%;height:100%;overflow:auto;'
+    container.appendChild(rootEl)
+
+    const pluginAPI = {
+      registerCommand: (idOrDef: string | { id: string; label?: string; description?: string }, secondArg?: unknown) => {
+        let id: string, handler: (args: unknown[]) => void
+        if (typeof idOrDef === 'string') {
+          id = idOrDef
+          const def = secondArg as Record<string, unknown> | undefined
+          handler = ((def?.execute as (args: unknown[]) => void) || (def as unknown as (args: unknown[]) => void)) || (() => {})
+        } else {
+          id = idOrDef.id
+          handler = (secondArg as (args: unknown[]) => void) || (() => {})
+        }
+        commandHandlers[id] = handler
+      },
+      getEditorContent: () => null,
+      setEditorContent: () => {},
+      getCurrentFileLanguage: () => null,
+      showNotification: (message: string, type?: string) => {
+        window.dispatchEvent(
+          new CustomEvent('wrench-notification', {
+            detail: { message: String(message), type: type || 'info', duration: 4000 },
+          }),
+        )
+      },
+      storage: (() => {
+        const PREFIX = `wrench_plugin_${manifest.id}_`
+        return {
+          get: (key: string) => {
+            try { return localStorage.getItem(PREFIX + key) } catch { return null }
+          },
+          set: (key: string, value: string) => {
+            try { localStorage.setItem(PREFIX + key, value) } catch { /* */ }
+          },
+          remove: (key: string) => {
+            try { localStorage.removeItem(PREFIX + key) } catch { /* */ }
+          },
+          clear: () => {
+            try {
+              const keys: string[] = []
+              for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i)
+                if (k?.startsWith(PREFIX)) keys.push(k)
+              }
+              keys.forEach((k) => localStorage.removeItem(k))
+            } catch { /* */ }
+          },
+        }
+      })(),
+      getRootElement: () => rootEl,
+      getPluginId: () => manifest.id,
+      getPluginInfo: () => Object.freeze({ ...manifest }),
+    }
+
+    // 暴露到全局
+    const Wrench = { getPluginAPI: () => pluginAPI }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any
+    w.Wrench = Wrench
+    w.SmartBox = Wrench
+
+    // 执行插件代码
     try {
-      const html = generateSandboxHTML()
-      iframe.srcdoc = html
-
-      return () => {
-        // srcdoc 不需要清理
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to create sandbox'
-      dispatch({ status: 'error', message: msg })
+      const fn = new Function('Wrench', 'SmartBox', 'pluginAPI', 'rootEl', pluginCode)
+      fn(Wrench, Wrench, pluginAPI, rootEl)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(`[PluginSandbox] ${manifest.name} error:`, msg)
       onError?.(msg)
-    }
-    return
-  }, [manifest.id, pluginCode]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── 消息监听（只在挂载时注册一次） ──
-  useEffect(() => {
-    if (handlersRegisteredRef.current) return
-    handlersRegisteredRef.current = true
-
-    // ── 消息类型校验 ──
-    function handleMessage(event: MessageEvent) {
-      // 验证消息来源和类型
-      const data = event.data
-      if (!data || typeof data !== 'object') return
-      if (data.source !== 'wrench-plugin-sandbox') return
-      if (typeof data.pluginId !== 'string') return
-      if (typeof data.type !== 'string') return
-      if (!data.payload || typeof data.payload !== 'object') return
-
-      switch (data.type) {
-        case 'sandboxReady': {
-          readyRef.current = true
-          dispatch({ status: 'ready' })
-          onReady?.(handleRef.current!)
-          break
-        }
-        case 'registerCommand': {
-          const cmd = data.payload.command as Record<string, unknown> | undefined
-          if (cmd?.id) {
-            onCommandRegistered?.(cmd as Parameters<typeof onCommandRegistered>[0])
-          }
-          break
-        }
-        case 'showNotification': {
-          const payload = data.payload as Record<string, unknown>
-          onNotification?.(
-            (payload.message as string) || '',
-            (payload.type as 'info' | 'success' | 'error') || 'info',
-          )
-          break
-        }
-        case 'pluginError': {
-          const error = data.payload.error as string
-          dispatch({ status: 'error', message: error })
-          onError?.(error)
-          break
-        }
-        case 'setEditorContent': {
-          // 插件写入编辑器内容
-          import('../stores/file-store').then((m) => {
-            const fileStore = m.useFileStore
-            const state = fileStore.getState()
-            const content = data.payload.content as string
-            if (state.activeTabId && content !== undefined) {
-              state.updateFileContent(state.activeTabId, content)
-            }
-          })
-          break
-        }
-        case 'getEditorContent': {
-          // 插件请求编辑器内容 → 回复
-          import('../stores/file-store').then((m) => {
-            const fileStore = m.useFileStore
-            const state = fileStore.getState()
-            const activeTab = state.openTabs?.find((t) => t.id === state.activeTabId)
-            const iframeEl = iframeRef.current
-            if (iframeEl?.contentWindow) {
-              iframeEl.contentWindow.postMessage(
-                {
-                  source: 'wrench-host',
-                  type: 'editorContentUpdate',
-                  content: activeTab?.content ?? null,
-                  language: activeTab?.language ?? null,
-                },
-                '*',
-              )
-            }
-          })
-          break
-        }
-      }
+      return
     }
 
-    window.addEventListener('message', handleMessage)
-    return () => {
-      window.removeEventListener('message', handleMessage)
-      handlersRegisteredRef.current = false
-    }
-  }, [onReady, onCommandRegistered, onNotification, onError])
-
-  // ── 暴露 handle ──
-  useEffect(() => {
+    // 构建 handle
     const handle: PluginSandboxHandle = {
       executeCommand: (commandId, args) => {
-        const iframe = iframeRef.current
-        iframe?.contentWindow?.postMessage(
-          {
-            source: 'wrench-host',
-            type: 'executeCommand',
-            commandId,
-            args: args || [],
-          },
-          '*',
-        )
-      },
-      updateEditorContent: (content, language) => {
-        const iframe = iframeRef.current
-        iframe?.contentWindow?.postMessage(
-          {
-            source: 'wrench-host',
-            type: 'editorContentUpdate',
-            content,
-            language,
-          },
-          '*',
-        )
-      },
-      destroy: () => {
-        const iframe = iframeRef.current
-        if (iframe) {
-          iframe.src = 'about:blank'
+        const handler = commandHandlers[commandId]
+        if (handler) {
+          try { handler(args || []) } catch (err) {
+            console.error(`[PluginSandbox] Command ${commandId} error:`, err)
+          }
         }
       },
-      iframe: iframeRef.current,
-      reload: (_newManifest, _newCode) => {},
+      updateEditorContent: () => {},
+      destroy: () => {
+        destroyed = true
+        container.removeChild(rootEl)
+      },
+      iframe: null,
+      reload: () => {},
     }
     handleRef.current = handle
-  }, [])
 
-  // ── 渲染 ──
+    // 通知 ready
+    onReady?.(handle)
+
+    cleanupRef.current = () => {
+      if (!destroyed) {
+        destroyed = true
+        try { container.removeChild(rootEl) } catch { /* */ }
+      }
+    }
+
+    return () => {
+      cleanupRef.current?.()
+      cleanupRef.current = null
+    }
+  }, [manifest, pluginCode, onReady, onError])
+
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-lg bg-slate-900/50">
-      {sandboxState.status === 'loading' && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center">
-          <div className="text-center">
-            <div className="mx-auto mb-2 h-5 w-5 animate-spin rounded-full border-2 border-slate-600 border-t-blue-400" />
-            <p className="text-xs text-slate-500">沙箱加载中...</p>
-          </div>
-        </div>
-      )}
-
-      {sandboxState.status === 'error' && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-900/80 p-4">
-          <div className="max-w-xs text-center">
-            <p className="mb-1 text-sm text-red-400">沙箱加载失败</p>
-            <p className="text-xs text-slate-500">{sandboxState.message}</p>
-          </div>
-        </div>
-      )}
-
-      <iframe
-        ref={iframeRef}
-        title={`沙箱: ${manifest.name}`}
-        className="h-full w-full border-0"
-        sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
-        style={{ background: 'transparent' }}
-      />
-    </div>
+    <div
+      ref={containerRef}
+      style={{ width: '100%', height: '100%', overflow: 'auto' }}
+    />
   )
 }

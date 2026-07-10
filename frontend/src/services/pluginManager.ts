@@ -163,11 +163,11 @@ export async function loadPluginToSandbox(plugin: PluginCatalogItem): Promise<Pl
  */
 export function createSandboxHandlers(pluginId: string) {
   return {
-    onCommandRegistered: (command: { id: string; label?: string; description?: string }) => {
-      pluginSandboxManager.addCommand(pluginId, command)
+    onCommandRegistered: (_command: { id: string; label?: string; description?: string }) => {
+      // 命令已通过 pluginAPI.registerCommand 在沙箱内注册
     },
-    onPanelRegistered: (panel: { id: string; name?: string }) => {
-      pluginSandboxManager.addPanel(pluginId, panel)
+    onPanelRegistered: (_panel: { id: string; name?: string }) => {
+      // 面板已通过 pluginAPI.registerPanel 在沙箱内注册
     },
     onNotification: (message: string, type: 'info' | 'success' | 'error') => {
       window.dispatchEvent(
@@ -181,7 +181,6 @@ export function createSandboxHandlers(pluginId: string) {
     },
     onReady: (handle: PluginSandboxHandle) => {
       pluginSandboxManager.register(
-        pluginId,
         {
           id: pluginId,
           name: pluginId,
@@ -213,7 +212,8 @@ export function unloadPlugin(pluginId: string) {
  * 执行沙箱中的插件命令
  */
 export function executeSandboxCommand(pluginId: string, commandId: string): boolean {
-  return pluginSandboxManager.executeCommand(pluginId, commandId)
+  pluginSandboxManager.executeCommand(pluginId, commandId)
+  return pluginSandboxManager.isRegistered(pluginId)
 }
 
 /**
@@ -222,7 +222,7 @@ export function executeSandboxCommand(pluginId: string, commandId: string): bool
 export function syncEditorToSandbox(
   content: string | null,
   language: string | null,
-  pluginId?: string,
+  _pluginId?: string,
 ) {
-  pluginSandboxManager.syncEditorContent(content, language, pluginId)
+  pluginSandboxManager.syncEditorContent(content ?? '', language)
 }
