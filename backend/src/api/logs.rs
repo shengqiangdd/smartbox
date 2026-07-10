@@ -154,10 +154,28 @@ pub async fn tail_log(
     let content = match get_session(&state, connection_id) {
         Some(s) => {
             let p = sq(path);
-            let cmd = format!("tail -n {lines} {p} 2>/dev/null || sudo -n tail -n {lines} {p} 2>/dev/null || echo 'Unable to read: {path}'");
+            // 分步执行：先检查文件，再尝试读取
+            let cmd = format!(
+                concat!(
+                    "if [ ! -e {p} ]; then echo '__ERR__FILE_NOT_FOUND'; ",
+                    "elif [ ! -r {p} ]; then echo '__ERR__NO_PERM'; ",
+                    "else tail -n {lines} {p} 2>&1; ",
+                    "if [ $? -ne 0 ]; then sudo -n tail -n {lines} {p} 2>&1; fi; ",
+                    "fi"
+                ),
+                p = p, lines = lines
+            );
             match tokio::time::timeout(std::time::Duration::from_secs(15), s.exec(&cmd)).await {
-                Ok(Ok((stdout, _, _))) if !stdout.trim().is_empty() => stdout,
-                _ => format!("无法读取: {path}（文件不存在或无权限）"),
+                Ok(Ok((stdout, _, _))) => {
+                    if stdout.contains("__ERR__FILE_NOT_FOUND") {
+                        format!("文件不存在: {path}")
+                    } else if stdout.contains("__ERR__NO_PERM") {
+                        format!("无权限读取: {path}（需要 sudo）")
+                    } else {
+                        stdout
+                    }
+                }
+                _ => format!("连接超时或执行失败: {path}"),
             }
         }
         None => "无 SSH 连接".to_string(),
@@ -189,10 +207,27 @@ pub async fn grep_log(
         Some(s) => {
             let pat = sq(pattern);
             let pth = sq(path);
-            let cmd = format!("grep -i {pat} {pth} 2>/dev/null | tail -200 || sudo -n grep -i {pat} {pth} 2>/dev/null | tail -200 || echo 'No matches or no permission'");
+            let cmd = format!(
+                concat!(
+                    "if [ ! -e {pth} ]; then echo '__ERR__FILE_NOT_FOUND'; ",
+                    "elif [ ! -r {pth} ]; then echo '__ERR__NO_PERM'; ",
+                    "else grep -i {pat} {pth} 2>&1 | tail -200; ",
+                    "if [ $? -ne 0 ]; then sudo -n grep -i {pat} {pth} 2>&1 | tail -200; fi; ",
+                    "fi"
+                ),
+                pat = pat, pth = pth
+            );
             match tokio::time::timeout(std::time::Duration::from_secs(15), s.exec(&cmd)).await {
-                Ok(Ok((stdout, _, _))) if !stdout.trim().is_empty() => stdout,
-                _ => "未找到匹配内容或无权限".to_string(),
+                Ok(Ok((stdout, _, _))) => {
+                    if stdout.contains("__ERR__FILE_NOT_FOUND") {
+                        format!("文件不存在: {path}")
+                    } else if stdout.contains("__ERR__NO_PERM") {
+                        format!("无权限读取: {path}（需要 sudo）")
+                    } else {
+                        stdout
+                    }
+                }
+                _ => "搜索超时或连接失败".to_string(),
             }
         }
         None => "无 SSH 连接".to_string(),
