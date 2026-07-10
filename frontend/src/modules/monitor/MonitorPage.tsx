@@ -9,6 +9,7 @@ import {
   Server,
   Loader2,
   Bell,
+  ExternalLink,
 } from 'lucide-react'
 import { useSshStore } from '../../stores/ssh-store'
 import { useAppStore } from '../../stores/app-store'
@@ -695,10 +696,12 @@ export default function MonitorPage() {
             <span className="font-mono text-[11px] text-slate-300">{healthDisplay.uptime}</span>
           </div>
           <button
-            className="flex shrink-0 items-center gap-1.5 transition-colors hover:text-blue-400"
+            className="flex shrink-0 items-center gap-1.5 rounded px-1.5 py-0.5 transition-colors hover:bg-slate-700/50 hover:text-blue-400"
+            title="跳转到 SSH 页面查看连接"
             onClick={() => {
               setActiveNav('ssh')
-              setTimeout(() => setSshSidebarOpen(true), 100)
+              // 等页面渲染后打开侧边栏
+              setTimeout(() => setSshSidebarOpen(true), 300)
             }}
           >
             <Network size={12} className="text-amber-400" />
@@ -706,6 +709,7 @@ export default function MonitorPage() {
             <span className="font-mono text-[11px] text-slate-300">
               {healthDisplay.connections}
             </span>
+            <ExternalLink size={9} className="text-slate-600" />
           </button>
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
             <Bell
