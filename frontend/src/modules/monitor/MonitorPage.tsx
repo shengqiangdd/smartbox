@@ -256,6 +256,9 @@ export default function MonitorPage() {
   const [interval, setIntervalDuration] = useState(5)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const prevNetRef = useRef<Record<string, { rx: number; tx: number; time: number }>>({})
+  const prevIoRef = useRef<
+    Record<string, { readSectors: number; writeSectors: number; time: number }>
+  >({})
   const [health, setHealth] = useState<HealthData | null>(null)
   const [healthError, setHealthError] = useState(false)
   const alertHistory = useAlertStore((s) => s.history)
@@ -438,7 +441,7 @@ export default function MonitorPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ connectionId: hostId, command: cmd }),
-          signal: AbortSignal.timeout(10000),
+          signal: AbortSignal.timeout(8000),
         })
         const json = await resp.json()
         const stdout = json.data?.data || json.data?.stdout || ''
@@ -459,26 +462,43 @@ export default function MonitorPage() {
           }
         }
 
-        const net = parseNetRxTx(sections.NET || '')
         const now = Date.now()
-        const prev = prevNetRef.current[hostId]
+
+        // 网络速率：累计字节差 / 时间差
+        const net = parseNetRxTx(sections.NET || '')
         let netRxSpeed = 0
         let netTxSpeed = 0
-        if (prev && prev.rx > 0) {
-          const dt = (now - prev.time) / 1000
+        const prevNet = prevNetRef.current[hostId]
+        if (prevNet && prevNet.rx > 0) {
+          const dt = (now - prevNet.time) / 1000
           if (dt > 0) {
-            netRxSpeed = Math.max(0, (net.rx - prev.rx) / dt)
-            netTxSpeed = Math.max(0, (net.tx - prev.tx) / dt)
+            netRxSpeed = Math.max(0, (net.rx - prevNet.rx) / dt)
+            netTxSpeed = Math.max(0, (net.tx - prevNet.tx) / dt)
           }
         }
         prevNetRef.current[hostId] = { rx: net.rx, tx: net.tx, time: now }
 
-        const topProcs = parseTopProcs(sections.PROC || '')
-        const io = parseDiskIo(sections.IO || '')
-        if (io.readBps > 10e9) io.readBps = 0
-        if (io.writeBps > 10e9) io.writeBps = 0
+        // 磁盘 IO 速率：累计扇区差 × 512 / 时间差
+        const ioRaw = parseDiskIo(sections.IO || '')
+        let readBps = 0
+        let writeBps = 0
+        const prevIo = prevIoRef.current[hostId]
+        if (prevIo && (prevIo.readSectors > 0 || prevIo.writeSectors > 0)) {
+          const dt = (now - prevIo.time) / 1000
+          if (dt > 0) {
+            readBps = Math.max(0, ((ioRaw.readSectors - prevIo.readSectors) * 512) / dt)
+            writeBps = Math.max(0, ((ioRaw.writeSectors - prevIo.writeSectors) * 512) / dt)
+          }
+        }
+        prevIoRef.current[hostId] = {
+          readSectors: ioRaw.readSectors,
+          writeSectors: ioRaw.writeSectors,
+          time: now,
+        }
 
-        return { netRx: netRxSpeed, netTx: netTxSpeed, topProcs, io }
+        const topProcs = parseTopProcs(sections.PROC || '')
+
+        return { netRx: netRxSpeed, netTx: netTxSpeed, topProcs, io: { readBps, writeBps } }
       } catch {
         return fallback
       }
@@ -502,8 +522,9 @@ export default function MonitorPage() {
       const newStats: Record<string, HostStats> = {}
       const now = Date.now()
 
-      // 第二步：并行补充采集网络/进程/IO
-      const supplementResults = await Promise.all(selected.map((id) => fetchSupplement(id)))
+      // 第二步：并行补充采集网络/进程/IO（不阻塞：慢主机超时不影响快主机）
+      const supplementResults = await Promise.allSettled(selected.map((id) => fetchSupplement(id)))
+      const fallbackSup = { netRx: 0, netTx: 0, topProcs: [], io: { readBps: 0, writeBps: 0 } }
 
       for (let i = 0; i < selected.length; i++) {
         const hostId = selected[i]!
@@ -548,7 +569,8 @@ export default function MonitorPage() {
           .map((v) => v.toFixed(2))
           .join(', ')
 
-        const sup = supplementResults[i]!
+        const supResult = supplementResults[i]
+        const sup = supResult && supResult.status === 'fulfilled' ? supResult.value : fallbackSup
 
         const s: HostStats = {
           host: hostName,

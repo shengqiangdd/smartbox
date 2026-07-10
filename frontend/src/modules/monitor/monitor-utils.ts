@@ -97,110 +97,86 @@ export function parseUptime(stdout: string): string {
 
 /** 解析系统负载平均值 */
 export function parseLoadAvg(stdout: string): string {
-  const m = stdout.match(/load average:\s+(.+)/)
-  return m ? m[1]!.trim() : ''
+  const m = stdout.match(/([\d.]+)\s+([\d.]+)\s+([\d.]+)/)
+  if (m) return `${m[1]}, ${m[2]}, ${m[3]}`
+  return '—'
 }
 
-/** 解析网络流量（来自 sar -n DEV 1 1） */
+/**
+ * 解析 /proc/net/dev 获取累计字节数（非速率）
+ * 返回累计 rx/tx 字节，速率由调用方计算
+ */
 export function parseNetRxTx(stdout: string): { rx: number; tx: number } {
+  let rx = 0
+  let tx = 0
   const lines = stdout.trim().split('\n')
-  let rxTotal = 0,
-    txTotal = 0
-  let ifaceCount = 0
+  for (const line of lines) {
+    // 跳过表头行
+    if (line.includes('Inter') || line.includes('face') || line.trim().startsWith('Iface')) continue
+    // 匹配 "  eth0: 12345 ..."
+    const m = line.match(/^\s*(\S+):\s*(\d+)\s+(\d+)\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+(\d+)/)
+    if (!m) continue
+    const iface = m[1]!
+    // 跳过 lo、veth、docker、br-、virbr 等虚拟网卡
+    if (/^(lo|veth|docker|br-|virbr|cni|flannel|calico|weave)/.test(iface)) continue
+    rx += parseInt(m[2]!) || 0
+    tx += parseInt(m[4]!) || 0
+  }
+  return { rx, tx }
+}
+
+/**
+ * 解析 /proc/diskstats 获取累计扇区数
+ * 返回累计 read/write 扇区数，速率由调用方计算
+ */
+export function parseDiskIo(stdout: string): { readSectors: number; writeSectors: number } {
+  let readSectors = 0
+  let writeSectors = 0
+  const lines = stdout.trim().split('\n')
   for (const line of lines) {
     const parts = line.trim().split(/\s+/)
-    if (parts.length >= 10 && parts[0] !== 'Inter-|' && parts[0] !== 'face') {
-      const name = parts[0]!
-      if (
-        name === 'lo' ||
-        name.startsWith('eth0') ||
-        name.startsWith('docker') ||
-        name.startsWith('br-') ||
-        name.startsWith('veth') ||
-        name.startsWith('virbr') ||
-        name.startsWith('cni')
-      )
-        continue
-      rxTotal += parseInt(parts[1]!) || 0
-      txTotal += parseInt(parts[9]!) || 0
-      ifaceCount++
-    }
+    // /proc/diskstats 格式: major minor name reads ... read_sectors ... writes ... write_sectors ...
+    if (parts.length < 14) continue
+    const name = parts[2]!
+    // 跳过分区（只统计整盘 sda/vda/nvme0n1，不统计 sda1）
+    if (/^(loop|ram|dm-)/.test(name)) continue
+    if (/^(sd|vd|xvd|nvme\d+n\d+)$/.test(name) === false) continue
+    const rs = parseInt(parts[5]!) || 0
+    const ws = parseInt(parts[9]!) || 0
+    readSectors += rs
+    writeSectors += ws
   }
-  return ifaceCount > 0 ? { rx: rxTotal, tx: txTotal } : { rx: 0, tx: 0 }
+  return { readSectors, writeSectors }
 }
 
-/** 解析 ps aux 输出的 Top 5 CPU 进程 */
+/** 解析 top 进程列表（来自 ps aux --sort=-%cpu 输出） */
 export function parseTopProcs(
   stdout: string,
 ): Array<{ pid: number; user: string; cpu: number; mem: number; command: string }> {
-  const lines = stdout.trim().split('\n')
   const procs: Array<{ pid: number; user: string; cpu: number; mem: number; command: string }> = []
-  for (const line of lines) {
-    const parts = line.trim().split(/\s+/)
-    if (parts.length >= 11 && parts[0] !== 'USER') {
-      procs.push({
-        user: parts[0]!,
-        pid: parseInt(parts[1]!) || 0,
-        cpu: parseFloat(parts[2]!) || 0,
-        mem: parseFloat(parts[3]!) || 0,
-        command: parts.slice(10).join(' ').slice(0, 50),
-      })
-    }
-  }
-  return procs.slice(0, 5)
-}
-
-/** 解析 /proc/diskstats 获取磁盘 IO（累计扇区数，512 字节/扇区） */
-export function parseDiskIo(stdout: string): { readBps: number; writeBps: number } {
   const lines = stdout.trim().split('\n')
-  let readSectors = 0
-  let writeSectors = 0
   for (const line of lines) {
+    // 跳过标题行
+    if (line.startsWith('USER') || line.startsWith('PID') || line.trim() === '') continue
     const parts = line.trim().split(/\s+/)
-    if (parts.length >= 14) {
-      const devName = parts[2]!
-      // 只统计主磁盘（sdX / vdX / nvmeXnY），跳过分区
-      if (/^(sd|vd|nvme\d+n\d+|xvd)[a-z]?$/.test(devName) || /^nvme\d+n\d+$/.test(devName)) {
-        readSectors += parseInt(parts[5]!) || 0
-        writeSectors += parseInt(parts[9]!) || 0
-      }
-    }
+    if (parts.length < 11) continue
+    procs.push({
+      user: parts[0]!,
+      pid: parseInt(parts[1]!) || 0,
+      cpu: parseFloat(parts[2]!) || 0,
+      mem: parseFloat(parts[3]!) || 0,
+      command: parts.slice(10).join(' ').slice(0, 80),
+    })
+    if (procs.length >= 5) break
   }
-  return { readBps: readSectors * 512, writeBps: writeSectors * 512 }
+  return procs
 }
 
-/** 格式化字节数为人类可读格式 */
+/** 格式化字节数为可读字符串 */
 export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
-}
-
-/** 格式化网络速率（bytes/s → KB/s） */
-export function formatNetSpeed(bytesPerSec: number): string {
-  if (bytesPerSec < 1024) return `${bytesPerSec} B/s`
-  if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(1)} KB/s`
-  return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`
-}
-
-/** 获取状态颜色 class */
-export function getStatusColor(status: string): string {
-  switch (status) {
-    case 'healthy':
-      return 'text-green-400'
-    case 'degraded':
-      return 'text-yellow-400'
-    case 'unhealthy':
-      return 'text-red-400'
-    default:
-      return 'text-slate-400'
-  }
-}
-
-/** 获取进度条颜色 class */
-export function getProgressColor(pct: number): string {
-  if (pct >= 90) return 'bg-red-500'
-  if (pct >= 70) return 'bg-yellow-500'
-  return 'bg-green-500'
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
 }
