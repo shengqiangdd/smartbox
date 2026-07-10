@@ -16,17 +16,7 @@ import AlertSettings from './AlertSettings'
 import AlertHistory from './AlertHistory'
 import HostHealthOverview from './HostHealthOverview'
 import type { HealthData, HostStats, HistoryPoint } from './types'
-import {
-  parseCpuUsage,
-  parseMemory,
-  parseDisk,
-  parseUptime,
-  parseLoadAvg,
-  parseNetRxTx,
-  parseTopProcs,
-  parseDiskIo,
-  formatBytes,
-} from './monitor-utils'
+import { parseNetRxTx, parseTopProcs, parseDiskIo, formatBytes } from './monitor-utils'
 
 // ─── 工具函数 ───
 
@@ -281,7 +271,7 @@ export default function MonitorPage() {
       const connected = allHosts.filter((h) => h.connected)
       const list = connected.map((h) => ({
         id: h.id,
-        name: `${h.username}@${h.host}:${h.port}`,
+        name: h.host.length > 20 ? h.host.slice(0, 18) + '…' : h.host,
       }))
       // 去重
       const seen = new Set<string>()
@@ -318,71 +308,103 @@ export default function MonitorPage() {
     }
   }, [connections, sessions])
 
-  // 采集单台主机数据 — 直接用 connectionId 调后端，不依赖前端 session
-  const collectHostStats = useCallback(
-    async (hostId: string): Promise<HostStats | null> => {
-      // 查找主机名称
-      const hostInfo = hosts.find((h) => h.id === hostId)
-      const hostName = hostInfo?.name || hostId.slice(0, 8)
+  // 从后端 /api/hosts/health 获取结构化数据（无需自行拼 SSH 命令解析）
+  interface BackendHealthHost {
+    id: string
+    host: string
+    port: number
+    username: string
+    connected: boolean
+    error: string | null
+    cpu_load: number | null
+    cpu_load_5: number | null
+    cpu_load_15: number | null
+    cpu_cores: number | null
+    mem_total_mb: number | null
+    mem_used_mb: number | null
+    mem_percent: number | null
+    disk_total: string | null
+    disk_used: string | null
+    disk_percent: string | null
+    uptime: string | null
+    processes: number | null
+  }
 
+  /** 解析后端返回的磁盘总量字符串（如 "47G" → KB） */
+  function parseDiskSize(s: string | null): number {
+    if (!s) return 0
+    const m = s.trim().match(/^([\d.]+)\s*([KMGTP])?/i)
+    if (!m) return 0
+    const val = parseFloat(m[1]!)
+    const unit = (m[2] || 'K').toUpperCase()
+    const units: Record<string, number> = {
+      K: 1,
+      M: 1024,
+      G: 1048576,
+      T: 1073741824,
+      P: 1099511627776,
+    }
+    return Math.round(val * (units[unit] || 1))
+  }
+
+  /** 解析磁盘百分比字符串（如 "40%" → 40） */
+  function parsePctStr(s: string | null): number {
+    if (!s) return 0
+    return parseInt(s.replace('%', '').trim()) || 0
+  }
+
+  // 补充采集网络/进程/IO（SSH 命令，容错失败）
+  const fetchSupplement = useCallback(
+    async (
+      hostId: string,
+    ): Promise<{
+      netRx: number
+      netTx: number
+      topProcs: HostStats['topProcs']
+      io: HostStats['io']
+    }> => {
+      const fallback = {
+        netRx: 0,
+        netTx: 0,
+        topProcs: [] as HostStats['topProcs'],
+        io: { readBps: 0, writeBps: 0 },
+      }
       try {
-        // 合并所有命令为一次 SSH exec
-        const combinedCmd = [
-          "echo '===CPU_START==='",
-          "(top -bn1 | head -5 | grep '%Cpu' || mpstat 2>/dev/null | tail -1)",
-          "echo '===MEM_START==='",
-          "cat /proc/meminfo | grep -E 'MemTotal|MemAvailable'",
-          "echo '===DISK_START==='",
-          'df -k /',
-          "echo '===UPTIME_START==='",
-          'uptime',
-          "echo '===NET_START==='",
-          'cat /proc/net/dev',
-          "echo '===PROC_START==='",
-          'ps aux --sort=-%cpu | head -6',
-          "echo '===IO_START==='",
-          'cat /proc/diskstats',
-        ].join(' && ')
-
+        const cmd = [
+          "echo '===NET==='",
+          'cat /proc/net/dev 2>/dev/null || echo N/A',
+          "echo '===PROC==='",
+          'ps aux --sort=-%cpu 2>/dev/null | head -6 || echo N/A',
+          "echo '===IO==='",
+          'cat /proc/diskstats 2>/dev/null || echo N/A',
+        ].join(' ; ')
         const resp = await fetch('/api/ssh/exec', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ connectionId: hostId, command: combinedCmd }),
+          body: JSON.stringify({ connectionId: hostId, command: cmd }),
+          signal: AbortSignal.timeout(10000),
         })
         const json = await resp.json()
+        const stdout = json.data?.data || json.data?.stdout || ''
+        if (!stdout) return fallback
 
-        // 后端返回 ApiResponse<SshExecResponse>: { success, data: { stdout, exit_code } }
-        const execData = json.data
-        if (!json.success || !execData) return null
-        if (execData.exit_code !== 0) return null
-
-        const output = execData.stdout || ''
         const sections: Record<string, string> = {}
-        const sectionNames = ['CPU', 'MEM', 'DISK', 'UPTIME', 'NET', 'PROC', 'IO']
-        for (const name of sectionNames) {
-          const marker = `===${name}_START===`
-          const idx = output.indexOf(marker)
+        for (const name of ['NET', 'PROC', 'IO']) {
+          const marker = `===${name}===`
+          const idx = stdout.indexOf(marker)
           if (idx !== -1) {
             const start = idx + marker.length
-            let end = output.length
-            for (const n of sectionNames) {
-              const nextMarker = `===${n}_START===`
-              const ni = output.indexOf(nextMarker, start)
+            let end = stdout.length
+            for (const n of ['NET', 'PROC', 'IO']) {
+              const ni = stdout.indexOf(`===${n}===`, start)
               if (ni !== -1 && ni < end) end = ni
             }
-            sections[name] = output.slice(start, end).trim()
+            sections[name] = stdout.slice(start, end).trim()
           }
         }
 
-        const cpu = parseCpuUsage(sections.CPU || '') || 0
-        const memory = parseMemory(sections.MEM || '')
-        const disk = parseDisk(sections.DISK || '')
-        const uptime = parseUptime(sections.UPTIME || '')
-        const loadAvg = parseLoadAvg(sections.UPTIME || '')
-
         const net = parseNetRxTx(sections.NET || '')
         const now = Date.now()
-
         const prev = prevNetRef.current[hostId]
         let netRxSpeed = 0
         let netTxSpeed = 0
@@ -396,56 +418,86 @@ export default function MonitorPage() {
         prevNetRef.current[hostId] = { rx: net.rx, tx: net.tx, time: now }
 
         const topProcs = parseTopProcs(sections.PROC || '')
-        const ioRaw = parseDiskIo(sections.IO || '')
-        if (ioRaw.readBps > 10e9) ioRaw.readBps = 0
-        if (ioRaw.writeBps > 10e9) ioRaw.writeBps = 0
+        const io = parseDiskIo(sections.IO || '')
+        if (io.readBps > 10e9) io.readBps = 0
+        if (io.writeBps > 10e9) io.writeBps = 0
 
-        return {
-          host: hostName,
-          name: hostName,
-          cpu,
-          memory,
-          disk,
-          uptime,
-          loadAvg,
-          netRx: netRxSpeed,
-          netTx: netTxSpeed,
-          topProcs,
-          io: ioRaw,
-          timestamp: Date.now(),
-        }
+        return { netRx: netRxSpeed, netTx: netTxSpeed, topProcs, io }
       } catch {
-        return null
+        return fallback
       }
     },
-    [hosts],
+    [],
   )
 
-  // 采集所有选中的主机
+  // 采集所有选中主机 — 优先使用后端结构化数据，SSH 仅补充网络/进程/IO
   const collectAll = useCallback(async () => {
     if (selected.length === 0) return
     setLoading(true)
     setError('')
 
     try {
-      const results = await Promise.all(selected.map((id) => collectHostStats(id)))
+      // 第一步：从后端获取结构化基础指标（CPU/内存/磁盘/负载/进程数）
+      const healthResp = await fetch('/api/hosts/health')
+      const healthBody = await healthResp.json()
+      const allHealth: BackendHealthHost[] = healthBody.data || []
+      const healthMap = new Map(allHealth.map((h) => [h.id, h]))
 
       const newStats: Record<string, HostStats> = {}
       const now = Date.now()
 
-      for (let i = 0; i < selected.length; i++) {
-        const s = results[i]
-        if (s) {
-          const hostId = selected[i]!
-          newStats[hostId] = s
+      // 第二步：并行补充采集网络/进程/IO
+      const supplementResults = await Promise.all(selected.map((id) => fetchSupplement(id)))
 
-          setHistory((prev) => {
-            const h = prev[hostId] || []
-            h.push({ time: now, cpu: s.cpu, mem: s.memory.pct, disk: s.disk.pct })
-            const trimmed = h.slice(-60)
-            return { ...prev, [hostId]: trimmed }
-          })
+      for (let i = 0; i < selected.length; i++) {
+        const hostId = selected[i]!
+        const hostInfo = hosts.find((h) => h.id === hostId)
+        const hostName = hostInfo?.name || hostId.slice(0, 8)
+        const h = healthMap.get(hostId)
+
+        if (!h || !h.connected) continue
+
+        // 从后端结构化数据构建基础指标
+        const cpuCores = h.cpu_cores || 1
+        const cpuLoad = h.cpu_load ?? 0
+        const cpu = Math.min(100, Math.round((cpuLoad / cpuCores) * 1000) / 10)
+
+        const memTotalMb = h.mem_total_mb ?? 0
+        const memUsedMb = h.mem_used_mb ?? 0
+        const memPct = h.mem_percent ?? 0
+
+        const diskTotal = parseDiskSize(h.disk_total)
+        const diskUsed = parseDiskSize(h.disk_used)
+        const diskPct = parsePctStr(h.disk_percent)
+
+        const uptime = h.uptime || '—'
+        const loadAvg = [h.cpu_load ?? 0, h.cpu_load_5 ?? 0, h.cpu_load_15 ?? 0]
+          .map((v) => v.toFixed(2))
+          .join(', ')
+
+        const sup = supplementResults[i]!
+
+        const s: HostStats = {
+          host: hostName,
+          name: hostName,
+          cpu,
+          memory: { total: memTotalMb, used: memUsedMb, pct: memPct },
+          disk: { total: diskTotal, used: diskUsed, pct: diskPct },
+          uptime,
+          loadAvg,
+          netRx: sup.netRx,
+          netTx: sup.netTx,
+          topProcs: sup.topProcs,
+          io: sup.io,
+          timestamp: now,
         }
+
+        newStats[hostId] = s
+        setHistory((prev) => {
+          const hist = prev[hostId] || []
+          hist.push({ time: now, cpu: s.cpu, mem: s.memory.pct, disk: s.disk.pct })
+          return { ...prev, [hostId]: hist.slice(-60) }
+        })
       }
 
       setStats((prev) => ({ ...prev, ...newStats }))
@@ -460,7 +512,7 @@ export default function MonitorPage() {
     } finally {
       setLoading(false)
     }
-  }, [selected, collectHostStats])
+  }, [selected, hosts, fetchSupplement])
 
   // 自动刷新
   const startAutoRefresh = useCallback(() => {
@@ -565,7 +617,7 @@ export default function MonitorPage() {
   }, [selected, hostNameMap, stats, history])
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* 头部 */}
       <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-700/50 px-4 py-3">
         <Activity size={18} className="text-wrench-400" />
@@ -607,13 +659,15 @@ export default function MonitorPage() {
       </div>
 
       {/* ─── 多主机健康概览 ─── */}
-      <HostHealthOverview
-        onSelectHost={(id) => {
-          if (!selected.includes(id)) {
-            setSelected([id])
-          }
-        }}
-      />
+      <div className="shrink-0">
+        <HostHealthOverview
+          onSelectHost={(id) => {
+            if (!selected.includes(id)) {
+              setSelected([id])
+            }
+          }}
+        />
+      </div>
 
       {/* ─── 健康概览卡片 ─── */}
       {healthDisplay && !healthError && (
