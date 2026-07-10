@@ -923,7 +923,7 @@ export default function MonitorPage() {
                         <ProgressBar
                           value={s.memory.pct}
                           label="内存"
-                          sub={`${formatBytes(s.memory.used * 1024)} / ${formatBytes(s.memory.total * 1024)}`}
+                          sub={`${formatBytes(s.memory.used * 1048576)} / ${formatBytes(s.memory.total * 1048576)}`}
                           color="from-violet-500 to-violet-400"
                         />
                       </div>

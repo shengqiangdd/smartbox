@@ -49,7 +49,9 @@ pub struct HostHealth {
 
 /// Get health status for all connected hosts (GET /api/hosts/health)
 /// All hosts are checked in parallel for maximum speed.
-pub async fn get_all_health(State(state): State<Arc<AppState>>) -> Result<ApiResponse<Vec<HostHealth>>, AppError> {
+pub async fn get_all_health(
+    State(state): State<Arc<AppState>>,
+) -> Result<ApiResponse<Vec<HostHealth>>, AppError> {
     // Snapshot host info (avoid holding DashMap refs across await)
     let hosts: Vec<(String, HostInfo)> = state
         .connections
@@ -134,7 +136,9 @@ pub async fn get_all_health(State(state): State<Arc<AppState>>) -> Result<ApiRes
 /// Check health results for anomalies and auto-create alerts.
 fn auto_alert_health_anomalies(state: &AppState, results: &[HostHealth]) {
     use crate::app_state::AlertEntry;
-    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let now = chrono::Utc::now()
+        .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+        .to_string();
 
     for h in results {
         if !h.connected {
@@ -151,7 +155,10 @@ fn auto_alert_health_anomalies(state: &AppState, results: &[HostHealth]) {
                     level: "warning".into(),
                     host: h.host.clone(),
                     metric: "cpu_load".into(),
-                    message: format!("CPU load {:.2} exceeds core count {} (ratio: {:.2})", load, cores, ratio),
+                    message: format!(
+                        "CPU load {:.2} exceeds core count {} (ratio: {:.2})",
+                        load, cores, ratio
+                    ),
                     value: ratio,
                     threshold: 1.0,
                 });
@@ -185,7 +192,10 @@ fn auto_alert_health_anomalies(state: &AppState, results: &[HostHealth]) {
 
         // Disk anomaly (> 85%)
         if let Some(ref disk_pct_str) = h.disk_percent {
-            let disk_pct = disk_pct_str.trim_end_matches('%').parse::<f64>().unwrap_or(0.0);
+            let disk_pct = disk_pct_str
+                .trim_end_matches('%')
+                .parse::<f64>()
+                .unwrap_or(0.0);
             if disk_pct > 85.0 {
                 state.add_alert(AlertEntry {
                     id: format!("disk-{}-{}", h.id, chrono::Utc::now().timestamp()),
@@ -268,7 +278,11 @@ pub async fn diagnose_host(
     let health_text = diagnosis_lines.join("\n");
 
     // Try to get AI diagnosis via the AI config
-    let api_key = state.config.openrouter_api_key.clone().unwrap_or_default();
+    let api_key = state
+        .config
+        .openrouter_api_key
+        .clone()
+        .unwrap_or_default();
     let ai_diagnosis = if !api_key.is_empty() {
         match get_ai_diagnosis(&api_key, &health_text).await {
             Ok(diag) => diag,
@@ -280,14 +294,16 @@ pub async fn diagnose_host(
 
     let health_value = serde_json::to_value(&health).unwrap_or_default();
 
-    Ok(ApiResponse::success(crate::api_types::DiagnoseResponse {
-        health: health_value,
-        raw_report: health_text,
-        ai_diagnosis,
-    }))
+    Ok(ApiResponse::success(
+        crate::api_types::DiagnoseResponse {
+            health: health_value,
+            raw_report: health_text,
+            ai_diagnosis,
+        },
+    ))
 }
 
-/// Run health check commands on a single host via SSH (all commands in parallel).
+/// Run health check on a single host via SSH (single combined command for speed).
 async fn check_host_health(state: &AppState, host_id: &str) -> Result<HealthData, String> {
     let conn = state
         .connections
@@ -299,15 +315,56 @@ async fn check_host_health(state: &AppState, host_id: &str) -> Result<HealthData
         .clone()
         .ok_or_else(|| "No active SSH session".to_string())?;
 
-    // Run all commands in parallel (~6x faster than sequential)
-    let (load, mem, disk, uptime_cmd, procs, cores) = tokio::join!(
-        executor::execute_command(&session, "cat /proc/loadavg | awk '{print $1, $2, $3}'"),
-        executor::execute_command(&session, "free -m | awk 'NR==2{printf \"%d %d %.1f\", $2, $3, ($3/$2)*100}'"),
-        executor::execute_command(&session, "df -h / | awk 'NR==2{printf \"%s %s %s\", $2, $3, $5}'"),
-        executor::execute_command(&session, "uptime -p 2>/dev/null || uptime | sed 's/.*up //' | awk '{print $1, $2, $3, $4}'"),
-        executor::execute_command(&session, "ps --no-headers -eo pid 2>/dev/null | wc -l"),
-        executor::execute_command(&session, "nproc 2>/dev/null || echo 1"),
+    // 合并所有命令为一条 SSH 命令，避免 mutex 锁串行化
+    // 原来 tokio::join! 6 条命令实际串行（exec 持有锁直到完成）
+    let cmd = concat!(
+        "echo '===LOAD==='; ",
+        "cat /proc/loadavg | awk '{print $1, $2, $3}'; ",
+        "echo '===MEM==='; ",
+        "free -m | awk 'NR==2{printf \"%d %d %.1f\", $2, $3, ($3/$2)*100}'; ",
+        "echo '===DISK==='; ",
+        "df -h / | awk 'NR==2{printf \"%s %s %s\", $2, $3, $5}'; ",
+        "echo '===UPTIME==='; ",
+        "uptime -p 2>/dev/null || uptime | sed 's/.*up //' | awk '{print $1, $2, $3, $4}'; ",
+        "echo '===PROCS==='; ",
+        "ps --no-headers -eo pid 2>/dev/null | wc -l; ",
+        "echo '===CORES==='; ",
+        "nproc 2>/dev/null || echo 1",
     );
+
+    let result = executor::execute_command(&session, cmd)
+        .await
+        .map_err(|e| format!("SSH exec failed: {}", e))?;
+
+    if result.exit_code != 0 && result.stdout.trim().is_empty() {
+        return Err(format!(
+            "Command failed with exit code {}: {}",
+            result.exit_code, result.stderr
+        ));
+    }
+
+    // 按标记分割输出
+    let stdout = &result.stdout;
+    let parse_section = |name: &str| -> Option<String> {
+        let marker = format!("==={}===", name);
+        let start = stdout.find(&marker)?;
+        let s = start + marker.len();
+        // 找下一个标记或结尾
+        let mut end = stdout.len();
+        for other in &["LOAD", "MEM", "DISK", "UPTIME", "PROCS", "CORES"] {
+            if *other == name {
+                continue;
+            }
+            let other_marker = format!("==={}===", other);
+            if let Some(e) = stdout[s..].find(&other_marker) {
+                let abs = s + e;
+                if abs < end {
+                    end = abs;
+                }
+            }
+        }
+        Some(stdout[s..end].trim().to_string())
+    };
 
     let mut data = HealthData {
         cpu_load: None,
@@ -325,62 +382,54 @@ async fn check_host_health(state: &AppState, host_id: &str) -> Result<HealthData
     };
 
     // Parse load
-    if let Ok(load) = load {
-        if load.exit_code == 0 {
-            let parts: Vec<&str> = load.stdout.split_whitespace().collect();
-            if parts.len() >= 3 {
-                data.cpu_load = parts[0].parse::<f64>().ok();
-                data.cpu_load_5 = parts[1].parse::<f64>().ok();
-                data.cpu_load_15 = parts[2].parse::<f64>().ok();
-            }
+    if let Some(load_str) = parse_section("LOAD") {
+        let parts: Vec<&str> = load_str.split_whitespace().collect();
+        if parts.len() >= 3 {
+            data.cpu_load = parts[0].parse::<f64>().ok();
+            data.cpu_load_5 = parts[1].parse::<f64>().ok();
+            data.cpu_load_15 = parts[2].parse::<f64>().ok();
         }
     }
 
     // Parse memory
-    if let Ok(mem) = mem {
-        if mem.exit_code == 0 {
-            let parts: Vec<&str> = mem.stdout.split_whitespace().collect();
-            if parts.len() >= 3 {
-                data.mem_total_mb = parts[0].parse::<u64>().ok();
-                data.mem_used_mb = parts[1].parse::<u64>().ok();
-                data.mem_percent = parts[2].parse::<f64>().ok();
-            }
+    if let Some(mem_str) = parse_section("MEM") {
+        let parts: Vec<&str> = mem_str.split_whitespace().collect();
+        if parts.len() >= 3 {
+            data.mem_total_mb = parts[0].parse::<u64>().ok();
+            data.mem_used_mb = parts[1].parse::<u64>().ok();
+            data.mem_percent = parts[2].parse::<f64>().ok();
         }
     }
 
     // Parse disk
-    if let Ok(disk) = disk {
-        if disk.exit_code == 0 {
-            let parts: Vec<&str> = disk.stdout.split_whitespace().collect();
-            if parts.len() >= 3 {
-                data.disk_total = Some(parts[0].to_string());
-                data.disk_used = Some(parts[1].to_string());
-                data.disk_percent = Some(parts[2].to_string());
-            }
+    if let Some(disk_str) = parse_section("DISK") {
+        let parts: Vec<&str> = disk_str.split_whitespace().collect();
+        if parts.len() >= 3 {
+            data.disk_total = Some(parts[0].to_string());
+            data.disk_used = Some(parts[1].to_string());
+            data.disk_percent = Some(parts[2].to_string());
         }
     }
 
     // Parse uptime
-    if let Ok(uptime_cmd) = uptime_cmd {
-        if uptime_cmd.exit_code == 0 {
-            let trimmed = uptime_cmd.stdout.trim().to_string();
-            if !trimmed.is_empty() {
-                data.uptime = Some(trimmed);
-            }
+    if let Some(uptime_str) = parse_section("UPTIME") {
+        let trimmed = uptime_str.trim().to_string();
+        if !trimmed.is_empty() {
+            data.uptime = Some(trimmed);
         }
     }
 
     // Parse process count
-    if let Ok(procs) = procs {
-        if procs.exit_code == 0 {
-            data.processes = procs.stdout.trim().parse::<u32>().ok();
+    if let Some(procs_str) = parse_section("PROCS") {
+        if let Ok(n) = procs_str.trim().parse::<u32>() {
+            data.processes = Some(n);
         }
     }
 
     // Parse CPU cores
-    if let Ok(cores) = cores {
-        if cores.exit_code == 0 {
-            data.cpu_cores = cores.stdout.trim().parse::<u32>().ok();
+    if let Some(cores_str) = parse_section("CORES") {
+        if let Ok(n) = cores_str.trim().parse::<u32>() {
+            data.cpu_cores = Some(n);
         }
     }
 
@@ -432,7 +481,10 @@ async fn get_ai_diagnosis(api_key: &str, health_report: &str) -> Result<String, 
         return Err(format!("API returned status {}", resp.status()));
     }
 
-    let body: serde_json::Value = resp.json().await.map_err(|e| format!("JSON parse error: {}", e))?;
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("JSON parse error: {}", e))?;
 
     let content = body["choices"][0]["message"]["content"]
         .as_str()
