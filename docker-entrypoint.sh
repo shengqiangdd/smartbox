@@ -1,5 +1,5 @@
 #!/bin/sh
-set -ex
+set -e
 
 log() {
   echo "[entrypoint] $(date '+%Y-%m-%d %H:%M:%S') $*"
@@ -12,7 +12,7 @@ if [ ! -f /app/.env ]; then
     log "Created default .env from example"
   else
     touch /app/.env
-    log "Created empty .env (no example file found)"
+    log "Created empty .env"
   fi
 fi
 
@@ -24,24 +24,6 @@ if ! grep -q "^JWT_SECRET=." /app/.env 2>/dev/null; then
   log "Generated random JWT_SECRET"
 fi
 
-# ── 3. 诊断 ──
-log "Binary: /app/wrench ($(stat -c%s /app/wrench 2>/dev/null || echo '?') bytes)"
-log "FRONTEND_DIST=${FRONTEND_DIST:-/app/frontend/dist}"
-
-# 检查共享库依赖
-log "Shared library dependencies:"
-ldd /app/wrench 2>&1 | while read -r line; do
-  log "  $line"
-done
-
-# ── 4. 启动 ──
+# ── 3. 启动 ──
 log "Starting Wrench backend..."
-echo ""
-
-# 直接执行，不用 exec，这样可以捕获退出码
-/app/wrench "$@"
-EXIT_CODE=$?
-
-echo ""
-log "Wrench exited with code: $EXIT_CODE"
-exit $EXIT_CODE
+exec /app/wrench "$@"

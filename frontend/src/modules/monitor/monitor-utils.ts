@@ -71,10 +71,28 @@ export function parseDisk(stdout: string): {
   return { total: 0, used: 0, pct: 0 }
 }
 
-/** 解析系统 uptime */
+/** 解析系统 uptime（人性化格式） */
 export function parseUptime(stdout: string): string {
-  const m = stdout.match(/up\s+(.+?)(?:,\s+\d+ users|\s*$)/)
-  return m ? m[1]!.trim() : stdout.trim().slice(0, 40)
+  // " 11:47:35 up 42 days,  3:22,  1 user,  load average: ..."
+  const m = stdout.match(/up\s+(.+?)(?:,\s*\d+\s*user|\s*,\s*load|\s*$)/)
+  if (!m) return stdout.trim().slice(0, 40)
+  const raw = m[1]!.trim()
+
+  const days = raw.match(/(\d+)\s*day/)
+  const hours = raw.match(/(\d+)\s*hour/)
+  const mins = raw.match(/(\d+)\s*min/)
+  const timeMatch = raw.match(/(\d+):(\d+)/)
+
+  const parts: string[] = []
+  if (days) parts.push(`${days[1]}天`)
+  if (hours) parts.push(`${hours[1]}时`)
+  if (mins) parts.push(`${mins[1]}分`)
+  if (parts.length > 0) return parts.join(' ')
+
+  if (days && timeMatch) return `${days[1]}天 ${timeMatch[1]}时${timeMatch[2]}分`
+  if (timeMatch && !days) return `${timeMatch[1]}时${timeMatch[2]}分`
+
+  return raw
 }
 
 /** 解析系统负载平均值 */

@@ -253,8 +253,6 @@ function _mockHistory(): HistoryPoint[] {
 export default function MonitorPage() {
   const sessions = useSshStore((s) => s.sessions)
   const connections = useSshStore((s) => s.connections)
-  const hasLiveSessions = sessions.some((s) => s.status === 'connected')
-  const isMock = !hasLiveSessions
   const [hosts, setHosts] = useState<{ id: string; name: string }[]>([])
   const [selected, setSelected] = useState<string[]>([])
   const [stats, setStats] = useState<Record<string, HostStats>>({})
@@ -268,51 +266,70 @@ export default function MonitorPage() {
   const [healthError, setHealthError] = useState(false)
   const alertHistory = useAlertStore((s) => s.history)
 
-  // 扫描主机（已保存的连接 + 活跃 session）— 去重
-  const scanHosts = useCallback(() => {
-    const seen = new Set<string>()
-    const list: { id: string; name: string }[] = []
-    for (const sess of sessions) {
-      if (sess.status !== 'connected') continue
-      const hostKey = sess.host || sess.connectionId
-      if (seen.has(hostKey)) continue
-      const name = sess.connectionName || sess.host || sess.id.slice(0, 8)
-      list.push({ id: sess.id, name })
-      seen.add(hostKey)
-    }
-    for (const conn of connections) {
-      const hostKey = conn.host || conn.name
-      if (seen.has(hostKey)) continue
-      list.push({ id: conn.id, name: conn.name })
-      seen.add(hostKey)
-    }
-    const ipSeen = new Set<string>()
-    const dedupedList: { id: string; name: string }[] = []
-    for (const h of list) {
-      const ipKey = h.name.split(':')[0]!.split('@').pop() || h.name
-      if (!ipSeen.has(ipKey)) {
-        ipSeen.add(ipKey)
-        dedupedList.push(h)
+  // 从后端 /api/hosts/health 获取已连接的主机列表（与后端 state.connections 一致）
+  const scanHosts = useCallback(async () => {
+    try {
+      const res = await fetch('/api/hosts/health')
+      const body = await res.json()
+      const allHosts: Array<{
+        id: string
+        host: string
+        port: number
+        username: string
+        connected: boolean
+      }> = body.data || []
+      const connected = allHosts.filter((h) => h.connected)
+      const list = connected.map((h) => ({
+        id: h.id,
+        name: `${h.username}@${h.host}:${h.port}`,
+      }))
+      // 去重
+      const seen = new Set<string>()
+      const deduped = list.filter((h) => {
+        if (seen.has(h.id)) return false
+        seen.add(h.id)
+        return true
+      })
+      setHosts(deduped)
+      if (deduped.length > 0) {
+        setSelected((prev) => (prev.length === 0 ? [deduped[0]!.id] : prev))
       }
-    }
-    setHosts(dedupedList)
-    if (dedupedList.length > 0) {
-      setSelected((prev) => (prev.length === 0 ? [dedupedList[0]!.id] : prev))
+    } catch {
+      // 回退到前端 store
+      const seen = new Set<string>()
+      const list: { id: string; name: string }[] = []
+      for (const sess of sessions) {
+        if (sess.status !== 'connected') continue
+        const hostKey = sess.host || sess.connectionId
+        if (seen.has(hostKey)) continue
+        list.push({ id: sess.id, name: sess.connectionName || sess.host || sess.id.slice(0, 8) })
+        seen.add(hostKey)
+      }
+      for (const conn of connections) {
+        const hostKey = conn.host || conn.name
+        if (seen.has(hostKey)) continue
+        list.push({ id: conn.id, name: conn.name })
+        seen.add(hostKey)
+      }
+      setHosts(list)
+      if (list.length > 0) {
+        setSelected((prev) => (prev.length === 0 ? [list[0]!.id] : prev))
+      }
     }
   }, [connections, sessions])
 
-  // 采集单台主机数据
+  // 采集单台主机数据 — 直接用 connectionId 调后端，不依赖前端 session
   const collectHostStats = useCallback(
     async (hostId: string): Promise<HostStats | null> => {
-      const sess = sessions.find((s) => s.id === hostId && s.status === 'connected')
-      const conn = connections.find((c) => c.id === hostId)
-      if (!sess && !conn) return null
+      // 查找主机名称
+      const hostInfo = hosts.find((h) => h.id === hostId)
+      const hostName = hostInfo?.name || hostId.slice(0, 8)
 
       try {
-        // 合并所有命令为一次 SSH exec，减少 7x 网络/SSH 开销
+        // 合并所有命令为一次 SSH exec
         const combinedCmd = [
           "echo '===CPU_START==='",
-          "(top -bn1 | head -5 | grep '%Cpu' || mpstat 2>/dev/null | tail -1 || sar -u 1 1 2>/dev/null | tail -1)",
+          "(top -bn1 | head -5 | grep '%Cpu' || mpstat 2>/dev/null | tail -1)",
           "echo '===MEM_START==='",
           "cat /proc/meminfo | grep -E 'MemTotal|MemAvailable'",
           "echo '===DISK_START==='",
@@ -332,13 +349,14 @@ export default function MonitorPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ connectionId: hostId, command: combinedCmd }),
         })
-        const data = await resp.json()
+        const json = await resp.json()
 
-        if (data.exitCode !== 0) {
-          return null
-        }
+        // 后端返回 ApiResponse<SshExecResponse>: { success, data: { stdout, exit_code } }
+        const execData = json.data
+        if (!json.success || !execData) return null
+        if (execData.exit_code !== 0) return null
 
-        const output = data.stdout || ''
+        const output = execData.stdout || ''
         const sections: Record<string, string> = {}
         const sectionNames = ['CPU', 'MEM', 'DISK', 'UPTIME', 'NET', 'PROC', 'IO']
         for (const name of sectionNames) {
@@ -383,8 +401,8 @@ export default function MonitorPage() {
         if (ioRaw.writeBps > 10e9) ioRaw.writeBps = 0
 
         return {
-          host: sess?.host || conn?.host || hostId,
-          name: sess?.connectionName || conn?.name || hostId.slice(0, 8),
+          host: hostName,
+          name: hostName,
           cpu,
           memory,
           disk,
@@ -400,7 +418,7 @@ export default function MonitorPage() {
         return null
       }
     },
-    [connections, sessions],
+    [hosts],
   )
 
   // 采集所有选中的主机
@@ -410,12 +428,6 @@ export default function MonitorPage() {
     setError('')
 
     try {
-      if (isMock) {
-        setError('请先连接 SSH 服务器以采集监控数据')
-        setLoading(false)
-        return
-      }
-
       const results = await Promise.all(selected.map((id) => collectHostStats(id)))
 
       const newStats: Record<string, HostStats> = {}
@@ -448,7 +460,7 @@ export default function MonitorPage() {
     } finally {
       setLoading(false)
     }
-  }, [selected, collectHostStats, isMock])
+  }, [selected, collectHostStats])
 
   // 自动刷新
   const startAutoRefresh = useCallback(() => {
