@@ -38,11 +38,14 @@ interface HostHealth {
   mem_total_mb: number | null
   mem_used_mb: number | null
   mem_percent: number | null
-  disk_total: string | null
-  disk_used: string | null
-  disk_percent: string | null
+  disks: Array<{ mount: string; total: string; used: string; percent: string }>
   uptime: string | null
   processes: number | null
+  net_rx_bytes: number
+  net_tx_bytes: number
+  io_read_sectors: number
+  io_write_sectors: number
+  top_procs: Array<{ pid: number; user: string; cpu: number; mem: number; command: string }>
 }
 
 // ─── Helper fns ───
@@ -68,7 +71,7 @@ function StatusIcon({ connected, memPct }: { connected: boolean; memPct: number 
 }
 const StatusIconMemo = memo(StatusIcon)
 
-// ─── HostCard sub‑component (memoised) ───
+// ─── HostCard sub-component (memoised) ───
 
 interface HostCardProps {
   host: HostHealth
@@ -87,6 +90,17 @@ const HostCard = memo(function HostCard({
   onDiagnose,
   onSelect,
 }: HostCardProps) {
+  // 取 / 分区或使用率最高的分区
+  const rootDisk = useMemo(() => {
+    if (!host.disks || host.disks.length === 0) return null
+    return (
+      host.disks.find((d) => d.mount === '/') ||
+      host.disks.reduce((a, b) => (parseFloat(a.percent) >= parseFloat(b.percent) ? a : b))
+    )
+  }, [host.disks])
+
+  const diskPctNum = rootDisk ? parseFloat(rootDisk.percent) : null
+
   return (
     <div
       className={`rounded-xl border border-slate-700/50 bg-slate-800/60 p-4 backdrop-blur-sm transition-all hover:border-slate-600/50 ${collapsed ? 'hidden' : ''}`}
@@ -99,7 +113,7 @@ const HostCard = memo(function HostCard({
         >
           <StatusIconMemo connected={host.connected} memPct={host.mem_percent} />
           <span className="font-medium text-slate-200">{host.host}</span>
-          <span className="text-xs text-slate-500">port {host.port}</span>
+          <span className="text-xs text-slate-500">:{host.port}</span>
         </button>
         <button
           onClick={onDiagnose}
@@ -127,13 +141,13 @@ const HostCard = memo(function HostCard({
               {host.cpu_load != null ? `${host.cpu_load.toFixed(1)}%` : '--'}
             </span>
             {host.cpu_cores != null && (
-              <span className="text-xs text-slate-500">{host.cpu_cores} cores</span>
+              <span className="text-xs text-slate-500">{host.cpu_cores}核</span>
             )}
           </div>
           <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-700">
             <div
               className={`h-full rounded-full transition-all ${pctBg(host.cpu_load)}`}
-              style={{ width: `${host.cpu_load ?? 0}%` }}
+              style={{ width: `${Math.min(100, host.cpu_load ?? 0)}%` }}
             />
           </div>
         </div>
@@ -141,7 +155,7 @@ const HostCard = memo(function HostCard({
         {/* Memory */}
         <div className="rounded-lg bg-slate-800/80 p-2.5">
           <div className="mb-1 flex items-center gap-1.5 text-xs text-slate-400">
-            <MemoryStick size={12} /> Memory
+            <MemoryStick size={12} /> 内存
           </div>
           <div className="flex items-baseline gap-1.5">
             <span className={`text-lg font-semibold tabular-nums ${pctColor(host.mem_percent)}`}>
@@ -151,7 +165,7 @@ const HostCard = memo(function HostCard({
           <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-700">
             <div
               className={`h-full rounded-full ${pctBg(host.mem_percent)}`}
-              style={{ width: `${host.mem_percent ?? 0}%` }}
+              style={{ width: `${Math.min(100, host.mem_percent ?? 0)}%` }}
             />
           </div>
           {host.mem_used_mb != null && host.mem_total_mb != null && (
@@ -164,24 +178,22 @@ const HostCard = memo(function HostCard({
         {/* Disk */}
         <div className="rounded-lg bg-slate-800/80 p-2.5">
           <div className="mb-1 flex items-center gap-1.5 text-xs text-slate-400">
-            <HardDrive size={12} /> Disk
+            <HardDrive size={12} /> 磁盘
           </div>
           <div className="flex items-baseline gap-1.5">
-            <span
-              className={`text-lg font-semibold tabular-nums ${pctColor(host.disk_percent != null ? parseFloat(host.disk_percent) : null)}`}
-            >
-              {host.disk_percent != null ? `${host.disk_percent}` : '--'}
+            <span className={`text-lg font-semibold tabular-nums ${pctColor(diskPctNum)}`}>
+              {diskPctNum != null ? `${diskPctNum.toFixed(0)}%` : '--'}
             </span>
           </div>
           <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-700">
             <div
-              className={`h-full rounded-full ${pctBg(host.disk_percent != null ? parseFloat(host.disk_percent) : null)}`}
-              style={{ width: `${host.disk_percent != null ? parseFloat(host.disk_percent) : 0}%` }}
+              className={`h-full rounded-full ${pctBg(diskPctNum)}`}
+              style={{ width: `${diskPctNum ?? 0}%` }}
             />
           </div>
-          {host.disk_used != null && host.disk_total != null && (
+          {rootDisk && (
             <div className="mt-1 text-[10px] text-slate-500">
-              {host.disk_used} / {host.disk_total}
+              {rootDisk.used} / {rootDisk.total}
             </div>
           )}
         </div>
@@ -189,24 +201,44 @@ const HostCard = memo(function HostCard({
         {/* Uptime + Processes */}
         <div className="rounded-lg bg-slate-800/80 p-2.5">
           {host.uptime && (
-            <div className="mb-2 text-xs text-slate-400">
-              <span className="text-slate-500">Uptime:</span> {host.uptime}
+            <div className="mb-1 text-xs text-slate-400">
+              <span className="text-slate-500">运行:</span> {host.uptime}
             </div>
           )}
           {host.processes != null && (
-            <div className="text-xs text-slate-400">
-              <span className="text-slate-500">Processes:</span> {host.processes}
+            <div className="mb-1 text-xs text-slate-400">
+              <span className="text-slate-500">进程:</span> {host.processes}
             </div>
           )}
-          {!host.connected && <div className="text-xs text-red-400">Disconnected</div>}
+          {!host.connected && <div className="text-xs font-medium text-red-400">离线</div>}
         </div>
       </div>
+
+      {/* Top Processes */}
+      {host.top_procs && host.top_procs.length > 0 && (
+        <div className="mt-3 rounded-lg bg-slate-800/80 p-2.5">
+          <div className="mb-1.5 text-xs text-slate-400">Top 进程</div>
+          <div className="space-y-1">
+            {host.top_procs.slice(0, 5).map((proc) => (
+              <div key={proc.pid} className="flex items-center justify-between text-[11px]">
+                <div className="min-w-0 flex-1 truncate text-slate-300">
+                  {proc.command || `PID ${proc.pid}`}
+                </div>
+                <div className="ml-2 flex shrink-0 gap-2">
+                  <span className="text-cyan-400 tabular-nums">{proc.cpu.toFixed(1)}%</span>
+                  <span className="text-purple-400 tabular-nums">{proc.mem.toFixed(1)}%</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* AI Diagnosis */}
       {diagnosis[host.id] && (
         <div className="mt-3 rounded-lg bg-slate-800/80 p-3">
           <div className="mb-1 flex items-center gap-1.5 text-xs text-slate-400">
-            <Brain size={12} /> AI Diagnosis
+            <Brain size={12} /> AI 诊断
           </div>
           <p className="text-xs leading-relaxed text-slate-300">{diagnosis[host.id]}</p>
         </div>
@@ -217,7 +249,7 @@ const HostCard = memo(function HostCard({
 
 // ─── Main component ───
 
-function HostHealthOverviewInner({ onSelectHost }: { onSelectHost?: (hostId: string) => void }) {
+function HostHealthOverviewInner() {
   type HealthState = {
     hosts: HostHealth[]
     status: 'loading' | 'idle' | 'error'
@@ -232,13 +264,12 @@ function HostHealthOverviewInner({ onSelectHost }: { onSelectHost?: (hostId: str
   const [diagnosis, setDiagnosis] = useState<Record<string, string>>({})
   const { hosts: rawHosts, status, errorMsg } = healthState
 
-  // Deduplicate by host:port
+  // Deduplicate by id
   const hosts = useMemo(() => {
     const seen = new Set<string>()
     return rawHosts.filter((h) => {
-      const key = `${h.host}:${h.port}`
-      if (seen.has(key)) return false
-      seen.add(key)
+      if (seen.has(h.id)) return false
+      seen.add(h.id)
       return true
     })
   }, [rawHosts])
@@ -249,7 +280,7 @@ function HostHealthOverviewInner({ onSelectHost }: { onSelectHost?: (hostId: str
       const data = await res.json()
       dispatch({ hosts: data.data || [], status: 'idle', errorMsg: null })
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Failed to load'
+      const msg = e instanceof Error ? e.message : '加载失败'
       dispatch({ status: 'error', errorMsg: msg })
     }
   }, [])
@@ -269,21 +300,18 @@ function HostHealthOverviewInner({ onSelectHost }: { onSelectHost?: (hostId: str
         body: JSON.stringify({ hostId }),
       })
       const json = await res.json()
-      // 后端返回 ApiResponse<{health, raw_report, ai_diagnosis}>
-      // ApiResponse.data → json.data → {health, raw_report, ai_diagnosis}
       const diagObj = json.data
       let text: string
       if (diagObj && typeof diagObj === 'object' && 'ai_diagnosis' in diagObj) {
-        // 结构化响应：优先使用 ai_diagnosis，回退到 raw_report
-        text = diagObj.ai_diagnosis || diagObj.raw_report || 'No diagnosis available'
+        text = diagObj.ai_diagnosis || diagObj.raw_report || '无诊断结果'
       } else if (typeof diagObj === 'string') {
         text = diagObj
       } else {
-        text = 'No diagnosis available'
+        text = '无诊断结果'
       }
       setDiagnosis((prev) => ({ ...prev, [hostId]: text }))
     } catch {
-      setDiagnosis((prev) => ({ ...prev, [hostId]: 'Diagnosis failed' }))
+      setDiagnosis((prev) => ({ ...prev, [hostId]: '诊断失败' }))
     } finally {
       setDiagnosing(null)
     }
@@ -302,64 +330,62 @@ function HostHealthOverviewInner({ onSelectHost }: { onSelectHost?: (hostId: str
 
   if (status === 'loading') {
     return (
-      <div className="flex items-center justify-center py-12 text-slate-400">
-        <Loader2 size={20} className="mr-2 animate-spin" />
-        Loading host health...
+      <div className="flex items-center justify-center py-6 text-slate-400">
+        <Loader2 size={16} className="mr-2 animate-spin" />
+        <span className="text-xs">加载主机健康数据...</span>
       </div>
     )
   }
 
   if (status === 'error') {
-    return <div className="rounded-lg bg-red-900/20 p-4 text-sm text-red-400">{errorMsg}</div>
+    return <div className="rounded-lg bg-red-900/20 p-3 text-xs text-red-400">{errorMsg}</div>
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {/* Header bar */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Server size={16} className="text-blue-400" />
-          <span className="text-sm font-medium text-slate-300">Host Health</span>
+          <Server size={14} className="text-blue-400" />
+          <span className="text-xs font-medium text-slate-300">主机健康</span>
           {critical.length > 0 && (
-            <span className="rounded bg-red-900/30 px-2 py-0.5 text-[10px] font-medium text-red-400">
-              {critical.length} critical
+            <span className="rounded bg-red-900/30 px-1.5 py-0.5 text-[10px] font-medium text-red-400">
+              {critical.length} 危急
             </span>
           )}
           {warning.length > 0 && (
-            <span className="rounded bg-amber-900/30 px-2 py-0.5 text-[10px] font-medium text-amber-400">
-              {warning.length} warning
+            <span className="rounded bg-amber-900/30 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
+              {warning.length} 警告
             </span>
           )}
         </div>
         <button
           onClick={() => setCollapsed((c) => !c)}
-          className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-slate-700 hover:text-slate-300"
+          className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-700 hover:text-slate-300"
         >
-          {collapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-          {collapsed ? 'Show' : 'Hide'}
+          {collapsed ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
+          {collapsed ? '展开' : '收起'}
         </button>
       </div>
 
-      {/* Host cards */}
-      <div className="max-h-[500px] overflow-auto">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {hosts.length === 0 && (
-            <div className="col-span-full py-8 text-center text-sm text-slate-500">
-              No hosts connected. Add a host in the SSH connection panel.
-            </div>
-          )}
-          {hosts.map((host) => (
-            <HostCard
-              key={host.id}
-              host={host}
-              collapsed={collapsed}
-              diagnosing={diagnosing}
-              diagnosis={diagnosis}
-              onDiagnose={() => runDiagnosis(host.id)}
-              onSelect={() => onSelectHost?.(host.id)}
-            />
-          ))}
-        </div>
+      {/* Host cards — scrollable */}
+      <div className="max-h-[40vh] space-y-2 overflow-y-auto pr-1">
+        {hosts.length === 0 && (
+          <div className="py-6 text-center text-xs text-slate-500">
+            暂无主机连接。请在 SSH 页面添加并连接主机。
+          </div>
+        )}
+        {hosts.map((host) => (
+          <HostCard
+            key={host.id}
+            host={host}
+            collapsed={collapsed}
+            diagnosing={diagnosing}
+            diagnosis={diagnosis}
+            onDiagnose={() => runDiagnosis(host.id)}
+            onSelect={() => {}}
+          />
+        ))}
       </div>
     </div>
   )

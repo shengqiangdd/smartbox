@@ -115,16 +115,33 @@ const ProcessList = memo(function ProcessList({ procs }: { procs: HostStats['top
     return <div className="text-[11px] text-slate-500">无数据</div>
   }
   return (
-    <div className="space-y-1">
-      {procs.map((p, i) => (
-        <div key={`${p.pid}-${i}`} className="flex items-center gap-2 text-[11px]">
-          <span className="w-10 text-right text-slate-500">{p.pid}</span>
-          <span className="w-12 truncate text-slate-400">{p.user}</span>
-          <span className="w-10 text-right text-cyan-400">{p.cpu.toFixed(1)}%</span>
-          <span className="w-10 text-right text-purple-400">{p.mem.toFixed(1)}%</span>
-          <span className="flex-1 truncate text-slate-300">{p.command}</span>
-        </div>
-      ))}
+    <div className="space-y-0.5">
+      {/* 表头 */}
+      <div className="flex items-center gap-2 text-[10px] text-slate-500">
+        <span className="w-12 truncate">用户</span>
+        <span className="w-10 text-right">CPU</span>
+        <span className="w-10 text-right">MEM</span>
+        <span className="flex-1 truncate">进程</span>
+      </div>
+      {procs.map((p, i) => {
+        // 提取进程名：取 command 的第一段 basename
+        const cmdParts = (p.command || '').split('/')
+        const procName = cmdParts[cmdParts.length - 1]?.split(' ')[0] || p.command || `PID ${p.pid}`
+        // 去掉方括号（如 [kworker]）
+        const displayName = procName.replace(/^\[|\]$/g, '')
+        return (
+          <div key={`${p.pid}-${i}`} className="flex items-center gap-2 text-[11px]">
+            <span className="w-12 truncate text-slate-500" title={p.user}>
+              {p.user}
+            </span>
+            <span className="w-10 text-right text-cyan-400 tabular-nums">{p.cpu.toFixed(1)}</span>
+            <span className="w-10 text-right text-purple-400 tabular-nums">{p.mem.toFixed(1)}</span>
+            <span className="flex-1 truncate text-slate-300" title={p.command}>
+              {displayName}
+            </span>
+          </div>
+        )
+      })}
     </div>
   )
 })
