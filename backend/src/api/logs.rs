@@ -160,10 +160,16 @@ pub async fn tail_log(
     let content = match get_session(&state, connection_id) {
         Some(s) => {
             let p = sq(path);
-            // -a 让 tail 把二进制文件当文本处理，避免 btmp 等出乱码
+            // 先判断是否为二进制文件，二进制用 strings 过滤可读内容
             let cmd = format!(
-                "tail -a -n {lines} {p} 2>&1; __rc=$?; \
-                 if [ $__rc -ne 0 ]; then sudo -n tail -a -n {lines} {p} 2>&1; __rc2=$?; \
+                "if file {p} 2>/dev/null | grep -q 'text\\|ASCII\\|UTF'; then \
+                   tail -n {lines} {p} 2>&1; __rc=$?; \
+                 else \
+                   strings {p} 2>/dev/null | tail -n {lines}; __rc=$?; \
+                 fi; \
+                 if [ $__rc -ne 0 ]; then \
+                   sudo -n tail -n {lines} {p} 2>/dev/null || sudo -n strings {p} 2>/dev/null | tail -n {lines}; \
+                   __rc2=$?; \
                    if [ $__rc2 -ne 0 ]; then echo ''; echo '--- 读取失败（文件不存在或无权限） ---'; fi; \
                  fi",
                 p = p, lines = lines
@@ -214,9 +220,17 @@ pub async fn grep_log(
         Some(s) => {
             let pat = sq(pattern);
             let pth = sq(path);
+            // 先判断是否为文本文件，二进制用 strings 过滤
             let cmd = format!(
-                "grep -a -i {pat} {pth} 2>&1 | tail -200; __rc=$?; \
-                 if [ $__rc -ne 0 ]; then sudo -n grep -a -i {pat} {pth} 2>&1 | tail -200; __rc2=$?; \
+                "if file {pth} 2>/dev/null | grep -q 'text\\|ASCII\\|UTF'; then \
+                   grep -i {pat} {pth} 2>&1 | tail -200; __rc=$?; \
+                 else \
+                   strings {pth} 2>/dev/null | grep -i {pat} | tail -200; __rc=$?; \
+                 fi; \
+                 if [ $__rc -ne 0 ]; then \
+                   sudo -n grep -i {pat} {pth} 2>/dev/null | tail -200 || \
+                   sudo -n strings {pth} 2>/dev/null | grep -i {pat} | tail -200; \
+                   __rc2=$?; \
                    if [ $__rc2 -ne 0 ]; then echo '--- 搜索失败（文件不存在或无权限） ---'; fi; \
                  fi",
                 pat = pat, pth = pth
