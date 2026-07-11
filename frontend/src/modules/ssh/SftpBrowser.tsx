@@ -69,6 +69,122 @@ interface SftpBrowserProps {
   widthClass?: string
 }
 
+// --- Base64 / Text encoding helpers (UTF-8 safe) ---
+
+/** base64 -> string (correctly handles multibyte UTF-8 chars like CJK) */
+function b64ToText(b64: string): string {
+  const bin = atob(b64)
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  return new TextDecoder('utf-8').decode(bytes)
+}
+
+/** string -> base64 (correctly handles multibyte UTF-8 chars) */
+function textToB64(text: string): string {
+  const bytes = new TextEncoder().encode(text)
+  let bin = ''
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i] ?? 0)
+  return btoa(bin)
+}
+
+// --- MIME type map (covers common formats) ---
+
+const MIME_MAP: Record<string, string> = {
+  // Images
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  ico: 'image/x-icon',
+  svg: 'image/svg+xml',
+  avif: 'image/avif',
+  heic: 'image/heic',
+  heif: 'image/heif',
+  tiff: 'image/tiff',
+  tif: 'image/tiff',
+  raw: 'image/raw',
+  cr2: 'image/x-canon-cr2',
+  nef: 'image/x-nikon-nef',
+  arw: 'image/x-sony-arw',
+  dng: 'image/x-adobe-dng',
+  psd: 'image/vnd.adobe.photoshop',
+  // Video
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  ogg: 'video/ogg',
+  ogv: 'video/ogg',
+  mov: 'video/quicktime',
+  mkv: 'video/x-matroska',
+  avi: 'video/x-msvideo',
+  wmv: 'video/x-ms-wmv',
+  flv: 'video/x-flv',
+  m4v: 'video/mp4',
+  '3gp': 'video/3gpp',
+  mpeg: 'video/mpeg',
+  mpg: 'video/mpeg',
+  // Audio
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  flac: 'audio/flac',
+  aac: 'audio/aac',
+  m4a: 'audio/mp4',
+  opus: 'audio/opus',
+  wma: 'audio/x-ms-wma',
+  aiff: 'audio/aiff',
+  mid: 'audio/midi',
+  midi: 'audio/midi',
+  ape: 'audio/ape',
+  // Documents
+  pdf: 'application/pdf',
+  // Archives
+  zip: 'application/zip',
+  tar: 'application/x-tar',
+  gz: 'application/gzip',
+  bz2: 'application/x-bzip2',
+  xz: 'application/x-xz',
+  rar: 'application/vnd.rar',
+  '7z': 'application/x-7z-compressed',
+  // Text
+  txt: 'text/plain',
+  log: 'text/plain',
+  md: 'text/markdown',
+  json: 'application/json',
+  yaml: 'text/yaml',
+  yml: 'text/yaml',
+  xml: 'application/xml',
+  html: 'text/html',
+  htm: 'text/html',
+  css: 'text/css',
+  csv: 'text/csv',
+  js: 'text/javascript',
+  ts: 'text/typescript',
+  py: 'text/x-python',
+  sh: 'text/x-shellscript',
+  bash: 'text/x-shellscript',
+  rb: 'text/x-ruby',
+  go: 'text/x-go',
+  rs: 'text/x-rust',
+  java: 'text/x-java',
+  c: 'text/x-c',
+  cpp: 'text/x-c++',
+  h: 'text/x-c',
+  hpp: 'text/x-c++',
+  sql: 'text/x-sql',
+  kt: 'text/x-kotlin',
+  swift: 'text/x-swift',
+  dart: 'text/x-dart',
+  r: 'text/x-r',
+  R: 'text/x-r',
+}
+
+/** Get MIME type by filename extension */
+function getMimeByName(name: string): string {
+  const ext = name.split('.').pop()?.toLowerCase() || ''
+  return MIME_MAP[ext] || 'application/octet-stream'
+}
+
 // ─── REST API 工具函数 ───
 
 /** REST API 统一响应格式 */
@@ -513,6 +629,34 @@ const LANGUAGE_MAP: Record<string, string> = {
   terraform: 'hcl',
   tf: 'hcl',
   tfvars: 'hcl',
+  kt: 'kotlin',
+  kts: 'kotlin',
+  swift: 'swift',
+  dart: 'dart',
+  ex: 'elixir',
+  exs: 'elixir',
+  erl: 'erlang',
+  hrl: 'erlang',
+  hs: 'haskell',
+  lhs: 'haskell',
+  ml: 'ocaml',
+  mli: 'ocaml',
+  clj: 'clojure',
+  cljs: 'clojure',
+  r: 'r',
+  scala: 'scala',
+  groovy: 'groovy',
+  gradle: 'groovy',
+  v: 'verilog',
+  sv: 'systemverilog',
+  vhdl: 'vhdl',
+  cmake: 'cmake',
+  ps1: 'powershell',
+  psm1: 'powershell',
+  bat: 'bat',
+  cmd: 'bat',
+  vim: 'vim',
+  nginx: 'nginx',
   '': 'text',
 }
 
@@ -556,19 +700,68 @@ function sortEntries(entries: SftpEntry[]) {
 /** 判断文件是否为图片 */
 function isImageFile(name: string): boolean {
   const ext = name.split('.').pop()?.toLowerCase()
-  return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'svg', 'avif'].includes(ext || '')
+  return [
+    'png',
+    'jpg',
+    'jpeg',
+    'gif',
+    'webp',
+    'bmp',
+    'ico',
+    'svg',
+    'avif',
+    'heic',
+    'heif',
+    'tiff',
+    'tif',
+    'raw',
+    'cr2',
+    'nef',
+    'arw',
+    'dng',
+    'psd',
+    'xcf',
+    'svgz',
+  ].includes(ext || '')
 }
 
 /** 判断文件是否为视频 */
 function isVideoFile(name: string): boolean {
   const ext = name.split('.').pop()?.toLowerCase()
-  return ['mp4', 'webm', 'ogg', 'mov', 'mkv'].includes(ext || '')
+  return [
+    'mp4',
+    'webm',
+    'ogg',
+    'ogv',
+    'mov',
+    'mkv',
+    'avi',
+    'wmv',
+    'flv',
+    'm4v',
+    '3gp',
+    'mpeg',
+    'mpg',
+  ].includes(ext || '')
 }
 
 /** 判断文件是否为音频 */
 function isAudioFile(name: string): boolean {
   const ext = name.split('.').pop()?.toLowerCase()
-  return ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'opus'].includes(ext || '')
+  return [
+    'mp3',
+    'wav',
+    'ogg',
+    'flac',
+    'aac',
+    'm4a',
+    'opus',
+    'wma',
+    'ape',
+    'aiff',
+    'mid',
+    'midi',
+  ].includes(ext || '')
 }
 
 /** 判断文件是否为二进制文件（图片/视频/音频/压缩包/编译产物等） */
@@ -733,33 +926,18 @@ const FilePreviewModal = memo(function FilePreviewModal({
       const vid = isVideoFile(entry.name)
       const aud = isAudioFile(entry.name)
 
-      if (img) {
-        setIsImage(true)
-        const ext = entry.name.split('.').pop()?.toLowerCase() || 'png'
-        const mime = ext === 'jpg' ? 'jpeg' : ext === 'svg' ? 'svg+xml' : ext
-        setBinaryUrl(`data:image/${mime};base64,${b64}`)
-        setLoading(false)
-        return
-      }
-      if (vid) {
-        setIsVideo(true)
-        const ext = entry.name.split('.').pop()?.toLowerCase() || 'mp4'
-        const mime = ext === 'mkv' ? 'x-matroska' : ext
-        setBinaryUrl(`data:video/${mime};base64,${b64}`)
-        setLoading(false)
-        return
-      }
-      if (aud) {
-        setIsAudio(true)
-        const ext = entry.name.split('.').pop()?.toLowerCase() || 'mp3'
-        const mime = ext === 'm4a' ? 'mp4' : ext
-        setBinaryUrl(`data:audio/${mime};base64,${b64}`)
+      if (img || vid || aud) {
+        const mime = getMimeByName(entry.name)
+        if (img) setIsImage(true)
+        if (vid) setIsVideo(true)
+        if (aud) setIsAudio(true)
+        setBinaryUrl(`data:${mime};base64,${b64}`)
         setLoading(false)
         return
       }
 
-      // Text file — decode
-      const decoded = atob(b64)
+      // Text file — decode (UTF-8 safe)
+      const decoded = b64ToText(b64)
       setContent(decoded)
       setOriginalContent(decoded)
     } catch (err) {
@@ -778,7 +956,7 @@ const FilePreviewModal = memo(function FilePreviewModal({
     setSaving(true)
     setSaveMsg(null)
     try {
-      const encoded = btoa(content)
+      const encoded = textToB64(content)
       await sftpApi('upload', {
         connectionId: sessionId,
         path: entry.path,
@@ -1219,7 +1397,7 @@ function SftpBrowserInner({
             // 创建空文件：上传空内容
             await sftpApi(
               'upload',
-              { connectionId: sessionId, path: fullPath, data: btoa('') },
+              { connectionId: sessionId, path: fullPath, data: textToB64('') },
               10000,
             )
           }
@@ -1280,7 +1458,7 @@ function SftpBrowserInner({
           connectionId: sessionId,
           path: entry.path,
         })
-        const content = atob(b64)
+        const content = b64ToText(b64)
         // 扩展名未识别时，用内容嗅探提升准确度
         if (lang === 'text' && content) {
           const sniffed = sniffLanguage(entry.name, content)
@@ -1301,6 +1479,7 @@ function SftpBrowserInner({
         setActiveNav('files')
       } catch (err) {
         setAlertModal({ title: '打开失败', message: (err as Error).message })
+        throw err
       }
     },
     [sessionId, fileStore, setActiveNav, navigateTo],
@@ -1957,16 +2136,11 @@ ${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n...还有 ${errors.leng
                   >
                     <Eye size={12} /> 预览
                   </button>
-                  {!isBinaryFile(contextMenu.entry.name) && (
+                  {!isDirLike(contextMenu.entry) && !isBinaryFile(contextMenu.entry.name) && (
                     <button
                       onClick={async () => {
                         const entry = contextMenu.entry!
                         setContextMenu(null)
-                        // 对 symlink-to-directory，直接导航进入
-                        if (entry.type === 'symlink' && entry.targetType === 'directory') {
-                          navigateTo(entry.path)
-                          return
-                        }
                         await openInEditor(entry)
                       }}
                       className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700"
