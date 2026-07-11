@@ -137,9 +137,9 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
     if (!filter) return images
     return images.filter(
       (img) =>
-        img.Repository.toLowerCase().includes(filter.toLowerCase()) ||
-        img.Tag.toLowerCase().includes(filter.toLowerCase()) ||
-        img.ID.startsWith(filter),
+        (img.Repository || '').toLowerCase().includes(filter.toLowerCase()) ||
+        (img.Tag || '').toLowerCase().includes(filter.toLowerCase()) ||
+        (img.ID || '').startsWith(filter),
     )
   }, [images, filter])
 
@@ -356,7 +356,7 @@ function DockerImagesInner({ connectionId, images, loading, onRefresh }: Props) 
               <div className="divide-y divide-slate-800/50">
                 {filtered.map((img) => {
                   const key = `${img.ID}-${img.Tag}`
-                  const shortId = img.ID.replace('sha256:', '').slice(0, 12)
+                  const shortId = (img.ID || '').replace('sha256:', '').slice(0, 12)
                   const id = img.Repository === '<none>' ? img.ID : `${img.Repository}:${img.Tag}`
                   const isLoading = actionLoading === id
                   const isActive = selectedImage?.ID === img.ID && selectedImage?.Tag === img.Tag

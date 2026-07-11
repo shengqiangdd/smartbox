@@ -104,6 +104,19 @@ export default function LogsPage() {
               : '从下拉框选择主机，将自动建立连接'}
           </p>
         </div>
+        {availableHosts.length > 0 && (
+          <select
+            value={selectedId || ''}
+            onChange={(e) => handleSessionChange(e.target.value)}
+            className="rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 focus:ring-1 focus:ring-sky-500 focus:outline-none"
+          >
+            {availableHosts.map((h) => (
+              <option key={h.id} value={h.id} className="bg-slate-800">
+                {h.name}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
     )
   }

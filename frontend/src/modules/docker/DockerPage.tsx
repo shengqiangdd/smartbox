@@ -110,7 +110,8 @@ export default function DockerPage() {
         const list: DockerContainer[] = json.data?.containers ?? []
         setContainers(list)
       } else {
-        setError(json.error || json.msg || '获取容器列表失败')
+        const errMsg = json.error || json.msg
+        if (errMsg) setError(errMsg)
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '请求失败'
@@ -134,19 +135,27 @@ export default function DockerPage() {
       if (json.success) {
         const output = (json.data?.data ?? json.data ?? '').toString()
         const lines = output.trim().split('\n').filter(Boolean)
-        const list: DockerImage[] = lines.map((line: string) => {
-          const parts = line.split(/\s{2,}/)
-          return {
-            id: parts[0] || '',
-            repository: parts[1] || '<none>',
-            tag: parts[2] || '<none>',
-            size: parts[6] || '',
-            created: parts[7] || '',
-          }
-        })
+        const list: DockerImage[] = lines
+          .map((line: string) => {
+            try {
+              const obj = JSON.parse(line) as Record<string, string>
+              return {
+                ID: obj.ID || obj.id || '',
+                Repository: obj.Repository || obj.repository || '<none>',
+                Tag: obj.Tag || obj.tag || '<none>',
+                Size: obj.Size || obj.size || '',
+                CreatedAt: obj.CreatedAt || obj.created_at || '',
+              }
+            } catch {
+              // 非 JSON 行，跳过
+              return null
+            }
+          })
+          .filter((img: DockerImage | null): img is DockerImage => img !== null)
         setImages(list)
       } else {
-        setError(json.error || json.msg || '获取镜像列表失败')
+        const errMsg = json.error || json.msg
+        if (errMsg) setError(errMsg)
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '请求失败'

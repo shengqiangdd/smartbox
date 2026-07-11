@@ -1287,6 +1287,7 @@ function SftpBrowserInner({
 
   // ── 多选 ──
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
+  const [isSelectMode, setIsSelectMode] = useState(false)
   // ── 权限编辑弹窗 ──
   const [chmodEntry, setChmodEntry] = useState<SftpEntry | null>(null)
   const [chmodValue, setChmodValue] = useState('')
@@ -1300,6 +1301,7 @@ function SftpBrowserInner({
   const setActiveNav = useAppStore((s) => s.setActiveNav)
   const notifyRef = useRef<HTMLDivElement>(null)
   const dragCounterRef = useRef(0)
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // 检测是否为触摸设备（移动端禁用拖拽上传）
   const isTouchDevice = useMemo(() => {
@@ -1728,7 +1730,10 @@ function SftpBrowserInner({
     })
   }, [])
 
-  const clearSelection = useCallback(() => setSelectedPaths(new Set()), [])
+  const clearSelection = useCallback(() => {
+    setSelectedPaths(new Set())
+    setIsSelectMode(false)
+  }, [])
 
   const selectAll = useCallback(() => {
     setSelectedPaths(new Set(entries.map((e) => e.path)))
@@ -1978,23 +1983,49 @@ ${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n...还有 ${errors.leng
           onClick={(e) => {
             // 点击复选框区域不触发打开
             if ((e.target as HTMLElement).closest('[data-select]')) return
+            // 选择模式下点击整行切换选中
+            if (isSelectMode || selectedPaths.size > 0) {
+              toggleSelect(entry.path)
+              return
+            }
             handleFileDoubleClick(entry)
           }}
           onContextMenu={(e) => handleEntryContextMenu(e, entry)}
-        >
-          {/* 复选框 */}
-          <div
-            data-select
-            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
-              isSelected ? 'border-sky-500 bg-sky-600' : 'border-slate-600 hover:border-slate-400'
-            }`}
-            onClick={(e) => {
-              e.stopPropagation()
+          onPointerDown={() => {
+            // 长按 500ms 进入选择模式
+            longPressTimerRef.current = setTimeout(() => {
+              setIsSelectMode(true)
               toggleSelect(entry.path)
-            }}
-          >
-            {isSelected && <Check size={10} className="text-white" />}
-          </div>
+            }, 500)
+          }}
+          onPointerUp={() => {
+            if (longPressTimerRef.current) {
+              clearTimeout(longPressTimerRef.current)
+              longPressTimerRef.current = null
+            }
+          }}
+          onPointerLeave={() => {
+            if (longPressTimerRef.current) {
+              clearTimeout(longPressTimerRef.current)
+              longPressTimerRef.current = null
+            }
+          }}
+        >
+          {/* 复选框 — 仅在有选中项或长按时显示 */}
+          {(selectedPaths.size > 0 || isSelectMode) && (
+            <div
+              data-select
+              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
+                isSelected ? 'border-sky-500 bg-sky-600' : 'border-slate-600 hover:border-slate-400'
+              }`}
+              onClick={(e) => {
+                e.stopPropagation()
+                toggleSelect(entry.path)
+              }}
+            >
+              {isSelected && <Check size={10} className="text-white" />}
+            </div>
+          )}
           {isDir ? (
             <Folder size={14} className="shrink-0 text-sky-400" />
           ) : isSymlink && entry.targetType === 'directory' ? (
@@ -2045,6 +2076,7 @@ ${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n...还有 ${errors.leng
       handleRename,
       selectedPaths,
       toggleSelect,
+      isSelectMode,
     ],
   )
 
