@@ -29,6 +29,8 @@ export default function PluginsPage() {
   const [sandboxCodes, setSandboxCodes] = useState<Record<string, string>>({})
   const [sandboxReady, setSandboxReady] = useState<Record<string, boolean>>({})
   const [sandboxKeys, setSandboxKeys] = useState<Record<string, number>>({})
+  const [activePlugin, setActivePlugin] = useState<string | null>(null)
+  const [commandOutput, setCommandOutput] = useState<string | null>(null)
 
   const storePlugins = usePluginStore((s) => s.plugins)
   const enablePlugin = usePluginStore((s) => s.enablePlugin)
@@ -122,6 +124,7 @@ export default function PluginsPage() {
     setSandboxReady({})
     setSandboxKeys({})
     setCatalog([])
+    setActivePlugin(null)
     loadPlugins()
   }, [loadPlugins])
 
@@ -136,7 +139,6 @@ export default function PluginsPage() {
     }
   }, [loadPlugins, handleReload])
 
-  // 稳定的 onReady 回调 — 使用 ref 避免重新创建
   const handleSandboxReady = useCallback((pluginId: string, handle: PluginSandboxHandle) => {
     setSandboxReady((prev) => ({ ...prev, [pluginId]: true }))
     const plugin = catalogRef.current.find((p) => p.id === pluginId)
@@ -169,6 +171,33 @@ export default function PluginsPage() {
     }
   }, [])
 
+  const handleExecuteCommand = useCallback(
+    (pluginId: string, commandId: string, _commandLabel: string) => {
+      const enabled = enabledMap[pluginId]
+      if (!enabled) return
+
+      // 监听通知事件来捕获命令输出
+      const handleNotification = (e: Event) => {
+        const detail = (e as CustomEvent).detail
+        if (detail?.message) {
+          setCommandOutput(detail.message)
+        }
+      }
+      window.addEventListener('wrench-notification', handleNotification)
+
+      pluginSandboxManager.executeCommand(pluginId, commandId)
+
+      // 延迟移除监听
+      setTimeout(() => {
+        window.removeEventListener('wrench-notification', handleNotification)
+      }, 5000)
+
+      // 设置活跃插件
+      setActivePlugin(pluginId)
+    },
+    [], // eslint-disable-line react-hooks/exhaustive-deps
+  )
+
   const enabledMap = useMemo(() => {
     const map: Record<string, boolean> = {}
     for (const p of storePlugins) {
@@ -182,6 +211,11 @@ export default function PluginsPage() {
     [sandboxReady],
   )
   const codesCount = useMemo(() => Object.keys(sandboxCodes).length, [sandboxCodes])
+
+  const activePluginData = useMemo(
+    () => catalog.find((p) => p.id === activePlugin),
+    [catalog, activePlugin],
+  )
 
   return (
     <div className="flex h-full flex-col p-4 sm:p-6">
@@ -286,19 +320,27 @@ export default function PluginsPage() {
                 {catalog.map((plugin) => {
                   const enabled = enabledMap[plugin.id] ?? false
                   const ready = sandboxReady[plugin.id]
+                  const isActive = activePlugin === plugin.id
                   return (
                     <div
                       key={plugin.id}
                       className={`rounded-lg border p-4 transition-colors ${
-                        enabled
-                          ? 'border-slate-600/50 bg-slate-800/50'
-                          : 'border-slate-700/30 bg-slate-900/50'
+                        isActive
+                          ? 'border-blue-500/50 bg-blue-500/5'
+                          : enabled
+                            ? 'border-slate-600/50 bg-slate-800/50'
+                            : 'border-slate-700/30 bg-slate-900/50'
                       }`}
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            <h3 className="text-sm font-medium text-slate-200">{plugin.name}</h3>
+                            <button
+                              onClick={() => setActivePlugin(isActive ? null : plugin.id)}
+                              className="text-sm font-medium text-slate-200 hover:text-blue-400 transition-colors"
+                            >
+                              {plugin.name}
+                            </button>
                             <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-500">
                               v{plugin.version}
                             </span>
@@ -315,26 +357,18 @@ export default function PluginsPage() {
                             {plugin.commands?.length > 0 && (
                               <span>{plugin.commands.length} 个命令</span>
                             )}
+                            {plugin.panels?.length > 0 && (
+                              <span>{plugin.panels.length} 个面板</span>
+                            )}
                           </div>
                           {plugin.commands && plugin.commands.length > 0 && (
                             <div className="mt-2 flex flex-wrap gap-1.5">
                               {plugin.commands.map((cmd) => (
                                 <button
                                   key={cmd.id}
-                                  onClick={() => {
-                                    if (enabled) {
-                                      pluginSandboxManager.executeCommand(plugin.id, cmd.id)
-                                      window.dispatchEvent(
-                                        new CustomEvent('wrench-notification', {
-                                          detail: {
-                                            message: `已执行: ${plugin.name} → ${cmd.label || cmd.id}`,
-                                            type: 'success',
-                                            duration: 3000,
-                                          },
-                                        }),
-                                      )
-                                    }
-                                  }}
+                                  onClick={() =>
+                                    handleExecuteCommand(plugin.id, cmd.id, cmd.label || cmd.id)
+                                  }
                                   disabled={!enabled}
                                   title={cmd.description || cmd.label || cmd.id}
                                   className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] transition-colors ${
@@ -368,70 +402,130 @@ export default function PluginsPage() {
                 })}
               </div>
 
-              {/* 右侧：沙箱区域 */}
-              <div
-                data-sandbox-area
-                className="flex flex-1 flex-col overflow-hidden rounded-lg border border-slate-700/30 bg-slate-900/30"
-              >
-                <div className="flex shrink-0 items-center justify-between border-b border-slate-700/30 px-4 py-2">
-                  <h3 className="text-xs font-medium text-slate-400">沙箱运行状态</h3>
-                  <span className="text-[10px] text-slate-600">
-                    {readyCount}/{codesCount} 就绪
-                  </span>
-                </div>
-                <div className="flex-1 overflow-y-auto p-3 sm:p-4">
-                  {codesCount === 0 ? (
-                    <div className="flex items-center justify-center py-12 text-center">
-                      <p className="text-xs text-slate-600">沙箱加载中，请稍候...</p>
+              {/* 右侧：活跃插件面板区域 */}
+              <div className="flex flex-1 flex-col overflow-hidden rounded-lg border border-slate-700/30 bg-slate-900/30">
+                {activePlugin && activePluginData ? (
+                  <>
+                    {/* 面板头部 */}
+                    <div className="flex shrink-0 items-center justify-between border-b border-slate-700/30 px-4 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-slate-200">
+                          {activePluginData.name}
+                        </span>
+                        {activePluginData.panels && activePluginData.panels.length > 0 && (
+                          <span className="text-[10px] text-slate-500">
+                            — {activePluginData.panels[0]?.title || activePluginData.panels[0]?.id}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-emerald-500/70">
+                          <Shield size={10} className="mr-1 inline" />
+                          沙箱隔离
+                        </span>
+                        <button
+                          onClick={() => setActivePlugin(null)}
+                          className="text-slate-500 hover:text-slate-300"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
                     </div>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
-                      {catalog
-                        .filter((p) => sandboxCodes[p.id])
-                        .map((plugin) => (
-                          <div
-                            key={plugin.id}
-                            className="rounded-lg border border-slate-700/30 bg-slate-900/50"
+
+                    {/* 沙箱执行区域 */}
+                    <div className="flex-1 overflow-y-auto">
+                      {sandboxKeys[activePlugin] ? (
+                        <div className="h-full">
+                          <PluginSandbox
+                            key={sandboxKeys[activePlugin] as number}
+                            manifest={{
+                              id: activePluginData.id,
+                              name: activePluginData.name,
+                              version: activePluginData.version,
+                              description: activePluginData.description,
+                              author: activePluginData.author,
+                              icon: activePluginData.icon,
+                              entry: activePluginData.entry,
+                            }}
+                            pluginCode={sandboxCodes[activePlugin] || ''}
+                            onReady={(handle) => handleSandboxReady(activePlugin, handle)}
+                            onError={(err) =>
+                              console.error(`[Plugins] ${activePluginData.name} error:`, err)
+                            }
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex h-full items-center justify-center">
+                          <p className="text-xs text-slate-600">沙箱加载中...</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 命令输出区域 */}
+                    {commandOutput && (
+                      <div className="shrink-0 border-t border-slate-700/30 bg-slate-950/50 p-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] text-slate-500">命令输出</span>
+                          <button
+                            onClick={() => setCommandOutput(null)}
+                            className="text-slate-600 hover:text-slate-400"
                           >
-                            <div className="flex items-center justify-between border-b border-slate-700/30 px-3 py-1.5">
-                              <span className="text-xs font-medium text-slate-400">
-                                {plugin.name}
-                              </span>
-                              <span className="flex items-center gap-1 text-[10px] text-emerald-500/70">
-                                <Shield size={10} />
-                                {sandboxReady[plugin.id] ? '沙箱就绪' : '加载中'}
-                              </span>
-                            </div>
-                            <div className="flex h-48 items-center justify-center sm:h-32">
-                              {sandboxKeys[plugin.id] ? (
-                                <PluginSandbox
-                                  key={sandboxKeys[plugin.id] as number}
-                                  manifest={{
-                                    id: plugin.id,
-                                    name: plugin.name,
-                                    version: plugin.version,
-                                    description: plugin.description,
-                                    author: plugin.author,
-                                    icon: plugin.icon,
-                                    entry: plugin.entry,
-                                  }}
-                                  pluginCode={sandboxCodes[plugin.id] || ''}
-                                  onReady={(handle) => handleSandboxReady(plugin.id, handle)}
-                                  onError={(err) =>
-                                    console.error(`[Plugins] ${plugin.name} error:`, err)
-                                  }
-                                />
-                              ) : (
-                                <span className="text-[10px] text-slate-600">
-                                  点击左侧命令按钮执行
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
+                            <X size={12} />
+                          </button>
+                        </div>
+                        <pre className="max-h-32 overflow-auto whitespace-pre-wrap text-xs text-slate-300 font-mono">
+                          {commandOutput}
+                        </pre>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  /* 未选中插件时的默认状态 */
+                  <div className="flex flex-1 flex-col">
+                    <div className="flex shrink-0 items-center justify-between border-b border-slate-700/30 px-4 py-2">
+                      <h3 className="text-xs font-medium text-slate-400">沙箱运行状态</h3>
+                      <span className="text-[10px] text-slate-600">
+                        {readyCount}/{codesCount} 就绪
+                      </span>
                     </div>
-                  )}
-                </div>
+                    <div className="flex-1 overflow-y-auto p-3 sm:p-4">
+                      {codesCount === 0 ? (
+                        <div className="flex items-center justify-center py-12 text-center">
+                          <p className="text-xs text-slate-600">沙箱加载中，请稍候...</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {catalog
+                            .filter((p) => sandboxCodes[p.id])
+                            .map((plugin) => (
+                              <div
+                                key={plugin.id}
+                                className="flex items-center justify-between rounded-lg border border-slate-700/30 bg-slate-900/50 px-3 py-2"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-medium text-slate-400">
+                                    {plugin.name}
+                                  </span>
+                                  {plugin.commands && plugin.commands.length > 0 && (
+                                    <span className="text-[10px] text-slate-600">
+                                      {plugin.commands.length} 命令
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="flex items-center gap-1 text-[10px] text-emerald-500/70">
+                                  <Shield size={10} />
+                                  {sandboxReady[plugin.id] ? '就绪' : '加载中'}
+                                </span>
+                              </div>
+                            ))}
+                          <p className="pt-2 text-center text-[11px] text-slate-600">
+                            点击左侧插件名称查看面板，或点击命令按钮执行
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

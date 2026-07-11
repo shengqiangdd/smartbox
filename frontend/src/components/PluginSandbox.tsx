@@ -7,6 +7,7 @@
 
 import { useEffect, useRef, useCallback } from 'react'
 import type { PluginManifest } from '../types/plugin'
+import { pluginSandboxManager } from '../services/pluginSandboxManager'
 
 export interface PluginSandboxHandle {
   executeCommand: (commandId: string, args?: unknown[]) => void
@@ -49,12 +50,12 @@ export default function PluginSandbox({
 
     // 创建插件根元素
     const rootEl = document.createElement('div')
-    rootEl.id = 'plugin-root'
+    rootEl.id = `plugin-root-${manifest.id}`
     rootEl.className = 'plugin-root'
     rootEl.style.cssText = 'width:100%;height:100%;overflow:auto;padding:8px;'
     container.appendChild(rootEl)
 
-    // 构建受限 API
+    // 构建受限 API — 桥接到真实编辑器
     const pluginAPI = {
       registerCommand: (
         idOrDef: string | { id: string; label?: string; description?: string },
@@ -72,9 +73,9 @@ export default function PluginSandbox({
         }
         commandHandlers[id] = handler
       },
-      getEditorContent: () => null,
-      setEditorContent: () => {},
-      getCurrentFileLanguage: () => null,
+      getEditorContent: () => pluginSandboxManager.getEditorContent(),
+      setEditorContent: (content: string) => pluginSandboxManager.writeToEditor(content),
+      getCurrentFileLanguage: () => pluginSandboxManager.getEditorLanguage(),
       showNotification: (message: string, type?: string) => {
         window.dispatchEvent(
           new CustomEvent('wrench-notification', {

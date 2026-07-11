@@ -305,8 +305,19 @@ export default function CodeMirrorEditor() {
 
     initEditor()
 
+    // 注册编辑器 setter，让插件 setEditorContent 能写回编辑器
+    pluginSandboxManager.registerEditorSetter((content: string) => {
+      if (viewRef.current && activeTab) {
+        viewRef.current.dispatch({
+          changes: { from: 0, to: viewRef.current.state.doc.length, insert: content },
+        })
+        fileStore.updateFileContent(activeTab.id, content)
+      }
+    })
+
     return () => {
       cancelled = true
+      pluginSandboxManager.unregisterEditorSetter()
       if (viewRef.current) {
         viewRef.current.destroy()
         viewRef.current = null
