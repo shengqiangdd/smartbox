@@ -752,6 +752,7 @@ const FilePreviewModal = memo(function FilePreviewModal({
   const [editMode, setEditMode] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saveMsg, setSaveMsg] = useState<string | null>(null)
+  const [openingInEditor, setOpeningInEditor] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [binaryUrl, setBinaryUrl] = useState<string | null>(null)
   const [isImage, setIsImage] = useState(false)
@@ -886,7 +887,7 @@ const FilePreviewModal = memo(function FilePreviewModal({
           <div className="flex items-center gap-1">
             {error && <span className="text-[10px] text-red-400">{error}</span>}
             {saveMsg && <span className="text-[10px] text-emerald-400">{saveMsg}</span>}
-            {!isImage && !isVideo && !isAudio && !editMode && isEditableText(entry.name) && (
+            {!isImage && !isVideo && !isAudio && !editMode && content && (
               <button
                 onClick={() => setEditMode(true)}
                 className="btn-icon text-slate-500 hover:text-slate-300"
@@ -897,14 +898,27 @@ const FilePreviewModal = memo(function FilePreviewModal({
             )}
             {onOpenInEditor && !isImage && !isVideo && !isAudio && (
               <button
-                onClick={() => {
-                  onOpenInEditor(entry)
-                  onClose()
+                onClick={async () => {
+                  if (openingInEditor) return
+                  setOpeningInEditor(true)
+                  try {
+                    await onOpenInEditor(entry)
+                    onClose()
+                  } catch {
+                    // openInEditor 内部已弹 alert，此处静默
+                  } finally {
+                    setOpeningInEditor(false)
+                  }
                 }}
-                className="btn-icon text-slate-500 hover:text-slate-300"
+                disabled={openingInEditor}
+                className="btn-icon text-slate-500 hover:text-slate-300 disabled:opacity-50"
                 title="在编辑器中打开"
               >
-                <ExternalLink size={14} />
+                {openingInEditor ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <ExternalLink size={14} />
+                )}
               </button>
             )}
             <button onClick={onClose} className="btn-icon text-slate-500 hover:text-slate-300">
@@ -953,7 +967,7 @@ const FilePreviewModal = memo(function FilePreviewModal({
         {!isImage && !isVideo && !isAudio && (
           <div className="flex items-center justify-between border-t border-slate-700/50 px-4 py-2">
             <div className="flex items-center gap-2">
-              {!editMode && isEditableText(entry.name) && (
+              {!editMode && content && (
                 <span className="text-[10px] text-slate-600">
                   点击 ✏️ 编辑{onOpenInEditor ? ' 或 📎 在编辑器中打开' : ''}
                 </span>
@@ -1699,14 +1713,12 @@ ${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n...还有 ${errors.leng
 
   // ─── 面包屑导航 ───
   const breadcrumb = useMemo(() => {
+    if (currentPath === '/') return []
     const parts = currentPath.split('/').filter(Boolean)
-    const items: { label: string; path: string }[] = [{ label: '/', path: '/' }]
-    let accumulated = ''
-    for (const part of parts) {
-      accumulated += '/' + part
-      items.push({ label: part, path: accumulated })
-    }
-    return items
+    return parts.map((part, i) => ({
+      label: part,
+      path: '/' + parts.slice(0, i + 1).join('/'),
+    }))
   }, [currentPath])
 
   // ─── 文件信息弹窗 ───
@@ -1875,20 +1887,27 @@ ${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n...还有 ${errors.leng
 
       {/* 上传进度条 */}
       {/* 面包屑导航 */}
-      {breadcrumb.length > 1 && (
+      {breadcrumb.length > 0 && (
         <div
           className="flex items-center gap-0 overflow-x-auto border-b border-slate-700/30 px-2 py-0.5 text-[11px] text-slate-500"
           style={{ scrollbarWidth: 'none' }}
         >
+          <button
+            onClick={goHome}
+            className="shrink-0 rounded px-0.5 py-0 text-slate-600 hover:text-slate-300"
+            title="/"
+          >
+            <Home size={11} />
+          </button>
           {breadcrumb.map((crumb, i) => (
             <span key={crumb.path} className="flex items-center">
-              {i > 0 && <span className="mx-0.5 text-slate-700">/</span>}
+              <span className="mx-0.5 text-slate-700">/</span>
               <button
                 onClick={() => navigateTo(crumb.path)}
                 className={`shrink-0 rounded px-0.5 py-0 hover:text-slate-300 ${i === breadcrumb.length - 1 ? 'text-slate-400' : 'text-slate-600'}`}
                 title={crumb.path}
               >
-                {crumb.label === '/' ? '/' : crumb.label}
+                {crumb.label}
               </button>
             </span>
           ))}
@@ -1999,9 +2018,15 @@ ${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n...还有 ${errors.leng
                   </button>
                   {!isBinaryFile(contextMenu.entry.name) && (
                     <button
-                      onClick={() => {
-                        openInEditor(contextMenu.entry!)
+                      onClick={async () => {
+                        const entry = contextMenu.entry!
                         setContextMenu(null)
+                        // 对 symlink-to-directory，直接导航进入
+                        if (entry.type === 'symlink' && entry.targetType === 'directory') {
+                          navigateTo(entry.path)
+                          return
+                        }
+                        await openInEditor(entry)
                       }}
                       className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700"
                     >
