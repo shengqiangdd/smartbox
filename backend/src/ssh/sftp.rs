@@ -95,7 +95,7 @@ fn attrs_to_entry(name: String, parent_path: &str, attrs: &FileAttributes) -> Fi
         size,
         permissions: perm_str,
         modify_time,
-        owner: attrs.owner.clone().unwrap_or_default(),
+        owner: attrs.user.clone().unwrap_or_default(),
         group: attrs.group.clone().unwrap_or_default(),
     }
 }
@@ -416,7 +416,7 @@ mod tests {
         let attrs = FileAttributes {
             permissions: Some(0o100644),
             size: Some(256),
-            owner: Some("root".to_string()),
+            user: Some("root".to_string()),
             group: Some("admin".to_string()),
             ..FileAttributes::default()
         };
