@@ -31,9 +31,7 @@ export default function DockerPage() {
   const connections = useSshStore((s) => s.connections)
 
   // 选中的主机（可以是 session.id 或 connection.id）
-  const [selectedHost, setSelectedHost] = useState<string | null>(
-    () => connections[0]?.id ?? null,
-  )
+  const [selectedHost, setSelectedHost] = useState<string | null>(() => connections[0]?.id ?? null)
 
   // 实际用于 API 调用的 backend connectionId
   const [currentConnId, setCurrentConnId] = useState<string | null>(null)
@@ -182,11 +180,11 @@ export default function DockerPage() {
   }, [autoRefresh, isVisible, tab, fetchContainers, fetchImages])
 
   return (
-    <div className="flex flex-col h-full bg-slate-950 text-white">
+    <div className="flex h-full flex-col bg-slate-950 text-white">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-slate-800">
+      <div className="flex items-center justify-between border-b border-slate-800 p-4">
         <div className="flex items-center gap-2">
-          <Container className="w-5 h-5 text-cyan-400" />
+          <Container className="h-5 w-5 text-cyan-400" />
           <h1 className="text-lg font-semibold">Docker 管理</h1>
         </div>
         <div className="flex items-center gap-2">
@@ -195,7 +193,7 @@ export default function DockerPage() {
             <select
               value={selectedHost || ''}
               onChange={(e) => setSelectedHost(e.target.value)}
-              className="bg-slate-800 text-sm rounded px-2 py-1 border border-slate-700"
+              className="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-sm"
             >
               {availableHosts.map((h) => (
                 <option key={h.id} value={h.id}>
@@ -204,42 +202,38 @@ export default function DockerPage() {
               ))}
             </select>
           )}
-          {connecting && (
-            <span className="text-xs text-yellow-400 animate-pulse">连接中...</span>
-          )}
+          {connecting && <span className="animate-pulse text-xs text-yellow-400">连接中...</span>}
           <button
             onClick={() => (tab === 'containers' ? fetchContainers() : fetchImages())}
             disabled={loading || !currentConnId}
-            className="p-1.5 rounded hover:bg-slate-800 disabled:opacity-50"
+            className="rounded p-1.5 hover:bg-slate-800 disabled:opacity-50"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
           <button
             onClick={() => setAutoRefresh(!autoRefresh)}
-            className={`p-1.5 rounded ${autoRefresh ? 'bg-cyan-900/50 text-cyan-400' : 'hover:bg-slate-800'}`}
+            className={`rounded p-1.5 ${autoRefresh ? 'bg-cyan-900/50 text-cyan-400' : 'hover:bg-slate-800'}`}
           >
-            <Activity className="w-4 h-4" />
+            <Activity className="h-4 w-4" />
           </button>
         </div>
       </div>
 
       {/* Error */}
       {error && (
-        <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-800 rounded text-red-400 text-sm flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 shrink-0" />
+        <div className="mx-4 mt-2 flex items-center gap-2 rounded border border-red-800 bg-red-900/30 p-2 text-sm text-red-400">
+          <AlertCircle className="h-4 w-4 shrink-0" />
           {error}
         </div>
       )}
 
       {/* No connection warning */}
       {!currentConnId && !connecting && (
-        <div className="flex-1 flex items-center justify-center text-slate-500">
+        <div className="flex flex-1 items-center justify-center text-slate-500">
           <div className="text-center">
-            <Container className="w-12 h-12 mx-auto mb-3 opacity-30" />
+            <Container className="mx-auto mb-3 h-12 w-12 opacity-30" />
             <p className="text-sm">
-              {availableHosts.length === 0
-                ? '请先在 SSH 页面添加主机连接'
-                : '选择主机以连接'}
+              {availableHosts.length === 0 ? '请先在 SSH 页面添加主机连接' : '选择主机以连接'}
             </p>
           </div>
         </div>
@@ -253,7 +247,7 @@ export default function DockerPage() {
             onClick={() => setTab(t)}
             className={`px-4 py-2 text-sm font-medium transition-colors ${
               tab === t
-                ? 'text-cyan-400 border-b-2 border-cyan-400'
+                ? 'border-b-2 border-cyan-400 text-cyan-400'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -269,13 +263,11 @@ export default function DockerPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto min-h-0">
+      <div className="min-h-0 flex-1 overflow-auto">
         {!currentConnId ? null : tab === 'containers' ? (
           <Suspense
             fallback={
-              <div className="flex items-center justify-center p-8 text-slate-500">
-                加载中...
-              </div>
+              <div className="flex items-center justify-center p-8 text-slate-500">加载中...</div>
             }
           >
             <DockerContainerList
@@ -288,9 +280,7 @@ export default function DockerPage() {
         ) : tab === 'images' ? (
           <Suspense
             fallback={
-              <div className="flex items-center justify-center p-8 text-slate-500">
-                加载中...
-              </div>
+              <div className="flex items-center justify-center p-8 text-slate-500">加载中...</div>
             }
           >
             <DockerImages
@@ -303,9 +293,7 @@ export default function DockerPage() {
         ) : tab === 'compose' ? (
           <Suspense
             fallback={
-              <div className="flex items-center justify-center p-8 text-slate-500">
-                加载中...
-              </div>
+              <div className="flex items-center justify-center p-8 text-slate-500">加载中...</div>
             }
           >
             <DockerCompose connectionId={currentConnId} />
@@ -313,9 +301,7 @@ export default function DockerPage() {
         ) : (
           <Suspense
             fallback={
-              <div className="flex items-center justify-center p-8 text-slate-500">
-                加载中...
-              </div>
+              <div className="flex items-center justify-center p-8 text-slate-500">加载中...</div>
             }
           >
             <DockerMonitor connectionId={currentConnId} containers={containers} />
