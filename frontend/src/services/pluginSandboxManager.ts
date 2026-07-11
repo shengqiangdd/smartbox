@@ -121,8 +121,14 @@ class PluginSandboxManager {
   }
 
   /** 获取所有已注册的插件面板定义 */
-  getAllPanels(): Array<{ pluginId: string; panel: { id: string; name: string; icon?: string; position: string } }> {
-    const panels: Array<{ pluginId: string; panel: { id: string; name: string; icon?: string; position: string } }> = []
+  getAllPanels(): Array<{
+    pluginId: string
+    panel: { id: string; name: string; icon?: string; position: string }
+  }> {
+    const panels: Array<{
+      pluginId: string
+      panel: { id: string; name: string; icon?: string; position: string }
+    }> = []
     for (const inst of this.instances.values()) {
       if (inst.meta.panels) {
         for (const panel of inst.meta.panels) {

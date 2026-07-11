@@ -337,7 +337,7 @@ export default function PluginsPage() {
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => setActivePlugin(isActive ? null : plugin.id)}
-                              className="text-sm font-medium text-slate-200 hover:text-blue-400 transition-colors"
+                              className="text-sm font-medium text-slate-200 transition-colors hover:text-blue-400"
                             >
                               {plugin.name}
                             </button>
@@ -464,7 +464,7 @@ export default function PluginsPage() {
                     {/* 命令输出区域 */}
                     {commandOutput && (
                       <div className="shrink-0 border-t border-slate-700/30 bg-slate-950/50 p-3">
-                        <div className="flex items-center justify-between mb-1">
+                        <div className="mb-1 flex items-center justify-between">
                           <span className="text-[10px] text-slate-500">命令输出</span>
                           <button
                             onClick={() => setCommandOutput(null)}
@@ -473,7 +473,7 @@ export default function PluginsPage() {
                             <X size={12} />
                           </button>
                         </div>
-                        <pre className="max-h-32 overflow-auto whitespace-pre-wrap text-xs text-slate-300 font-mono">
+                        <pre className="max-h-32 overflow-auto font-mono text-xs whitespace-pre-wrap text-slate-300">
                           {commandOutput}
                         </pre>
                       </div>
