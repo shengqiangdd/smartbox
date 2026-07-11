@@ -24,6 +24,15 @@ import MarkdownPreview from './MarkdownPreview'
 import { useFileStore } from '../stores/file-store'
 import { useAiStore } from '../stores/ai-store'
 import { getWsClientSync } from '../services/websocket'
+
+// ── UTF-8 安全的 base64 编码 ──
+// btoa() 只能处理 Latin-1 字符，中文/日文/emoji 会损坏
+function textToB64(text: string): string {
+  const bytes = new TextEncoder().encode(text)
+  let bin = ''
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i] ?? 0)
+  return btoa(bin)
+}
 import { pluginSandboxManager } from '../services/pluginSandboxManager'
 import { aiCodeAction, ACTION_LABELS, ACTION_ICONS } from '../services/ai-operations'
 import type { AiCodeAction, AiCodeActionResult } from '../services/ai-operations'
@@ -132,17 +141,58 @@ export default function CodeMirrorEditor() {
     // SFTP 文件保存到远程
     if (tab.source === 'sftp' && tab.sessionId) {
       try {
-        const encoded = btoa(tab.content || '')
-        await wsClient.request({
-          type: 'sftp',
-          connectionId: tab.sessionId,
-          operation: 'writefile',
-          path: tab.path,
-          content: encoded,
-        })
-        fileStore.markTabClean(tab.id)
-        setSaveMsg('已保存')
-        setTimeout(() => setSaveMsg(null), 2000)
+        // FIX #2: UTF-8 安全编码（btoa 只能处理 ASCII，中文会损坏）
+        const encoded = textToB64(tab.content || '')
+
+        // FIX #1 & #3: 优先 REST API，失败时 fallback 到 WebSocket
+        let saved = false
+        let lastError: string | null = null
+
+        // 策略一：REST API（最可靠，不依赖 WebSocket 连接状态）
+        try {
+          const res = await fetch('/api/sftp/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              connectionId: tab.sessionId,
+              path: tab.path,
+              data: encoded,
+            }),
+          })
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          const json = (await res.json()) as { success: boolean; error?: string }
+          if (!json.success) throw new Error(json.error || '保存失败')
+          saved = true
+        } catch (restErr) {
+          lastError = (restErr as Error).message
+          console.warn('[CodeMirrorEditor] REST save failed, trying WebSocket fallback:', lastError)
+        }
+
+        // 策略二：WebSocket fallback（当 REST 失败且 WS 可用时）
+        if (!saved) {
+          try {
+            await wsClient.request({
+              type: 'sftp',
+              connectionId: tab.sessionId,
+              operation: 'writefile',
+              path: tab.path,
+              content: encoded,
+            })
+            saved = true
+          } catch (wsErr) {
+            lastError = (wsErr as Error).message
+            console.warn('[CodeMirrorEditor] WS save also failed:', lastError)
+          }
+        }
+
+        if (saved) {
+          fileStore.markTabClean(tab.id)
+          setSaveMsg('已保存')
+          setTimeout(() => setSaveMsg(null), 2000)
+        } else {
+          setSaveMsg('保存失败: ' + (lastError || '未知错误'))
+          setTimeout(() => setSaveMsg(null), 3000)
+        }
       } catch (err) {
         setSaveMsg('保存失败: ' + (err as Error).message)
         setTimeout(() => setSaveMsg(null), 3000)
