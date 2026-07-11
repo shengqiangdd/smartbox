@@ -24,6 +24,38 @@ fn txt(s: String) -> axum::extract::ws::Utf8Bytes {
     axum::extract::ws::Utf8Bytes::from(s)
 }
 
+/// Pre-allocate a JSON message buffer for terminal output.
+/// Avoids repeated serde_json::json! macro allocations in hot paths.
+fn build_terminal_output_msg(
+    connection_id: &str,
+    data: &str,
+) -> axum::extract::ws::Utf8Bytes {
+    // Use string concatenation instead of json! macro for hot path
+    let mut buf = String::with_capacity(128 + data.len());
+    buf.push_str(r#"{"type":"data","connectionId":""#);
+    buf.push_str(connection_id);
+    buf.push_str(r#"","data":""#);
+    buf.push_str(data);
+    buf.push('"');
+    txt(buf)
+}
+
+fn build_docker_output_msg(
+    connection_id: &str,
+    container_id: &str,
+    data: &str,
+) -> axum::extract::ws::Utf8Bytes {
+    let mut buf = String::with_capacity(200 + data.len());
+    buf.push_str(r#"{"type":"docker_shell_output","connectionId":""#);
+    buf.push_str(connection_id);
+    buf.push_str(r#"","containerId":""#);
+    buf.push_str(container_id);
+    buf.push_str(r#"","data":""#);
+    buf.push_str(data);
+    buf.push('"');
+    txt(buf)
+}
+
 /// Main WebSocket handler — the one the frontend actually connects to.
 /// Dispatches messages by `type` field.
 pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -358,12 +390,8 @@ async fn handle_terminal_connect(socket: &mut WebSocket, state: &Arc<AppState>, 
                         if output_buffer.len() > 16_384 {
                             let encoded = base64::engine::general_purpose::STANDARD.encode(&output_buffer);
                             output_buffer.clear();
-                            let output = serde_json::json!({
-                                "type": "data",
-                                "connectionId": connection_id,
-                                "data": encoded
-                            });
-                            if socket.send(Message::Text(txt(output.to_string()))).await.is_err() {
+                            let output = build_terminal_output_msg(&connection_id, &encoded);
+                            if socket.send(Message::Text(output)).await.is_err() {
                                 break;
                             }
                         }
@@ -389,12 +417,8 @@ async fn handle_terminal_connect(socket: &mut WebSocket, state: &Arc<AppState>, 
                 if !output_buffer.is_empty() {
                     let encoded = base64::engine::general_purpose::STANDARD.encode(&output_buffer);
                     output_buffer.clear();
-                    let output = serde_json::json!({
-                        "type": "data",
-                        "connectionId": connection_id,
-                        "data": encoded
-                    });
-                    if socket.send(Message::Text(txt(output.to_string()))).await.is_err() {
+                    let output = build_terminal_output_msg(&connection_id, &encoded);
+                    if socket.send(Message::Text(output)).await.is_err() {
                         break;
                     }
                 }
@@ -923,13 +947,8 @@ async fn handle_docker_shell(socket: &mut WebSocket, state: &Arc<AppState>, msg:
                         if output_buffer.len() > 16_384 {
                             let encoded = base64::engine::general_purpose::STANDARD.encode(&output_buffer);
                             output_buffer.clear();
-                            let output = serde_json::json!({
-                                "type": "docker_shell_output",
-                                "connectionId": connection_id,
-                                "containerId": container_id,
-                                "data": encoded,
-                            });
-                            if socket.send(Message::Text(txt(output.to_string()))).await.is_err() {
+                            let output = build_docker_output_msg(&connection_id, &container_id, &encoded);
+                            if socket.send(Message::Text(output)).await.is_err() {
                                 break;
                             }
                         }
@@ -956,13 +975,8 @@ async fn handle_docker_shell(socket: &mut WebSocket, state: &Arc<AppState>, msg:
                 if !output_buffer.is_empty() {
                     let encoded = base64::engine::general_purpose::STANDARD.encode(&output_buffer);
                     output_buffer.clear();
-                    let output = serde_json::json!({
-                        "type": "docker_shell_output",
-                        "connectionId": connection_id,
-                        "containerId": container_id,
-                        "data": encoded,
-                    });
-                    if socket.send(Message::Text(txt(output.to_string()))).await.is_err() {
+                    let output = build_docker_output_msg(&connection_id, &container_id, &encoded);
+                    if socket.send(Message::Text(output)).await.is_err() {
                         break;
                     }
                 }
@@ -998,12 +1012,8 @@ async fn send_buffered_data(buffer: &mut Vec<u8>, socket: &mut WebSocket, connec
     if !buffer.is_empty() {
         let encoded = base64::engine::general_purpose::STANDARD.encode(buffer.as_slice());
         buffer.clear();
-        let output = serde_json::json!({
-            "type": "data",
-            "connectionId": connection_id,
-            "data": encoded
-        });
-        let _ = socket.send(Message::Text(txt(output.to_string()))).await;
+        let output = build_terminal_output_msg(connection_id, &encoded);
+        let _ = socket.send(Message::Text(output)).await;
     }
 }
 
@@ -1017,12 +1027,7 @@ async fn send_buffered_docker_output(
     if !buffer.is_empty() {
         let encoded = base64::engine::general_purpose::STANDARD.encode(buffer.as_slice());
         buffer.clear();
-        let output = serde_json::json!({
-            "type": "docker_shell_output",
-            "connectionId": connection_id,
-            "containerId": container_id,
-            "data": encoded,
-        });
-        let _ = socket.send(Message::Text(txt(output.to_string()))).await;
+        let output = build_docker_output_msg(connection_id, container_id, &encoded);
+        let _ = socket.send(Message::Text(output)).await;
     }
 }
