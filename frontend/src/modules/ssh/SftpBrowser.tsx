@@ -1986,18 +1986,14 @@ ${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n...还有 ${errors.leng
           <div
             data-select
             className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
-              isSelected
-                ? 'border-sky-500 bg-sky-600'
-                : 'border-slate-600 hover:border-slate-400'
+              isSelected ? 'border-sky-500 bg-sky-600' : 'border-slate-600 hover:border-slate-400'
             }`}
             onClick={(e) => {
               e.stopPropagation()
               toggleSelect(entry.path)
             }}
           >
-            {isSelected && (
-              <Check size={10} className="text-white" />
-            )}
+            {isSelected && <Check size={10} className="text-white" />}
           </div>
           {isDir ? (
             <Folder size={14} className="shrink-0 text-sky-400" />
@@ -2041,7 +2037,15 @@ ${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n...还有 ${errors.leng
         </div>
       )
     },
-    [renaming, renameValue, handleFileDoubleClick, handleEntryContextMenu, handleRename, selectedPaths, toggleSelect],
+    [
+      renaming,
+      renameValue,
+      handleFileDoubleClick,
+      handleEntryContextMenu,
+      handleRename,
+      selectedPaths,
+      toggleSelect,
+    ],
   )
 
   // ─── 工具栏事件 ───
@@ -2454,7 +2458,9 @@ ${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n...还有 ${errors.leng
                 onClick={() => {
                   setChmodEntry(contextMenu.entry!)
                   setChmodValue(
-                    (parseInt(contextMenu.entry!.permissions, 16) || 0).toString(8).padStart(4, '0'),
+                    (parseInt(contextMenu.entry!.permissions, 16) || 0)
+                      .toString(8)
+                      .padStart(4, '0'),
                   )
                   setContextMenu(null)
                 }}
@@ -2466,7 +2472,10 @@ ${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n...还有 ${errors.leng
                 <button
                   onClick={() => {
                     const parentPath = contextMenu.entry!.path.includes('/')
-                      ? contextMenu.entry!.path.substring(0, contextMenu.entry!.path.lastIndexOf('/'))
+                      ? contextMenu.entry!.path.substring(
+                          0,
+                          contextMenu.entry!.path.lastIndexOf('/'),
+                        )
                       : ''
                     setMoveEntry(contextMenu.entry!)
                     setMoveTarget(parentPath ? `${parentPath}/` : '/')
@@ -2819,9 +2828,7 @@ ${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n...还有 ${errors.leng
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="mb-3 text-sm font-medium text-slate-200">移动到</h3>
-            <p className="mb-1 text-xs text-slate-400">
-              {moveEntry.name}
-            </p>
+            <p className="mb-1 text-xs text-slate-400">{moveEntry.name}</p>
             <input
               autoFocus
               value={moveTarget}
