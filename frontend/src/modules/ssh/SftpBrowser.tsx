@@ -668,67 +668,6 @@ function isBinaryFile(name: string): boolean {
   return binaryExts.includes(ext || '')
 }
 
-/** 判断文件是否为可编辑文本 */
-function isEditableText(name: string): boolean {
-  const ext = name.split('.').pop()?.toLowerCase()
-  const editableExts = [
-    'txt',
-    'md',
-    'log',
-    'csv',
-    'tsv',
-    'json',
-    'json5',
-    'yaml',
-    'yml',
-    'toml',
-    'xml',
-    'html',
-    'htm',
-    'css',
-    'scss',
-    'less',
-    'js',
-    'ts',
-    'tsx',
-    'jsx',
-    'vue',
-    'svelte',
-    'py',
-    'rb',
-    'go',
-    'rs',
-    'java',
-    'c',
-    'cpp',
-    'h',
-    'hpp',
-    'sh',
-    'bash',
-    'zsh',
-    'sql',
-    'env',
-    'cfg',
-    'conf',
-    'ini',
-    'properties',
-    'dockerfile',
-    'makefile',
-    'docker-compose',
-    'nginx',
-    'fstab',
-    'hosts',
-    'passwd',
-    'shadow',
-    'group',
-    'ssh',
-    'sshd_config',
-    'gitignore',
-    'gitattributes',
-    'editorconfig',
-  ]
-  return editableExts.includes(ext || '')
-}
 
 // ─── 文件查看/编辑模态框 ───
 
