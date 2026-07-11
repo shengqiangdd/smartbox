@@ -51,7 +51,7 @@ const CATEGORY_ICONS: Record<string, string> = {
 }
 
 interface Props {
-  connectionId: string
+  connectionId: string | null
   onSelectPath: (path: string) => void
   /** 变化时触发重新扫描 */
   scanKey?: number
@@ -83,7 +83,8 @@ export default function SourceConfig({ connectionId, onSelectPath, scanKey }: Pr
   }, [])
 
   // 远程扫描
-  const doScan = useCallback(async (connId: string) => {
+  const doScan = useCallback(async (connId: string | null) => {
+    if (!connId) return
     setDiscovering(true)
     try {
       const { authedFetch } = await import('../../services/auth')
@@ -127,6 +128,7 @@ export default function SourceConfig({ connectionId, onSelectPath, scanKey }: Pr
   // 首次挂载扫描 + connectionId/scanKey 变化时重新扫描
   const mountedRef = useRef(false)
   useEffect(() => {
+    if (!connectionId) return
     if (!mountedRef.current) {
       mountedRef.current = true
     }

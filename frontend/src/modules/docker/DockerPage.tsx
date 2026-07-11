@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, lazy, Suspense, useMemo } fro
 import { Container, RefreshCw, Activity, AlertCircle } from 'lucide-react'
 import { useAppStore } from '../../stores/app-store'
 import { useSshStore } from '../../stores/ssh-store'
+import { ensureSshConnection } from '../../services/ssh-ensure'
 import type { DockerContainer, DockerImage } from './index'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -25,47 +26,79 @@ export default function DockerPage() {
   const activeNav = useAppStore((s) => s.activeNav)
   const isVisible = activeNav === 'docker'
 
-  // 获取当前 SSH 连接 ID
+  // SSH store: 活跃 session + 已保存的连接配置
   const sessions = useSshStore((s) => s.sessions)
   const connections = useSshStore((s) => s.connections)
-  const selectConnection = useSshStore((s) => s.selectConnection)
-  const setActiveNav = useAppStore((s) => s.setActiveNav)
 
-  // 所有可用连接：活跃 session + 已保存的连接
-  const availableHosts = useMemo(() => {
-    const seen = new Set<string>()
-    const list: { id: string; name: string; connected: boolean }[] = []
-    for (const sess of sessions) {
-      const name = sess.connectionName || sess.host || sess.id.slice(0, 8)
-      if (!seen.has(sess.id)) {
-        list.push({ id: sess.id, name, connected: true })
-        seen.add(sess.id)
-      }
-    }
-    for (const conn of connections) {
-      if (!seen.has(conn.id) && !seen.has(conn.host || '')) {
-        list.push({ id: conn.id, name: conn.name, connected: false })
-        seen.add(conn.id)
-      }
-    }
-    return list
-  }, [sessions, connections])
-
+  // 选中的主机（可以是 session.id 或 connection.id）
   const [selectedHost, setSelectedHost] = useState<string | null>(null)
-  // currentConnId: 优先用 selectedHost 对应的 session，否则取第一个活跃 session
-  const currentConnId = useMemo(() => {
-    if (selectedHost && sessions.some((s) => s.id === selectedHost)) return selectedHost
-    return sessions.length > 0 ? sessions[0]!.id : null
-  }, [selectedHost, sessions])
 
-  // 跳转到 SSH 页并预选指定连接
-  const goToSshAndConnect = useCallback(
-    (connId: string) => {
-      selectConnection(connId)
-      setActiveNav('ssh')
-    },
-    [selectConnection, setActiveNav],
+  // 实际用于 API 调用的 backend connectionId
+  const [currentConnId, setCurrentConnId] = useState<string | null>(null)
+  const [connecting, setConnecting] = useState(false)
+
+  // 可选主机列表：所有已保存的连接（不管是否已连接 SSH）
+  const availableHosts = useMemo(() => {
+    return connections.map((conn) => ({
+      id: conn.id,
+      name: conn.name || conn.host,
+      host: conn.host,
+      port: conn.port,
+      username: conn.username,
+      password: conn.password,
+      privateKey: conn.privateKey,
+    }))
+  }, [connections])
+
+  // 选中的主机 — 从 connections 初始化，避免 effect 中 setState
+  const [selectedHost, setSelectedHost] = useState<string | null>(
+    () => connections[0]?.id ?? null,
   )
+
+  // selectedHost 变化时自动 ensure 连接
+  const ensureRef = useRef<ReturnType<typeof ensureSshConnection> | null>(null)
+  useEffect(() => {
+    if (!selectedHost) return
+    const host = availableHosts.find((h) => h.id === selectedHost)
+    if (!host) return
+
+    let cancelled = false
+    const run = async () => {
+      // 先检查是否已有活跃 session 关联该 connectionId
+      const existingSession = sessions.find((s) => s.connectionId === selectedHost)
+      if (existingSession) {
+        if (!cancelled) setCurrentConnId(existingSession.id)
+        return
+      }
+
+      setConnecting(true)
+      setError(null)
+      try {
+        const p = ensureSshConnection({
+          host: host.host,
+          port: host.port,
+          username: host.username,
+          password: host.password,
+          privateKey: host.privateKey,
+        })
+        ensureRef.current = p
+        const connId = await p
+        if (!cancelled) setCurrentConnId(connId)
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : '连接失败'
+        if (!cancelled) {
+          setCurrentConnId(null)
+          setError(msg)
+        }
+      } finally {
+        if (!cancelled) setConnecting(false)
+      }
+    }
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedHost, availableHosts, sessions])
 
   const fetchContainers = useCallback(async () => {
     if (!currentConnId) return
@@ -79,7 +112,6 @@ export default function DockerPage() {
       })
       const json = (await res.json()) as ApiResponse
       if (json.success) {
-        // 后端返回结构化数据: { containers: [...] }
         const list: DockerContainer[] = json.data?.containers ?? []
         setContainers(list)
       } else {
@@ -107,18 +139,19 @@ export default function DockerPage() {
       if (json.success) {
         const output = (json.data?.data ?? json.data ?? '').toString()
         const lines = output.trim().split('\n').filter(Boolean)
-        const list: DockerImage[] = lines
-          .map((line: string) => {
-            try {
-              return JSON.parse(line)
-            } catch {
-              return null
-            }
-          })
-          .filter(Boolean)
+        const list: DockerImage[] = lines.map((line: string) => {
+          const parts = line.split(/\s{2,}/)
+          return {
+            id: parts[0] || '',
+            repository: parts[1] || '<none>',
+            tag: parts[2] || '<none>',
+            size: parts[6] || '',
+            created: parts[7] || '',
+          }
+        })
         setImages(list)
       } else {
-        setError(json.error || '获取镜像列表失败')
+        setError(json.error || json.msg || '获取镜像列表失败')
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '请求失败'
@@ -128,231 +161,166 @@ export default function DockerPage() {
     }
   }, [currentConnId])
 
-  const refresh = useCallback(() => {
+  // Fetch data when tab or connection changes
+  useEffect(() => {
+    if (!isVisible || !currentConnId) return
     if (tab === 'containers') fetchContainers()
     else if (tab === 'images') fetchImages()
-    else if (tab === 'monitor') fetchContainers()
-  }, [tab, fetchContainers, fetchImages])
+  }, [isVisible, tab, currentConnId, fetchContainers, fetchImages])
 
-  // 页面可见时始终同时拉取容器和镜像数量（确保 tab 上数字准确）
-  useEffect(() => {
-    if (isVisible && currentConnId) {
-      const t1 = setTimeout(() => fetchContainers(), 0)
-      const t2 = setTimeout(() => fetchImages(), 50)
-      return () => {
-        clearTimeout(t1)
-        clearTimeout(t2)
-      }
-    }
-    return undefined
-  }, [isVisible, currentConnId, fetchContainers, fetchImages])
-
-  // 自动刷新
+  // Auto refresh
   useEffect(() => {
     if (autoRefresh && isVisible) {
-      autoRef.current = setInterval(refresh, 5000)
+      autoRef.current = setInterval(() => {
+        if (tab === 'containers') fetchContainers()
+        else if (tab === 'images') fetchImages()
+      }, 10000)
     }
     return () => {
-      if (autoRef.current) {
-        clearInterval(autoRef.current)
-        autoRef.current = null
-      }
+      if (autoRef.current) clearInterval(autoRef.current)
     }
-  }, [autoRefresh, isVisible, refresh])
-
-  // 切换 tab 时自动加载
-  useEffect(() => {
-    if (isVisible) {
-      const t = setTimeout(() => refresh(), 0)
-      return () => clearTimeout(t)
-    }
-    return undefined
-  }, [tab, isVisible, refresh])
-
-  if (!currentConnId) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 text-slate-500">
-        <Container size={48} className="text-slate-600" />
-        <div className="text-center">
-          <p className="text-sm font-medium text-slate-400">未连接到任何 SSH</p>
-          <p className="mt-1 text-xs text-slate-600">选择一个主机连接后即可管理 Docker</p>
-        </div>
-        {availableHosts.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {availableHosts.map((host) => (
-              <button
-                key={host.id}
-                onClick={() => {
-                  if (host.connected) {
-                    setSelectedHost(host.id)
-                  } else {
-                    goToSshAndConnect(host.id)
-                  }
-                }}
-                className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-xs transition-colors ${
-                  host.connected
-                    ? 'border-emerald-700/50 bg-emerald-900/20 text-emerald-400 hover:bg-emerald-900/40'
-                    : 'border-slate-700/50 bg-slate-800/50 text-slate-400 hover:bg-slate-700/50'
-                }`}
-              >
-                <span
-                  className={`h-2 w-2 rounded-full ${host.connected ? 'bg-emerald-500' : 'bg-slate-600'}`}
-                />
-                {host.name}
-                {host.connected ? ' (已连接)' : ' → 去连接'}
-              </button>
-            ))}
-          </div>
-        )}
-        <button
-          onClick={() => setActiveNav('ssh')}
-          className="bg-wrench-600 hover:bg-wrench-500 mt-2 rounded-md px-4 py-2 text-xs text-white transition-colors"
-        >
-          前往 SSH 页面
-        </button>
-      </div>
-    )
-  }
+  }, [autoRefresh, isVisible, tab, fetchContainers, fetchImages])
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      {/* 头部 */}
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-700/50 bg-slate-900/80 px-4 py-2">
-        <Container size={18} className="text-wrench-400 mr-1" />
-        <h1 className="text-sm font-semibold text-slate-200">Docker 管理</h1>
-        {/* 主机切换下拉框 */}
-        {availableHosts.length > 1 && (
-          <select
-            value={currentConnId ?? ''}
-            onChange={(e) => {
-              const val = e.target.value
-              const host = availableHosts.find((h) => h.id === val)
-              if (host?.connected) {
-                setSelectedHost(val)
-              } else if (host) {
-                goToSshAndConnect(host.id)
-              }
-            }}
-            className="focus:border-wrench-500 ml-2 rounded border border-slate-700 bg-slate-800 px-2 py-0.5 text-[11px] text-slate-300 focus:outline-none"
-          >
-            {availableHosts.map((h) => (
-              <option key={h.id} value={h.id}>
-                {h.connected ? '🟢' : '⚪'} {h.name}
-              </option>
-            ))}
-          </select>
-        )}
-        <div className="ml-auto flex items-center gap-2">
-          {/* 自动刷新开关 */}
-          <label className="flex items-center gap-1.5 text-xs text-slate-400">
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
-              className="text-wrench-500 h-3 w-3 rounded border-slate-600 bg-slate-700"
-            />
-            自动刷新
-          </label>
+    <div className="flex flex-col h-full bg-slate-950 text-white">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b border-slate-800">
+        <div className="flex items-center gap-2">
+          <Container className="w-5 h-5 text-cyan-400" />
+          <h1 className="text-lg font-semibold">Docker 管理</h1>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Host selector */}
+          {availableHosts.length > 0 && (
+            <select
+              value={selectedHost || ''}
+              onChange={(e) => setSelectedHost(e.target.value)}
+              className="bg-slate-800 text-sm rounded px-2 py-1 border border-slate-700"
+            >
+              {availableHosts.map((h) => (
+                <option key={h.id} value={h.id}>
+                  {h.name}
+                </option>
+              ))}
+            </select>
+          )}
+          {connecting && (
+            <span className="text-xs text-yellow-400 animate-pulse">连接中...</span>
+          )}
           <button
-            onClick={refresh}
-            disabled={loading}
-            className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200 disabled:opacity-50"
+            onClick={() => (tab === 'containers' ? fetchContainers() : fetchImages())}
+            disabled={loading || !currentConnId}
+            className="p-1.5 rounded hover:bg-slate-800 disabled:opacity-50"
           >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            刷新
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+          <button
+            onClick={() => setAutoRefresh(!autoRefresh)}
+            className={`p-1.5 rounded ${autoRefresh ? 'bg-cyan-900/50 text-cyan-400' : 'hover:bg-slate-800'}`}
+          >
+            <Activity className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* Tab 切换 */}
-      <div className="flex shrink-0 border-b border-slate-700/30 px-4">
-        <button
-          onClick={() => setTab('containers')}
-          className={`border-b-2 px-4 py-2 text-xs transition-colors ${
-            tab === 'containers'
-              ? 'border-wrench-400 text-slate-200'
-              : 'border-transparent text-slate-500 hover:text-slate-300'
-          }`}
-        >
-          容器 ({containers.length})
-        </button>
-        <button
-          onClick={() => setTab('images')}
-          className={`border-b-2 px-4 py-2 text-xs transition-colors ${
-            tab === 'images'
-              ? 'border-wrench-400 text-slate-200'
-              : 'border-transparent text-slate-500 hover:text-slate-300'
-          }`}
-        >
-          镜像 ({images.length})
-        </button>
-        <button
-          onClick={() => setTab('compose')}
-          className={`border-b-2 px-4 py-2 text-xs transition-colors ${
-            tab === 'compose'
-              ? 'border-wrench-400 text-slate-200'
-              : 'border-transparent text-slate-500 hover:text-slate-300'
-          }`}
-        >
-          Compose
-        </button>
-        <button
-          onClick={() => setTab('monitor')}
-          className={`flex items-center gap-1 border-b-2 px-4 py-2 text-xs transition-colors ${
-            tab === 'monitor'
-              ? 'border-wrench-400 text-slate-200'
-              : 'border-transparent text-slate-500 hover:text-slate-300'
-          }`}
-        >
-          <Activity size={12} />
-          监控
-        </button>
-      </div>
-
-      {/* 错误信息 */}
+      {/* Error */}
       {error && (
-        <div className="flex shrink-0 items-center gap-2 border-b border-red-900/30 bg-red-950/20 px-4 py-2 text-xs text-red-400">
-          <AlertCircle size={14} />
-          <span>{error}</span>
-          <button
-            onClick={() => setError(null)}
-            className="ml-auto text-red-500 hover:text-red-300"
-          >
-            ✕
-          </button>
+        <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-800 rounded text-red-400 text-sm flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          {error}
         </div>
       )}
 
-      {/* 内容 */}
-      <div className="flex-1 overflow-hidden">
-        <Suspense
-          fallback={
-            <div className="flex h-full items-center justify-center">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-600 border-t-blue-500" />
-            </div>
-          }
-        >
-          {tab === 'containers' && (
+      {/* No connection warning */}
+      {!currentConnId && !connecting && (
+        <div className="flex-1 flex items-center justify-center text-slate-500">
+          <div className="text-center">
+            <Container className="w-12 h-12 mx-auto mb-3 opacity-30" />
+            <p className="text-sm">
+              {availableHosts.length === 0
+                ? '请先在 SSH 页面添加主机连接'
+                : '选择主机以连接'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div className="flex border-b border-slate-800">
+        {(['containers', 'images', 'compose', 'monitor'] as Tab[]).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-4 py-2 text-sm font-medium transition-colors ${
+              tab === t
+                ? 'text-cyan-400 border-b-2 border-cyan-400'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            {t === 'containers'
+              ? '容器'
+              : t === 'images'
+                ? '镜像'
+                : t === 'compose'
+                  ? 'Compose'
+                  : '监控'}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-auto min-h-0">
+        {!currentConnId ? null : tab === 'containers' ? (
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center p-8 text-slate-500">
+                加载中...
+              </div>
+            }
+          >
             <DockerContainerList
-              connectionId={currentConnId}
               containers={containers}
               loading={loading}
+              connectionId={currentConnId}
               onRefresh={fetchContainers}
             />
-          )}
-          {tab === 'images' && (
+          </Suspense>
+        ) : tab === 'images' ? (
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center p-8 text-slate-500">
+                加载中...
+              </div>
+            }
+          >
             <DockerImages
-              connectionId={currentConnId}
               images={images}
               loading={loading}
+              connectionId={currentConnId}
               onRefresh={fetchImages}
             />
-          )}
-          {tab === 'compose' && <DockerCompose connectionId={currentConnId} />}
-          {tab === 'monitor' && (
+          </Suspense>
+        ) : tab === 'compose' ? (
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center p-8 text-slate-500">
+                加载中...
+              </div>
+            }
+          >
+            <DockerCompose connectionId={currentConnId} />
+          </Suspense>
+        ) : (
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center p-8 text-slate-500">
+                加载中...
+              </div>
+            }
+          >
             <DockerMonitor connectionId={currentConnId} containers={containers} />
-          )}
-        </Suspense>
+          </Suspense>
+        )}
       </div>
     </div>
   )

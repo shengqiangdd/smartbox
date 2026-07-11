@@ -20,7 +20,7 @@ function friendlyError(raw: string, path: string): { title: string; hint: string
 }
 
 interface LogViewerProps {
-  connectionId: string
+  connectionId: string | null
   logPath: string
   onClose?: () => void
 }

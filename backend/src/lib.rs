@@ -162,6 +162,7 @@ pub async fn build_app(state: Arc<AppState>) -> Router {
         .route("/scripts", get(api::scripts::list_scripts))
         .route("/ssh/exec", axum::routing::post(api::ssh::exec_command))
         .route("/ssh/connect", axum::routing::post(api::ssh::connect_ssh))
+        .route("/ssh/ensure", axum::routing::post(api::ssh::ensure_connection))
         .route("/ssh/disconnect", axum::routing::post(api::ssh::disconnect_ssh))
         .route("/ssh/test-config", get(api::ssh::test_config))
         .route("/docker/ps", axum::routing::post(api::docker::docker_ps))

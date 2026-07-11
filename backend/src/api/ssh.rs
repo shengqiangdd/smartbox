@@ -148,3 +148,62 @@ async fn save_connection(
 
     state.connections.insert(connection_id.to_string(), entry);
 }
+
+/// Ensure an active SSH connection exists for the given host/port/username.
+///
+/// If a connection with matching host+port+username is already connected, returns its ID.
+/// Otherwise creates a new one via password or key auth.
+/// This lets Docker/Logs/Monitor pages connect without going through the SSH page.
+pub async fn ensure_connection(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<ConnectRequest>,
+) -> ApiResponse<SshConnectResponse> {
+    let host = body.host.clone();
+    let port = body.port.unwrap_or(22);
+    let username = body.username.clone();
+
+    // Check for existing active connection with same host+port+username
+    for entry in state.connections.iter() {
+        let conn = entry.value();
+        if conn.host == host && conn.port == port && conn.username == username {
+            if let Some(session) = &conn.session {
+                if session.is_connected().await {
+                    return ApiResponse::success(SshConnectResponse {
+                        connection_id: conn.connection_id.clone(),
+                        host: conn.host.clone(),
+                        port: conn.port,
+                        username: conn.username.clone(),
+                    });
+                }
+            }
+        }
+    }
+
+    // No existing connection — create new one (reuse connect_ssh logic)
+    let connection_id = uuid::Uuid::new_v4().to_string();
+    let session = SshSession::new(connection_id.clone(), host.clone(), port, username.clone());
+
+    // Try password auth first, then key auth
+    if let Some(password) = &body.password {
+        if !password.is_empty() {
+            match session.connect_password(password).await {
+                Ok(()) => {
+                    save_connection(&state, &connection_id, &host, port, &username, session).await;
+                    return ApiResponse::success(SshConnectResponse { connection_id, host, port, username });
+                }
+                Err(e) => {
+                    tracing::error!("ensure_connection: Password auth failed for {}@{}:{}: {}", username, host, port, e);
+                }
+            }
+        }
+    }
+
+    if let Some(private_key) = &body.private_key {
+        if !private_key.is_empty() && session.connect_key(private_key, None).await.is_ok() {
+            save_connection(&state, &connection_id, &host, port, &username, session).await;
+            return ApiResponse::success(SshConnectResponse { connection_id, host, port, username });
+        }
+    }
+
+    ApiResponse::error(401, "SSH authentication failed")
+}
