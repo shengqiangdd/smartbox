@@ -30,7 +30,6 @@ export default function PluginsPage() {
   const [sandboxReady, setSandboxReady] = useState<Record<string, boolean>>({})
   const [sandboxKeys, setSandboxKeys] = useState<Record<string, number>>({})
   const [activePlugin, setActivePlugin] = useState<string | null>(null)
-  const _commandOutput = useState<string | null>(null)[0]
 
   const storePlugins = usePluginStore((s) => s.plugins)
   const enablePlugin = usePluginStore((s) => s.enablePlugin)
@@ -176,21 +175,7 @@ export default function PluginsPage() {
       const enabled = enabledMap[pluginId]
       if (!enabled) return
 
-      // 监听通知事件来捕获命令输出
-      const handleNotification = (e: Event) => {
-        const detail = (e as CustomEvent).detail
-        if (detail?.message) {
-          setCommandOutput(detail.message)
-        }
-      }
-      window.addEventListener('wrench-notification', handleNotification)
-
       pluginSandboxManager.executeCommand(pluginId, commandId)
-
-      // 延迟移除监听
-      setTimeout(() => {
-        window.removeEventListener('wrench-notification', handleNotification)
-      }, 5000)
 
       // 设置活跃插件
       setActivePlugin(pluginId)
