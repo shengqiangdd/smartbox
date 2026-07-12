@@ -121,21 +121,7 @@ pub async fn get_all_health(
                         username: info.username,
                         connected: false,
                         error: Some("Not connected".into()),
-                        cpu_load: None,
-                        cpu_load_5: None,
-                        cpu_load_15: None,
-                        cpu_cores: None,
-                        mem_total_mb: None,
-                        mem_used_mb: None,
-                        mem_percent: None,
-                        uptime: None,
-                        processes: None,
-                        disks: Vec::new(),
-                        net_rx_bytes: 0,
-                        net_tx_bytes: 0,
-                        io_read_sectors: 0,
-                        io_write_sectors: 0,
-                        top_procs: Vec::new(),
+                        ..Default::default()
                     };
                 }
                 match check_host_health(&state, &id).await {
@@ -169,21 +155,7 @@ pub async fn get_all_health(
                         username: info.username,
                         connected: false,
                         error: Some(e),
-                        cpu_load: None,
-                        cpu_load_5: None,
-                        cpu_load_15: None,
-                        cpu_cores: None,
-                        mem_total_mb: None,
-                        mem_used_mb: None,
-                        mem_percent: None,
-                        uptime: None,
-                        processes: None,
-                        disks: Vec::new(),
-                        net_rx_bytes: 0,
-                        net_tx_bytes: 0,
-                        io_read_sectors: 0,
-                        io_write_sectors: 0,
-                        top_procs: Vec::new(),
+                        ..Default::default()
                     },
                 }
             }

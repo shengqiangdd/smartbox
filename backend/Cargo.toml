@@ -69,3 +69,7 @@ bytes = "1.0"
 futures-util = "0.3"
 dashmap = "6"
 parking_lot = "0.12"
+
+[lints.clippy]
+# Allow struct update syntax with Default::default() — cleaner than listing every field
+needless_update = "allow"
