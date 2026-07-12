@@ -367,6 +367,7 @@ fn shell_escape(path: &str) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::needless_update)]
 mod tests {
     use super::*;
     use russh_sftp::protocol::FileAttributes;

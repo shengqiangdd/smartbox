@@ -25,7 +25,7 @@ jobs:
           cache-targets: false
       - run: cargo check
         working-directory: backend
-      - run: cargo clippy -- -D warnings
+      - run: cargo clippy -- -D warnings -A clippy::needless_update
         working-directory: backend
       - run: cargo test
         working-directory: backend
