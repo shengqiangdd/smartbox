@@ -23,6 +23,9 @@ RUN cd frontend && npm run build
 # ============================================
 FROM rust:1.96-slim-bookworm AS rust-builder
 
+# Build hash arg to bust registry cache when source changes
+ARG BUILD_HASH
+
 ENV CARGO_NET_RETRY=5
 ENV CARGO_HTTP_TIMEOUT=120
 ENV CARGO_BUILD_JOBS=8
@@ -34,8 +37,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy all source code
+# Copy all source code (full copy, no dummy-source cache trick)
 COPY backend/ ./
+
+# Touch a file with the build hash to invalidate cargo cache when source changes
+RUN echo "$BUILD_HASH" > /tmp/backend-build-hash.txt
 
 # Build with cargo cache mount (reuses downloaded crates across builds)
 RUN --mount=type=cache,target=/usr/local/cargo/registry \

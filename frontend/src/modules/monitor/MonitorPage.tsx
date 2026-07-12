@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { useAppStore } from '../../stores/app-store'
 import { useAlertStore } from '../../stores/alert-store'
+import { authedFetch } from '../../services/auth'
 import AlertSettings from './AlertSettings'
 import AlertHistory from './AlertHistory'
 import HostHealthOverview from './HostHealthOverview'
@@ -291,7 +292,7 @@ export default function MonitorPage() {
   // 从后端 /api/hosts/health 获取所有主机列表（包括离线的）
   const scanHosts = useCallback(async () => {
     try {
-      const res = await fetch('/api/hosts/health')
+      const res = await authedFetch('/api/hosts/health')
       const body = await res.json()
       const allHosts: BackendHealthHost[] = body.data || []
       // 显示所有主机，不只 connected 的
@@ -354,7 +355,7 @@ export default function MonitorPage() {
     setError('')
 
     try {
-      const healthResp = await fetch('/api/hosts/health')
+      const healthResp = await authedFetch('/api/hosts/health')
       const healthBody = await healthResp.json()
       const allHealth: BackendHealthHost[] = healthBody.data || []
       const healthMap = new Map(allHealth.map((h) => [h.id, h]))
