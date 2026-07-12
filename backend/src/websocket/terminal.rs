@@ -59,7 +59,11 @@ fn build_docker_output_msg(
 /// Main WebSocket handler — the one the frontend actually connects to.
 /// Dispatches messages by `type` field.
 pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_socket(socket, state))
+    tracing::info!("[ws] WebSocket upgrade request received, returning 101");
+    ws.on_upgrade(move |socket| {
+        tracing::info!("[ws] WebSocket upgrade completed, entering message loop");
+        handle_socket(socket, state)
+    })
 }
 
 async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>) {

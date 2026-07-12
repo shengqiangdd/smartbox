@@ -61,6 +61,8 @@ fn validate_jwt(state: &Arc<AppState>, token: &str) -> bool {
 /// should be mounted outside the protected router.
 pub async fn auth_middleware(State(state): State<Arc<AppState>>, req: Request<Body>, next: Next) -> Response {
     let method = req.method();
+    let uri = req.uri().to_string();
+    let is_upgrade = req.headers().get("upgrade").and_then(|v| v.to_str().ok()).unwrap_or("") == "websocket";
 
     // Always allow OPTIONS (CORS preflight)
     if method == axum::http::Method::OPTIONS {
@@ -97,11 +99,32 @@ pub async fn auth_middleware(State(state): State<Arc<AppState>>, req: Request<Bo
         });
 
     match token {
-        Some(t) if validate_token(&state, &t) => next.run(req).await,
-        Some(t) if validate_jwt(&state, &t) => next.run(req).await,
-        _ => {
+        Some(t) if validate_token(&state, &t) => {
+            tracing::info!("[auth] {} {} — one-time token OK (upgrade={})", method, uri, is_upgrade);
+            next.run(req).await
+        }
+        Some(t) if validate_jwt(&state, &t) => {
+            tracing::info!("[auth] {} {} — JWT OK (upgrade={})", method, uri, is_upgrade);
+            next.run(req).await
+        }
+        Some(t) => {
+            tracing::warn!("[auth] {} {} — REJECTED token_len={} upgrade={}", method, uri, t.len(), is_upgrade);
+            let has_jwt_service = state.jwt_service.read().is_some();
+            tracing::warn!("[auth]   jwt_service available: {}, ws_tokens count: {}", has_jwt_service, state.ws_tokens.len());
             let body = serde_json::json!({
                 "error": "Unauthorized: invalid or expired token. Call POST /api/ws-token first."
+            })
+            .to_string();
+            Response::builder()
+                .status(StatusCode::UNAUTHORIZED)
+                .header(axum::http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(body))
+                .unwrap()
+        }
+        None => {
+            tracing::warn!("[auth] {} {} — NO TOKEN (upgrade={})", method, uri, is_upgrade);
+            let body = serde_json::json!({
+                "error": "Unauthorized: no token provided."
             })
             .to_string();
             Response::builder()
