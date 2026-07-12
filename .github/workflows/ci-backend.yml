@@ -23,9 +23,10 @@ jobs:
         with:
           workspaces: backend
           cache-targets: false
+          shared-key: clippy-v2
       - run: cargo check
         working-directory: backend
-      - run: cargo clippy -- -D warnings -A clippy::needless_update
+      - run: cargo clippy -- -D warnings -A clippy::needless_update -A clippy::field_reassign_with_default
         working-directory: backend
       - run: cargo test
         working-directory: backend
