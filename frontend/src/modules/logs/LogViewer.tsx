@@ -58,7 +58,6 @@ function LogViewerInner({ connectionId, logPath, onClose }: LogViewerProps) {
   const fetchLogs = useCallback(async () => {
     dispatch({ status: 'loading' })
     try {
-      
       const res = await authedFetch('/api/logs/tail', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -95,7 +94,6 @@ function LogViewerInner({ connectionId, logPath, onClose }: LogViewerProps) {
   const startFollow = useCallback(async () => {
     dispatch({ errorMsg: null })
     try {
-      
       const wsUrl = await buildWsUrl('/ws')
       const ws = new WebSocket(wsUrl)
       const reqId = requestIdRef.current
@@ -200,7 +198,6 @@ function LogViewerInner({ connectionId, logPath, onClose }: LogViewerProps) {
     setSearching(true)
     setSearchResult('')
     try {
-      
       const res = await authedFetch('/api/logs/grep', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
