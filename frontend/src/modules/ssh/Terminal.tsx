@@ -100,6 +100,7 @@ export default function TerminalView({
   const fitAddonRef = useRef<FitAddon | null>(null)
   const searchAddonRef = useRef<SearchAddon | null>(null)
   const connectedRef = useRef(false)
+  const connectingRef = useRef(false)
   const disposedRef = useRef(false)
   // 搜索状态
   const [showSearch, setShowSearch] = useState(false)
@@ -127,8 +128,16 @@ export default function TerminalView({
   const termWsRef = useRef<WsClient | null>(null)
   // 凭据 ref（避免 effect 依赖变化）
   const credentialsRef = useRef(credentials)
+  // 用 ref 追踪连接状态，用于 credentials 就绪后重试
+  const connectTerminalRef = useRef<(() => void) | null>(null)
   useEffect(() => {
+    const prev = credentialsRef.current
     credentialsRef.current = credentials
+    // 如果之前凭据为空且现在就绪了，触发连接
+    // 同时允许重试（如果之前连接失败了，connectingRef 已重置为 false）
+    if (!prev && credentials && connectTerminalRef.current) {
+      connectTerminalRef.current()
+    }
   }, [credentials])
 
   // ─── 移动端快捷键工具栏（固定在底部，不需要开关状态）──
@@ -361,18 +370,36 @@ export default function TerminalView({
     // 因此每个终端必须有自己的 WS 连接以支持多主机同时连接。
     const initTerminalConnection = async () => {
       if (gen !== genRef.current) return
+      // 防止重复连接
+      if (connectingRef.current || connectedRef.current) return
 
       const creds = credentialsRef.current
       if (!creds) {
-        term.write('\r\n\x1b[31m[错误] 缺少连接凭据\x1b[0m\r\n')
+        term.write('\r\n\x1b[33m[等待凭据] 连接凭据尚未就绪，等待中...\x1b[0m\r\n')
         return
       }
 
+      connectingRef.current = true
       term.write('\r\n\x1b[33m[连接中] 正在连接 ' + creds.host + ' ...\x1b[0m\r\n')
+
+      // 前端 SSH 连接超时检测（后端 15s 超时，前端给 20s 容差）
+      const sshTimeout = setTimeout(() => {
+        if (connectingRef.current && !connectedRef.current && gen === genRef.current) {
+          connectingRef.current = false
+          if (!disposedRef.current) {
+            term.write(
+              '\r\n\x1b[31m[超时] SSH 连接超时，请检查主机地址、端口和凭据是否正确\x1b[0m\r\n',
+            )
+          }
+        }
+      }, 20_000)
 
       try {
         const token = await getToken()
-        if (gen !== genRef.current) return
+        if (gen !== genRef.current) {
+          clearTimeout(sshTimeout)
+          return
+        }
 
         const termWs = createTerminalWsClient(token)
         termWsRef.current = termWs
@@ -381,8 +408,13 @@ export default function TerminalView({
         termWs.on('data', (msg) => {
           if (msg.connectionId !== connectionId) return
 
-          // 处理 SSH 连接成功消息
+          // 处理 SSH 连接成功消息（通过 dispatch 的 type:"connected" 路由）
+          // 注意：此 handler 只会收到 type:"data" 的消息，
+          // SSH 连接成功消息通过 termWs.on('connected') 处理
           if (msg.type === 'connected') {
+            clearTimeout(sshTimeout)
+            connectingRef.current = false
+            connectedRef.current = true
             // SSH 连接成功后，执行 fit 调整终端尺寸
             setTimeout(() => {
               const c = containerRef.current
@@ -402,7 +434,9 @@ export default function TerminalView({
           if (msg.type === 'error') {
             const errMsg = (msg.message as string) || (msg.data as string) || '连接失败'
             if (errMsg.includes('Unknown message type')) return
-            // SSH 错误：写入终端让用户看到原因
+            // SSH 错误：重置连接状态，允许重试
+            clearTimeout(sshTimeout)
+            connectingRef.current = false
             if (gen === genRef.current && !disposedRef.current) {
               term.write(`\r\n\x1b[31m[错误] ${errMsg}\x1b[0m\r\n`)
             }
@@ -419,12 +453,17 @@ export default function TerminalView({
         })
 
         termWs.on('connected', () => {
+          // SSH 连接成功 ack（dispatch type:"connected"）
+          clearTimeout(sshTimeout)
+          connectingRef.current = false
           connectedRef.current = true
           term.focus()
           onConnectedRef.current?.()
         })
 
         termWs.on('disconnected', () => {
+          clearTimeout(sshTimeout)
+          connectingRef.current = false
           connectedRef.current = false
           if (!disposedRef.current) {
             term.write('\r\n\x1b[31m[连接已断开]\x1b[0m\r\n')
@@ -436,6 +475,9 @@ export default function TerminalView({
           // 静默忽略 "Unknown message type" 错误（SSH 断开后后端主循环拒绝消息）
           const errMsg = (msg.message as string) || ''
           if (errMsg.includes('Unknown message type')) return
+          // 重置连接状态，允许重试
+          clearTimeout(sshTimeout)
+          connectingRef.current = false
           if (!disposedRef.current) {
             term.write(`\r\n\x1b[31m[错误] ${errMsg || '未知错误'}\x1b[0m\r\n`)
           }
@@ -461,19 +503,30 @@ export default function TerminalView({
             })
           } else if (status === 'disconnected') {
             unsub()
+            clearTimeout(sshTimeout)
+            // WS 连接失败：重置状态，允许重试
+            connectingRef.current = false
             if (!disposedRef.current) {
-              term.write('\r\n\x1b[31m[WebSocket 连接失败]\x1b[0m\r\n')
+              term.write('\r\n\x1b[31m[WebSocket 连接失败] 请检查网络连接\x1b[0m\r\n')
             }
           }
         })
       } catch (err) {
+        clearTimeout(sshTimeout)
         if (gen !== genRef.current) return
+        connectingRef.current = false
         const msg = err instanceof Error ? err.message : '获取认证令牌失败'
         term.write(`\r\n\x1b[31m[错误] ${msg}\x1b[0m\r\n`)
       }
     }
 
-    initTerminalConnection()
+    // 将 initTerminalConnection 暴露给 credentials ref effect 用于重试
+    connectTerminalRef.current = initTerminalConnection
+
+    // 如果凭据已就绪，立即连接；否则等待 credentials ref effect 触发
+    if (credentialsRef.current) {
+      initTerminalConnection()
+    }
 
     // ─── 快捷键注册 ───
     // Ctrl+C: 选中文本时复制，未选中时发送 SIGINT
@@ -611,6 +664,8 @@ export default function TerminalView({
         termWsRef.current.disconnect()
         termWsRef.current = null
       }
+      connectingRef.current = false
+      connectedRef.current = false
       try {
         term.dispose()
       } catch {}
