@@ -104,7 +104,7 @@ impl SshSession {
             Ok(())
         } else {
             let remaining = match &auth_result {
-                russh::client::AuthResult::Failure { remaining_methods } => {
+                russh::client::AuthResult::Failure { remaining_methods, partial_success: _ } => {
                     format!("{:?}", remaining_methods)
                 }
                 _ => "unknown".to_string(),
