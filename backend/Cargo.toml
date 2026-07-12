@@ -47,7 +47,7 @@ russh = "0.62"
 russh-sftp = "2.3"
 
 # Docker
-bollard = "0.18"
+bollard = "0.21"
 
 # Validation
 regex = "1.12"
