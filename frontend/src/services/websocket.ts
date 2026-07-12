@@ -96,7 +96,8 @@ export class WsClient {
     // 如果已连接或正在连接，不重复创建
     if (this.ws) {
       const state = this.ws.readyState
-      if (state === WebSocket.OPEN || state === WebSocket.CONNECTING) return
+      // OPEN / CONNECTING / CLOSING 都不应创建新连接
+      if (state === WebSocket.OPEN || state === WebSocket.CONNECTING || state === WebSocket.CLOSING) return
     }
     this.setStatus('connecting')
     this._lastError = null
@@ -117,10 +118,12 @@ export class WsClient {
       return
     }
 
+    const ws = this.ws
+
     // 连接超时检测
     this.connectTimeoutTimer = setTimeout(() => {
-      if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
-        this.ws.close()
+      if (ws.readyState === WebSocket.CONNECTING) {
+        ws.close()
         this.setError(
           `连接超时（${WS_CONNECT_TIMEOUT_MS / 1000}秒无响应），请检查后端服务是否正常运行`,
         )
@@ -129,7 +132,7 @@ export class WsClient {
       }
     }, WS_CONNECT_TIMEOUT_MS)
 
-    this.ws.onopen = () => {
+    ws.onopen = () => {
       if (this.connectTimeoutTimer) {
         clearTimeout(this.connectTimeoutTimer)
         this.connectTimeoutTimer = null
@@ -140,7 +143,7 @@ export class WsClient {
       this.startHeartbeat()
     }
 
-    this.ws.onmessage = (event) => {
+    ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data as string)
         this.dispatch(data)
@@ -149,13 +152,16 @@ export class WsClient {
       }
     }
 
-    this.ws.onclose = (event) => {
+    ws.onclose = (event) => {
       if (this.connectTimeoutTimer) {
         clearTimeout(this.connectTimeoutTimer)
         this.connectTimeoutTimer = null
       }
       this.stopHeartbeat()
       this.stopOutputFlush()
+
+      // 只处理当前连接的关闭事件（避免旧连接干扰新连接）
+      if (this.ws !== ws) return
 
       if (this._status === 'connecting') {
         // close 在 open 之前发生 → HTTP upgrade 很可能被拒绝
@@ -175,14 +181,16 @@ export class WsClient {
       this.scheduleReconnect()
     }
 
-    this.ws.onerror = (event) => {
+    ws.onerror = (event) => {
+      // 只处理当前连接的错误事件
+      if (this.ws !== ws) return
       if (this._status === 'connecting') {
         const urlBase = this.url.split('?')[0]
         const detail = event instanceof Event ? `${urlBase}` : ''
         this.setError(
           `连接错误：无法建立 WebSocket 连接${detail ? ` (${detail})` : ''}，请检查网络和服务状态`,
         )
-        console.error(`[WsClient] onerror — URL: ${urlBase}, readyState: ${this.ws?.readyState}`)
+        console.error(`[WsClient] onerror — URL: ${urlBase}, readyState: ${ws.readyState}`)
       }
     }
   }
