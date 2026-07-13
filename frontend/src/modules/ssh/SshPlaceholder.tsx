@@ -374,12 +374,12 @@ export default function SshPlaceholder() {
 
   // 修复：如果 selectedConnectionId 没有匹配到任何 session，
   // 自动选中第一个活跃 session（防止标签栏显示但终端为空）
+  const autoSelectDoneRef = useRef(false)
   useEffect(() => {
+    if (autoSelectDoneRef.current) return
     if (allSessions.length > 0 && !activeSession) {
-      const firstSession = allSessions[0]
-      if (firstSession) {
-        selectConnection(firstSession.id)
-      }
+      autoSelectDoneRef.current = true
+      selectConnection(allSessions[0]!.id)
     }
   }, [allSessions, activeSession, selectConnection])
 
