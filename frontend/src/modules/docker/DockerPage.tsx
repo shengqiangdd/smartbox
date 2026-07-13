@@ -33,7 +33,15 @@ export default function DockerPage() {
 
   // 后端连接列表 fallback（当前端 IndexedDB 为空时从 API 获取）
   const [apiConnections, setApiConnections] = useState<
-    Array<{ id: string; name: string; host: string; port: number; username: string; password?: string; privateKey?: string }>
+    Array<{
+      id: string
+      name: string
+      host: string
+      port: number
+      username: string
+      password?: string
+      privateKey?: string
+    }>
   >([])
 
   // 页面可见时，若前端 store 为空则从后端 API 加载连接列表
