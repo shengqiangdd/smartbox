@@ -31,16 +31,72 @@ export default function DockerPage() {
   const sessions = useSshStore((s) => s.sessions)
   const connections = useSshStore((s) => s.connections)
 
-  // 选中的主机（可以是 session.id 或 connection.id）
-  const [selectedHost, setSelectedHost] = useState<string | null>(() => connections[0]?.id ?? null)
+  // 后端连接列表 fallback（当前端 IndexedDB 为空时从 API 获取）
+  const [apiConnections, setApiConnections] = useState<
+    Array<{ id: string; name: string; host: string; port: number; username: string; password?: string; privateKey?: string }>
+  >([])
+
+  // 页面可见时，若前端 store 为空则从后端 API 加载连接列表
+  useEffect(() => {
+    if (!isVisible) return
+    if (connections.length > 0) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await authedFetch('/api/connections')
+        const json = (await res.json()) as ApiResponse
+        if (!cancelled && json.success && Array.isArray(json.data)) {
+          setApiConnections(
+            json.data.map((c: Record<string, unknown>) => {
+              // 解析 config JSON 获取密码/私钥（后端返回加密值，ensureSshConnection 会自动解密）
+              let password = ''
+              let privateKey = ''
+              try {
+                const config = JSON.parse((c.config as string) || '{}')
+                password = config.password || ''
+                privateKey = config.private_key || ''
+              } catch {
+                // 忽略解析错误
+              }
+              return {
+                id: (c.id as string) || '',
+                name: (c.name as string) || (c.host as string) || '',
+                host: (c.host as string) || '',
+                port: (c.port as number) || 22,
+                username: (c.username as string) || '',
+                password,
+                privateKey,
+              }
+            }),
+          )
+        }
+      } catch {
+        // 忽略
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [isVisible, connections.length])
 
   // 实际用于 API 调用的 backend connectionId
   const [currentConnId, setCurrentConnId] = useState<string | null>(null)
   const [connecting, setConnecting] = useState(false)
 
-  // 可选主机列表：所有已保存的连接（不管是否已连接 SSH）
+  // 可选主机列表：前端 store 优先，后端 API 作为 fallback
   const availableHosts = useMemo(() => {
-    return connections.map((conn) => ({
+    if (connections.length > 0) {
+      return connections.map((conn) => ({
+        id: conn.id,
+        name: conn.name || conn.host,
+        host: conn.host,
+        port: conn.port,
+        username: conn.username,
+        password: conn.password,
+        privateKey: conn.privateKey,
+      }))
+    }
+    return apiConnections.map((conn) => ({
       id: conn.id,
       name: conn.name || conn.host,
       host: conn.host,
@@ -49,19 +105,24 @@ export default function DockerPage() {
       password: conn.password,
       privateKey: conn.privateKey,
     }))
-  }, [connections])
+  }, [connections, apiConnections])
 
-  // selectedHost 变化时自动 ensure 连接
+  // 选中的主机
+  const [selectedHost, setSelectedHost] = useState<string | null>(() => connections[0]?.id ?? null)
+
+  // 实际主机 ID：selectedHost 优先，后端 fallback 兜底
+  const effectiveHost = selectedHost ?? availableHosts[0]?.id ?? null
+
+  // effectiveHost 变化时自动 ensure 连接
   const ensureRef = useRef<ReturnType<typeof ensureSshConnection> | null>(null)
   useEffect(() => {
-    if (!selectedHost) return
-    const host = availableHosts.find((h) => h.id === selectedHost)
+    if (!effectiveHost) return
+    const host = availableHosts.find((h) => h.id === effectiveHost)
     if (!host) return
 
     let cancelled = false
     const run = async () => {
-      // 先检查是否已有活跃 session 关联该 connectionId
-      const existingSession = sessions.find((s) => s.connectionId === selectedHost)
+      const existingSession = sessions.find((s) => s.connectionId === effectiveHost)
       if (existingSession) {
         if (!cancelled) setCurrentConnId(existingSession.id)
         return
@@ -94,7 +155,7 @@ export default function DockerPage() {
     return () => {
       cancelled = true
     }
-  }, [selectedHost, availableHosts, sessions])
+  }, [effectiveHost, availableHosts, sessions])
 
   const fetchContainers = useCallback(async () => {
     if (!currentConnId) return
@@ -201,7 +262,7 @@ export default function DockerPage() {
           {/* Host selector */}
           {availableHosts.length > 0 && (
             <select
-              value={selectedHost || ''}
+              value={effectiveHost || ''}
               onChange={(e) => setSelectedHost(e.target.value)}
               className="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-sm"
             >

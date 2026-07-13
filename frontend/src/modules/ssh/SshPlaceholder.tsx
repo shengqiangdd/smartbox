@@ -372,6 +372,17 @@ export default function SshPlaceholder() {
     (s) => s.id === selectedConnectionId && s.status === 'connected',
   )
 
+  // 修复：如果 selectedConnectionId 没有匹配到任何 session，
+  // 自动选中第一个活跃 session（防止标签栏显示但终端为空）
+  useEffect(() => {
+    if (allSessions.length > 0 && !activeSession) {
+      const firstSession = allSessions[0]
+      if (firstSession) {
+        selectConnection(firstSession.id)
+      }
+    }
+  }, [allSessions, activeSession, selectConnection])
+
   // ─── 兜底：页面刷新后内存 Map 为空时自动解密凭据 ───
   const [resolvedCreds, setResolvedCreds] = useState<Record<
     string,
