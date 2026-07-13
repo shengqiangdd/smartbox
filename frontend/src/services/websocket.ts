@@ -99,7 +99,14 @@ export class WsClient {
       // OPEN / CONNECTING / CLOSING 都不应创建新连接
       if (state === WebSocket.OPEN || state === WebSocket.CONNECTING || state === WebSocket.CLOSING)
         return
+      // CLOSING/CLOSED 状态下，等待旧连接完全关闭后再重连
+      if (state === WebSocket.CLOSED) {
+        // 旧连接已关闭，清理引用后可以创建新连接
+        this.ws = null
+      }
     }
+    // 如果正在 reconnecting 且已有 reconnectTimer，不重复创建
+    if (this._status === 'reconnecting' && this.reconnectTimer) return
     console.log(`[WsClient] connect() — url=${this.url.split('?')[0]}, status=${this._status}`)
     this.setStatus('connecting')
     this._lastError = null
