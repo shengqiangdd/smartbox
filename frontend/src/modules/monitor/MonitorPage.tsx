@@ -293,22 +293,47 @@ export default function MonitorPage() {
   const savedConnections = useSshStore((s) => s.connections)
 
   // 确保所有已保存的主机在后端有 SSH 连接（首次加载时自动连接）
+  // 如果没有保存的连接，尝试从 test-config 获取环境变量中的测试主机
   const ensuredRef = useRef(false)
   useEffect(() => {
-    if (ensuredRef.current || savedConnections.length === 0) return
+    if (ensuredRef.current) return
     ensuredRef.current = true
-    // 并行 ensure 所有已保存的主机（有去重，不会重复创建）
-    for (const conn of savedConnections) {
-      ensureSshConnection({
-        host: conn.host,
-        port: conn.port,
-        username: conn.username,
-        password: conn.password,
-        privateKey: conn.privateKey,
-      }).catch(() => {
-        /* 静默失败，健康检查会显示离线 */
-      })
+
+    const ensureAll = async () => {
+      // 1) 先 ensure 所有已保存的连接
+      for (const conn of savedConnections) {
+        ensureSshConnection({
+          host: conn.host,
+          port: conn.port,
+          username: conn.username,
+          password: conn.password,
+          privateKey: conn.privateKey,
+        }).catch(() => {
+          /* 静默失败，健康检查会显示离线 */
+        })
+      }
+
+      // 2) 如果没有保存的连接，从 test-config 获取兜底主机
+      if (savedConnections.length === 0) {
+        try {
+          const res = await authedFetch('/api/ssh/test-config')
+          const cfg = (await res.json()) as { host?: string; user?: string; password?: string }
+          if (cfg.host && cfg.user) {
+            await ensureSshConnection({
+              host: cfg.host,
+              port: 22,
+              username: cfg.user,
+              password: cfg.password || '',
+            }).catch(() => {
+              /* 静默失败 */
+            })
+          }
+        } catch {
+          /* 忽略 */
+        }
+      }
     }
+    void ensureAll()
   }, [savedConnections])
 
   // 从后端 /api/hosts/health 获取所有主机列表（包括离线的）

@@ -400,13 +400,16 @@ export default function TerminalView({
         console.log('[Terminal] Calling getToken()...')
         const token = await getToken()
         console.log(`[Terminal] Got token: ${token.substring(0, 20)}... (length=${token.length})`)
+        console.log(`[Terminal] gen check: gen=${gen}, genRef.current=${genRef.current}`)
         if (gen !== genRef.current) {
+          console.warn(`[Terminal] gen mismatch! gen=${gen} !== genRef.current=${genRef.current}, aborting`)
           clearTimeout(sshTimeout)
           return
         }
 
+        console.log('[Terminal] Creating WsClient...')
         const termWs = createTerminalWsClient(token)
-        console.log(`[Terminal] Created WsClient, URL: ${termWs['url'].split('?')[0]}`)
+        console.log(`[Terminal] Created WsClient, URL: ${termWs['url'].split('?')[0]}, status=${termWs['status']}`)
         termWsRef.current = termWs
 
         // 注册事件处理器（在连接前注册，确保不遗漏）
@@ -491,14 +494,15 @@ export default function TerminalView({
         // 连接 WebSocket
         const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws?token=${token.substring(0, 20)}...`
         console.log(`[Terminal] Connecting WebSocket to: ${wsUrl}`)
-        termWs.connect()
-
-        // 等待连接建立后发送 SSH connect 消息
+        // 先注册 onStatus handler，再 connect()，避免错过 'connected' 状态
+        // （某些浏览器 onopen 可能在微任务内同步触发，connect 后再注册 handler 会丢失事件）
+        console.log(`[Terminal] register onStatus, current ws status: ${termWs['status']}`)
         const unsub = termWs.onStatus((status) => {
           console.log(`[Terminal] onStatus: ${status}`)
           if (status === 'connected') {
             unsub()
             if (gen !== genRef.current) return
+            console.log(`[Terminal] ✅ WS connected, sending SSH connect to ${creds.host}:${creds.port}`)
             termWs.send({
               type: 'connect',
               connectionId,
@@ -524,6 +528,10 @@ export default function TerminalView({
             onDisconnectedRef.current?.()
           }
         })
+
+        // 注册完毕后再连接
+        console.log(`[Terminal] Calling termWs.connect()...`)
+        termWs.connect()
       } catch (err) {
         clearTimeout(sshTimeout)
         if (gen !== genRef.current) return

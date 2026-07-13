@@ -3,6 +3,8 @@
 
 set -e
 
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 echo "🔧 Wrench 本地开发模式"
 echo ""
 
@@ -10,6 +12,13 @@ echo ""
 if ! command -v cargo &> /dev/null; then
     echo "❌ 未安装 Rust，请先安装: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
     exit 1
+fi
+
+# 确保 backend/frontend symlink 指向项目根的 frontend 目录
+if [ ! -e "$ROOT_DIR/backend/frontend/dist" ]; then
+    echo "🔗 创建 frontend symlink..."
+    rm -rf "$ROOT_DIR/backend/frontend" 2>/dev/null || true
+    ln -s "$ROOT_DIR/frontend" "$ROOT_DIR/backend/frontend"
 fi
 
 # 编译后端

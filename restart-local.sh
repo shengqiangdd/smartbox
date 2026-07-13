@@ -3,7 +3,16 @@
 
 set -e
 
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 echo "🔄 快速重建..."
+
+# 确保 frontend symlink 存在
+if [ ! -e "$ROOT_DIR/backend/frontend/dist" ]; then
+    echo "🔗 创建 frontend symlink..."
+    rm -rf "$ROOT_DIR/backend/frontend" 2>/dev/null || true
+    ln -s "$ROOT_DIR/frontend" "$ROOT_DIR/backend/frontend"
+fi
 
 cd backend
 

@@ -1,127 +1,84 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { ScrollText, ChevronDown } from 'lucide-react'
-import { useSshStore } from '../../stores/ssh-store'
-import { ensureSshConnection } from '../../services/ssh-ensure'
+import { useSshHostSelector } from '../../hooks/useSshHostSelector'
 import LogViewer from './LogViewer'
 import SourceConfig from './SourceConfig'
 
 export default function LogsPage() {
-  const connections = useSshStore((s) => s.connections)
-  const sessions = useSshStore((s) => s.sessions)
-
-  const [currentConnId, setCurrentConnId] = useState<string | null>(null)
-  const [connecting, setConnecting] = useState(false)
-
-  // 可选主机列表：从 connections 取（不需要先 SSH 连接）
-  const availableHosts = useMemo(
-    () =>
-      connections.map((conn) => ({
-        id: conn.id,
-        name: conn.name || conn.host,
-        host: conn.host,
-        port: conn.port,
-        username: conn.username,
-        password: conn.password,
-        privateKey: conn.privateKey,
-      })),
-    [connections],
-  )
-
-  // 选中的主机 — 从 connections 初始化
-  const [selectedId, setSelectedId] = useState<string | null>(() => connections[0]?.id ?? null)
-
-  // 确保 SSH 连接
-  useEffect(() => {
-    if (!selectedId) return
-    const host = availableHosts.find((h) => h.id === selectedId)
-    if (!host) return
-
-    let cancelled = false
-    const run = async () => {
-      // 检查是否已有活跃 session 关联该 connectionId
-      const existingSession = sessions.find((s) => s.connectionId === selectedId)
-      if (existingSession) {
-        if (!cancelled) setCurrentConnId(existingSession.id)
-        return
-      }
-
-      setConnecting(true)
-      try {
-        const connId = await ensureSshConnection({
-          host: host.host,
-          port: host.port,
-          username: host.username,
-          password: host.password,
-          privateKey: host.privateKey,
-        })
-        if (!cancelled) setCurrentConnId(connId)
-      } catch {
-        if (!cancelled) setCurrentConnId(null)
-      } finally {
-        if (!cancelled) setConnecting(false)
-      }
-    }
-    void run()
-    return () => {
-      cancelled = true
-    }
-  }, [selectedId, availableHosts, sessions])
+  // ── 统一主机选择器 ──
+  const {
+    hosts,
+    selectedId,
+    setSelectedId,
+    connectionId,
+    connecting,
+    hostLabel,
+    hasHosts,
+  } = useSshHostSelector()
 
   const [currentPath, setCurrentPath] = useState<string | null>(null)
   const [sourcePanelOpen, setSourcePanelOpen] = useState(true)
 
   // 追踪 connectionId 变化，通知 SourceConfig 重新扫描
   const [scanKey, setScanKey] = useState(0)
-  const prevConnIdRef = useRef(currentConnId)
+  const prevConnIdRef = useRef(connectionId)
   useEffect(() => {
-    if (currentConnId !== prevConnIdRef.current) {
-      prevConnIdRef.current = currentConnId
+    if (connectionId !== prevConnIdRef.current) {
+      prevConnIdRef.current = connectionId
       setCurrentPath(null)
       setScanKey((k) => k + 1)
     }
-  }, [currentConnId])
+  }, [connectionId])
 
   const handleSelectPath = useCallback((path: string) => {
     setCurrentPath(path)
   }, [])
 
-  const handleSessionChange = useCallback((id: string) => {
-    setSelectedId(id)
-    setCurrentPath(null)
-  }, [])
+  const handleHostChange = useCallback(
+    (id: string) => {
+      setSelectedId(id)
+      setCurrentPath(null)
+    },
+    [setSelectedId],
+  )
 
-  if (!currentConnId && !connecting) {
+  // ── 无连接时的占位 UI ──
+  if (!connectionId && !connecting) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 text-slate-500">
         <ScrollText size={48} className="text-slate-600" />
         <div className="text-center">
           <p className="text-sm font-medium text-slate-400">
-            {availableHosts.length === 0 ? '未添加任何主机' : '选择主机以连接'}
+            {hasHosts ? '选择主机以连接' : '未找到可用主机'}
           </p>
           <p className="mt-1 text-xs">
-            {availableHosts.length === 0
-              ? '请先在设置中添加 SSH 连接配置'
-              : '从下拉框选择主机，将自动建立连接'}
+            {hasHosts
+              ? '从下拉框选择主机，将自动建立连接'
+              : '请先在 SSH 页面添加连接，或配置环境变量测试主机'}
           </p>
         </div>
-        {availableHosts.length > 0 && (
-          <select
-            value={selectedId || ''}
-            onChange={(e) => handleSessionChange(e.target.value)}
-            className="rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 focus:ring-1 focus:ring-sky-500 focus:outline-none"
-          >
-            {availableHosts.map((h) => (
-              <option key={h.id} value={h.id} className="bg-slate-800">
-                {h.name}
-              </option>
-            ))}
-          </select>
+        {hosts.length > 0 && (
+          <div className="relative">
+            <select
+              value={selectedId || ''}
+              onChange={(e) => handleHostChange(e.target.value)}
+              className="appearance-none rounded-md border border-slate-700 bg-slate-800 px-3 py-2 pr-8 text-sm text-slate-200 focus:ring-1 focus:ring-sky-500 focus:outline-none"
+            >
+              {hosts.map((h) => (
+                <option key={h.id} value={h.id} className="bg-slate-800">
+                  {h.source === 'test-config' ? '⚡ ' : ''}{h.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              size={14}
+              className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-slate-500"
+            />
+          </div>
         )}
       </div>
     )
   }
-
-  const currentHostLabel = availableHosts.find((h) => h.id === selectedId)?.name || selectedId || ''
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -130,16 +87,16 @@ export default function LogsPage() {
         <ScrollText size={18} className="text-sky-400" />
         <h1 className="text-sm font-semibold text-slate-200">日志聚合</h1>
 
-        {availableHosts.length > 0 && (
+        {hosts.length > 0 && (
           <div className="relative">
             <select
               value={selectedId || ''}
-              onChange={(e) => handleSessionChange(e.target.value)}
-              className="ml-1 rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-200 focus:ring-1 focus:ring-sky-500 focus:outline-none"
+              onChange={(e) => handleHostChange(e.target.value)}
+              className="ml-1 appearance-none rounded-md border border-slate-700 bg-slate-800 px-2 py-1 pr-6 text-xs text-slate-200 focus:ring-1 focus:ring-sky-500 focus:outline-none"
             >
-              {availableHosts.map((h) => (
+              {hosts.map((h) => (
                 <option key={h.id} value={h.id} className="bg-slate-800">
-                  {h.name}
+                  {h.source === 'test-config' ? '⚡ ' : ''}{h.name}
                 </option>
               ))}
             </select>
@@ -152,9 +109,11 @@ export default function LogsPage() {
 
         {connecting && <span className="animate-pulse text-xs text-yellow-400">连接中...</span>}
 
-        <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-500">
-          {currentHostLabel}
-        </span>
+        {hostLabel && !connecting && (
+          <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-500">
+            {hostLabel}
+          </span>
+        )}
 
         <div className="ml-auto flex items-center gap-2">
           <button
@@ -174,14 +133,14 @@ export default function LogsPage() {
         >
           <SourceConfig
             scanKey={scanKey}
-            connectionId={currentConnId}
+            connectionId={connectionId}
             onSelectPath={handleSelectPath}
           />
         </div>
         <div className="min-w-0 flex-1 overflow-hidden">
           {currentPath ? (
             <LogViewer
-              connectionId={currentConnId}
+              connectionId={connectionId}
               logPath={currentPath}
               onClose={() => setCurrentPath(null)}
             />

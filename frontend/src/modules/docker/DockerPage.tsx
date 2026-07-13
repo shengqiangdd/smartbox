@@ -1,9 +1,8 @@
-import { useState, useEffect, useCallback, useRef, lazy, Suspense, useMemo } from 'react'
-import { Container, RefreshCw, Activity, AlertCircle } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
+import { Container, RefreshCw, Activity, AlertCircle, ChevronDown } from 'lucide-react'
 import { useAppStore } from '../../stores/app-store'
-import { useSshStore } from '../../stores/ssh-store'
-import { ensureSshConnection } from '../../services/ssh-ensure'
 import { authedFetch } from '../../services/auth'
+import { useSshHostSelector } from '../../hooks/useSshHostSelector'
 import type { DockerContainer, DockerImage } from './index'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -27,153 +26,27 @@ export default function DockerPage() {
   const activeNav = useAppStore((s) => s.activeNav)
   const isVisible = activeNav === 'docker'
 
-  // SSH store: 活跃 session + 已保存的连接配置
-  const sessions = useSshStore((s) => s.sessions)
-  const connections = useSshStore((s) => s.connections)
-
-  // 后端连接列表 fallback（当前端 IndexedDB 为空时从 API 获取）
-  const [apiConnections, setApiConnections] = useState<
-    Array<{
-      id: string
-      name: string
-      host: string
-      port: number
-      username: string
-      password?: string
-      privateKey?: string
-    }>
-  >([])
-
-  // 页面可见时，若前端 store 为空则从后端 API 加载连接列表
-  useEffect(() => {
-    if (!isVisible) return
-    if (connections.length > 0) return
-    let cancelled = false
-    ;(async () => {
-      try {
-        const res = await authedFetch('/api/connections')
-        const json = (await res.json()) as ApiResponse
-        if (!cancelled && json.success && Array.isArray(json.data)) {
-          setApiConnections(
-            json.data.map((c: Record<string, unknown>) => {
-              // 解析 config JSON 获取密码/私钥（后端返回加密值，ensureSshConnection 会自动解密）
-              let password = ''
-              let privateKey = ''
-              try {
-                const config = JSON.parse((c.config as string) || '{}')
-                password = config.password || ''
-                privateKey = config.private_key || ''
-              } catch {
-                // 忽略解析错误
-              }
-              return {
-                id: (c.id as string) || '',
-                name: (c.name as string) || (c.host as string) || '',
-                host: (c.host as string) || '',
-                port: (c.port as number) || 22,
-                username: (c.username as string) || '',
-                password,
-                privateKey,
-              }
-            }),
-          )
-        }
-      } catch {
-        // 忽略
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [isVisible, connections.length])
-
-  // 实际用于 API 调用的 backend connectionId
-  const [currentConnId, setCurrentConnId] = useState<string | null>(null)
-  const [connecting, setConnecting] = useState(false)
-
-  // 可选主机列表：前端 store 优先，后端 API 作为 fallback
-  const availableHosts = useMemo(() => {
-    if (connections.length > 0) {
-      return connections.map((conn) => ({
-        id: conn.id,
-        name: conn.name || conn.host,
-        host: conn.host,
-        port: conn.port,
-        username: conn.username,
-        password: conn.password,
-        privateKey: conn.privateKey,
-      }))
-    }
-    return apiConnections.map((conn) => ({
-      id: conn.id,
-      name: conn.name || conn.host,
-      host: conn.host,
-      port: conn.port,
-      username: conn.username,
-      password: conn.password,
-      privateKey: conn.privateKey,
-    }))
-  }, [connections, apiConnections])
-
-  // 选中的主机
-  const [selectedHost, setSelectedHost] = useState<string | null>(() => connections[0]?.id ?? null)
-
-  // 实际主机 ID：selectedHost 优先，后端 fallback 兜底
-  const effectiveHost = selectedHost ?? availableHosts[0]?.id ?? null
-
-  // effectiveHost 变化时自动 ensure 连接
-  const ensureRef = useRef<ReturnType<typeof ensureSshConnection> | null>(null)
-  useEffect(() => {
-    if (!effectiveHost) return
-    const host = availableHosts.find((h) => h.id === effectiveHost)
-    if (!host) return
-
-    let cancelled = false
-    const run = async () => {
-      const existingSession = sessions.find((s) => s.connectionId === effectiveHost)
-      if (existingSession) {
-        if (!cancelled) setCurrentConnId(existingSession.id)
-        return
-      }
-
-      setConnecting(true)
-      setError(null)
-      try {
-        const p = ensureSshConnection({
-          host: host.host,
-          port: host.port,
-          username: host.username,
-          password: host.password,
-          privateKey: host.privateKey,
-        })
-        ensureRef.current = p
-        const connId = await p
-        if (!cancelled) setCurrentConnId(connId)
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : '连接失败'
-        if (!cancelled) {
-          setCurrentConnId(null)
-          setError(msg)
-        }
-      } finally {
-        if (!cancelled) setConnecting(false)
-      }
-    }
-    void run()
-    return () => {
-      cancelled = true
-    }
-  }, [effectiveHost, availableHosts, sessions])
+  // ── 统一主机选择器 ──
+  const {
+    hosts,
+    selectedId,
+    setSelectedId,
+    connectionId,
+    connecting,
+    error: sshError,
+    hostLabel,
+    hasHosts,
+  } = useSshHostSelector()
 
   const fetchContainers = useCallback(async () => {
-    if (!currentConnId) return
+    if (!connectionId) return
     setLoading(true)
     setError(null)
     try {
       const res = await authedFetch('/api/docker/ps', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ connectionId: currentConnId, all: true }),
+        body: JSON.stringify({ connectionId, all: true }),
       })
       const json = (await res.json()) as ApiResponse
       if (json.success) {
@@ -189,17 +62,17 @@ export default function DockerPage() {
     } finally {
       setLoading(false)
     }
-  }, [currentConnId])
+  }, [connectionId])
 
   const fetchImages = useCallback(async () => {
-    if (!currentConnId) return
+    if (!connectionId) return
     setLoading(true)
     setError(null)
     try {
       const res = await authedFetch('/api/docker/images', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ connectionId: currentConnId }),
+        body: JSON.stringify({ connectionId }),
       })
       const json = (await res.json()) as ApiResponse
       if (json.success) {
@@ -217,7 +90,6 @@ export default function DockerPage() {
                 CreatedAt: obj.CreatedAt || obj.created_at || '',
               }
             } catch {
-              // 非 JSON 行，跳过
               return null
             }
           })
@@ -233,17 +105,17 @@ export default function DockerPage() {
     } finally {
       setLoading(false)
     }
-  }, [currentConnId])
+  }, [connectionId])
 
   // Fetch data when tab or connection changes
   useEffect(() => {
-    if (!isVisible || !currentConnId) return
+    if (!isVisible || !connectionId) return
     const run = async () => {
       if (tab === 'containers') await fetchContainers()
       else if (tab === 'images') await fetchImages()
     }
     void run()
-  }, [isVisible, tab, currentConnId, fetchContainers, fetchImages])
+  }, [isVisible, tab, connectionId, fetchContainers, fetchImages])
 
   // Auto refresh
   useEffect(() => {
@@ -268,23 +140,31 @@ export default function DockerPage() {
         </div>
         <div className="flex items-center gap-2">
           {/* Host selector */}
-          {availableHosts.length > 0 && (
-            <select
-              value={effectiveHost || ''}
-              onChange={(e) => setSelectedHost(e.target.value)}
-              className="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-sm"
-            >
-              {availableHosts.map((h) => (
-                <option key={h.id} value={h.id}>
-                  {h.name}
-                </option>
-              ))}
-            </select>
+          {hosts.length > 0 && (
+            <div className="relative">
+              <select
+                value={selectedId || ''}
+                onChange={(e) => setSelectedId(e.target.value)}
+                className="appearance-none rounded border border-slate-700 bg-slate-800 px-2 py-1 pr-6 text-sm"
+              >
+                {hosts.map((h) => (
+                  <option key={h.id} value={h.id}>
+                    {h.source === 'test-config' ? '⚡ ' : ''}{h.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute top-1/2 right-1.5 h-3 w-3 -translate-y-1/2 text-slate-500" />
+            </div>
           )}
           {connecting && <span className="animate-pulse text-xs text-yellow-400">连接中...</span>}
+          {hostLabel && !connecting && (
+            <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-500">
+              {hostLabel}
+            </span>
+          )}
           <button
             onClick={() => (tab === 'containers' ? fetchContainers() : fetchImages())}
-            disabled={loading || !currentConnId}
+            disabled={loading || !connectionId}
             className="rounded p-1.5 hover:bg-slate-800 disabled:opacity-50"
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
@@ -299,21 +179,21 @@ export default function DockerPage() {
       </div>
 
       {/* Error */}
-      {error && error !== 'success' && (
+      {(error || sshError) && (error || sshError) !== 'success' && (
         <div className="mx-4 mt-2 flex items-center gap-2 rounded border border-red-800 bg-red-900/30 p-2 text-sm text-red-400">
           <AlertCircle className="h-4 w-4 shrink-0" />
-          {error}
+          {error || sshError}
         </div>
       )}
 
       {/* No connection — compact inline hint */}
-      {!currentConnId && !connecting && (
+      {!connectionId && !connecting && (
         <div className="flex items-center justify-center border-b border-slate-800 bg-slate-900/50 px-4 py-6 text-slate-500">
-          <p className="text-xs">
-            {availableHosts.length === 0
-              ? '请先在 SSH 页面添加并连接主机'
-              : '从顶部下拉框选择主机以连接'}
-          </p>
+          {hasHosts ? (
+            <p className="text-xs">从顶部下拉框选择主机以连接</p>
+          ) : (
+            <p className="text-xs">未找到可用主机，请先在 SSH 页面添加连接</p>
+          )}
         </div>
       )}
 
@@ -341,48 +221,44 @@ export default function DockerPage() {
       </div>
 
       {/* Content */}
-      <div className="min-h-0 flex-1 overflow-auto">
-        {!currentConnId ? null : tab === 'containers' ? (
-          <Suspense
-            fallback={
-              <div className="flex items-center justify-center p-8 text-slate-500">加载中...</div>
-            }
-          >
-            <DockerContainerList
-              containers={containers}
-              loading={loading}
-              connectionId={currentConnId}
-              onRefresh={fetchContainers}
-            />
-          </Suspense>
-        ) : tab === 'images' ? (
-          <Suspense
-            fallback={
-              <div className="flex items-center justify-center p-8 text-slate-500">加载中...</div>
-            }
-          >
-            <DockerImages
-              images={images}
-              loading={loading}
-              connectionId={currentConnId}
-              onRefresh={fetchImages}
-            />
-          </Suspense>
-        ) : tab === 'compose' ? (
-          <Suspense
-            fallback={
-              <div className="flex items-center justify-center p-8 text-slate-500">加载中...</div>
-            }
-          >
-            <DockerCompose connectionId={currentConnId} />
-          </Suspense>
+      <div className="min-h-0 flex-1 overflow-auto p-4">
+        {!connectionId && !connecting ? (
+          <div className="flex h-full items-center justify-center text-slate-500">
+            <p className="text-sm">选择主机后自动加载</p>
+          </div>
+        ) : connecting ? (
+          <div className="flex h-full items-center justify-center">
+            <div className="flex flex-col items-center gap-3">
+              <RefreshCw className="h-6 w-6 animate-spin text-cyan-400" />
+              <p className="text-sm text-slate-400">正在连接 SSH...</p>
+            </div>
+          </div>
         ) : (
           <Suspense
             fallback={
-              <div className="flex items-center justify-center p-8 text-slate-500">加载中...</div>
+              <div className="flex h-full items-center justify-center">
+                <RefreshCw className="h-6 w-6 animate-spin text-slate-500" />
+              </div>
             }
           >
-            <DockerMonitor connectionId={currentConnId} containers={containers} />
+            {tab === 'containers' && (
+              <DockerContainerList
+                connectionId={connectionId!}
+                containers={containers}
+                loading={loading}
+                onRefresh={fetchContainers}
+              />
+            )}
+            {tab === 'images' && (
+              <DockerImages
+                connectionId={connectionId!}
+                images={images}
+                loading={loading}
+                onRefresh={fetchImages}
+              />
+            )}
+            {tab === 'compose' && <DockerCompose connectionId={connectionId!} />}
+            {tab === 'monitor' && <DockerMonitor connectionId={connectionId!} containers={containers} />}
           </Suspense>
         )}
       </div>

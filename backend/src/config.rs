@@ -24,7 +24,21 @@ impl AppConfig {
 
         let frontend_dist = std::env::var("FRONTEND_DIST").map(PathBuf::from).unwrap_or_else(|_| {
             let cwd = std::env::current_dir().unwrap_or_default();
-            cwd.join("frontend").join("dist")
+
+            // 1. cwd/frontend/dist — works when backend binary runs from project root
+            let primary = cwd.join("frontend").join("dist");
+            if primary.exists() {
+                return primary;
+            }
+
+            // 2. ../frontend/dist — works when binary runs from backend/ subdir
+            let sibling = cwd.parent().unwrap_or(&cwd).join("frontend").join("dist");
+            if sibling.exists() {
+                return sibling;
+            }
+
+            // 3. Fallback to primary even if missing (error will surface at runtime)
+            primary
         });
 
         let plugins_dir = std::env::var("PLUGINS_DIR").map(PathBuf::from).unwrap_or_else(|_| {

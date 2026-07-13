@@ -1,7 +1,6 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { Zap, Terminal, Download, Upload, ArrowLeft, WifiOff } from 'lucide-react'
-import { useSshStore } from '../../stores/ssh-store'
-import { ensureSshConnection } from '../../services/ssh-ensure'
+import { useSshHostSelector } from '../../hooks/useSshHostSelector'
 import { useCommands } from './useCommands'
 import CommandsList from './CommandsList'
 import CommandOutput from './CommandOutput'
@@ -10,31 +9,12 @@ import VariableModal from './VariableModal'
 import type { QuickCommand } from './index'
 
 export default function CommandsPage() {
-  const sessions = useSshStore((s) => s.sessions)
-  const savedConnections = useSshStore((s) => s.connections)
-
-  // 自动 ensure 第一个已保存的连接，返回 connectionId
-  const [autoConnId, setAutoConnId] = useState<string | null>(null)
-  const ensuredRef = useRef(false)
-  useEffect(() => {
-    if (ensuredRef.current || savedConnections.length === 0 || autoConnId) return
-    ensuredRef.current = true
-    const first = savedConnections[0]!
-    ensureSshConnection({
-      host: first.host,
-      port: first.port,
-      username: first.username,
-      password: first.password,
-      privateKey: first.privateKey,
-    })
-      .then((connId) => setAutoConnId(connId))
-      .catch(() => {
-        /* 静默失败 */
-      })
-  }, [savedConnections, autoConnId])
-
-  // 优先用 session，其次用自动 ensure 的
-  const connectionId = sessions[0]?.id ?? autoConnId ?? null
+  // ── 统一主机选择器 ──
+  const {
+    connectionId,
+    connecting,
+    hostLabel,
+  } = useSshHostSelector()
 
   const {
     customCommands,
@@ -194,9 +174,17 @@ export default function CommandsPage() {
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-700/50 bg-slate-900/80 px-4 py-2">
         <Zap size={18} className="text-amber-400" />
         <h1 className="text-sm font-semibold text-slate-200">脚本模板库</h1>
-        {!hasConnection && (
+        {!hasConnection && !connecting && (
           <span className="flex items-center gap-1 rounded bg-amber-900/30 px-1.5 py-0.5 text-[10px] text-amber-400">
             <WifiOff size={10} /> 未连接
+          </span>
+        )}
+        {connecting && (
+          <span className="text-[10px] text-yellow-400">连接中...</span>
+        )}
+        {hostLabel && hasConnection && (
+          <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-500">
+            {hostLabel}
           </span>
         )}
 
