@@ -12,6 +12,8 @@ import {
 } from 'lucide-react'
 import { useAppStore } from '../../stores/app-store'
 import { useAlertStore } from '../../stores/alert-store'
+import { useSshStore } from '../../stores/ssh-store'
+import { ensureSshConnection } from '../../services/ssh-ensure'
 import { authedFetch } from '../../services/auth'
 import AlertSettings from './AlertSettings'
 import AlertHistory from './AlertHistory'
@@ -288,6 +290,26 @@ export default function MonitorPage() {
   const [health, setHealth] = useState<HealthData | null>(null)
   const [healthError, setHealthError] = useState(false)
   const alertHistory = useAlertStore((s) => s.history)
+  const savedConnections = useSshStore((s) => s.connections)
+
+  // 确保所有已保存的主机在后端有 SSH 连接（首次加载时自动连接）
+  const ensuredRef = useRef(false)
+  useEffect(() => {
+    if (ensuredRef.current || savedConnections.length === 0) return
+    ensuredRef.current = true
+    // 并行 ensure 所有已保存的主机（有去重，不会重复创建）
+    for (const conn of savedConnections) {
+      ensureSshConnection({
+        host: conn.host,
+        port: conn.port,
+        username: conn.username,
+        password: conn.password,
+        privateKey: conn.privateKey,
+      }).catch(() => {
+        /* 静默失败，健康检查会显示离线 */
+      })
+    }
+  }, [savedConnections])
 
   // 从后端 /api/hosts/health 获取所有主机列表（包括离线的）
   const scanHosts = useCallback(async () => {

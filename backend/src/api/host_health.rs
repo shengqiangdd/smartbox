@@ -70,22 +70,31 @@ pub struct ProcInfo {
 pub async fn get_all_health(
     State(state): State<Arc<AppState>>,
 ) -> Result<ApiResponse<Vec<HostHealth>>, AppError> {
-    let hosts: Vec<(String, HostInfo)> = state
-        .connections
-        .iter()
-        .map(|entry| {
-            let conn = entry.value();
-            (
-                entry.key().clone(),
-                HostInfo {
-                    host: conn.host.clone(),
-                    port: conn.port,
-                    username: conn.username.clone(),
-                    session: conn.session.clone(),
-                },
-            )
-        })
-        .collect();
+    // Deduplicate by (host, port, username) — multiple sessions to the same
+    // host (e.g. multiple SSH terminal tabs) should only produce one health entry.
+    // Prefer the entry that has a live session.
+    let mut best: std::collections::HashMap<(String, u16, String), (String, HostInfo)> =
+        std::collections::HashMap::new();
+    for entry in state.connections.iter() {
+        let conn = entry.value();
+        let key = (conn.host.clone(), conn.port, conn.username.clone());
+        let has_session = conn.session.is_some();
+        let dominated = match best.get(&key) {
+            Some((_, existing)) => !existing.session.is_some() && has_session,
+            None => true,
+        };
+        if dominated {
+            let info = HostInfo {
+                host: conn.host.clone(),
+                port: conn.port,
+                username: conn.username.clone(),
+                session: conn.session.clone(),
+            };
+            best.insert(key, (entry.key().clone(), info));
+        }
+    }
+
+    let hosts: Vec<(String, HostInfo)> = best.into_values().collect();
 
     if hosts.is_empty() {
         return Ok(ApiResponse::success(Vec::new()));

@@ -5,13 +5,11 @@ import {
   PanelRightOpen,
   Menu,
   PlugZap,
-  Brain,
   X,
   Terminal,
 } from 'lucide-react'
 import { useAppStore, type SplitDef } from '../../stores/app-store'
 import { useSshStore, decryptConnection } from '../../stores/ssh-store'
-import { getWsClient, type WsClient, type WsStatus } from '../../services/websocket'
 import {
   sessionCredentials,
   setSessionCredentials,
@@ -34,8 +32,6 @@ export default function SshPlaceholder() {
   const removeSession = useSshStore((s) => s.removeSession)
   const removeSshSession = useAppStore((s) => s.removeSshSession)
 
-  const [wsStatus, setWsStatus] = useState<WsStatus>('disconnected')
-  const [wsError, setWsError] = useState<string | null>(null)
   const [connecting, setConnecting] = useState(false)
   // ─── 持久化状态（切换标签页后恢复） ───
   const sftpOpen = useAppStore((s) => s.sshSftpOpen)
@@ -49,30 +45,6 @@ export default function SshPlaceholder() {
   const [aiOpen, setAiOpen] = useState(false)
   const aiEnabled = useAiStore((s) => s.config.enabled)
   const [connectError, setConnectError] = useState<string | null>(null)
-
-  // 用 ref 追踪连接状态，防止闭包过期
-  const wsClientRef = useRef<WsClient | null>(null)
-
-  // 监听 WebSocket 状态（确保 UI 始终反映实际连接状态）
-  useEffect(() => {
-    getWsClient().then((client) => {
-      wsClientRef.current = client
-      client.connect()
-      // 立即同步当前状态（当 onStatus 注册时 WS 可能已连接）
-      setWsStatus(client.status)
-      setWsError(client.lastError)
-      client.onStatus((status) => {
-        setWsStatus(status)
-        // 连接成功时清除错误
-        if (status === 'connected') {
-          setWsError(null)
-        }
-      })
-      client.onError((error) => {
-        setWsError(error)
-      })
-    })
-  }, [])
 
   // ─── 建立 SSH 连接（防重复点击） ───
 
@@ -104,9 +76,6 @@ export default function SshPlaceholder() {
         setConnectError(null) // 清除之前的错误
 
         // 存储解密凭据（Terminal 组件会使用它建立独立 WS 连接）
-        // 注意：不再检查共享 WS 状态，因为每个 Terminal 有自己的 WS 连接。
-        // 共享 WS 会在第一个终端连接后被后端阻塞（handle_terminal_connect 接管 I/O），
-        // 如果在此检查会导致后续连接/按钮操作全部失败。
         setSessionCredentials(sessionId, {
           host: conn.host,
           port: conn.port,
@@ -189,16 +158,19 @@ export default function SshPlaceholder() {
     [handleConnect, setSplits],
   )
 
-  // ─── 断开连接 ───
+  // ─── 断开连接（通过 REST API 而非共享 WS） ───
 
   const handleDisconnect = useCallback(
     (sessionId: string) => {
       // 清理凭据
       deleteSessionCredentials(sessionId)
-      // 通过共享 WS 发送 disconnect（如果后端仍在该连接上）
-      wsClientRef.current?.send({
-        type: 'disconnect',
-        connectionId: sessionId,
+      // 通过 REST API 断开后端连接
+      fetch('/api/ssh/disconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connection_id: sessionId }),
+      }).catch(() => {
+        // 忽略断开连接的错误 — 连接可能已断开
       })
       removeSession(sessionId)
       removeSshSession(sessionId)
@@ -394,33 +366,13 @@ export default function SshPlaceholder() {
       : connections.map((c) => ({ id: c.id, name: c.name }))
 
   // ─── 命令同步广播 ───
-  // 用 ref 跟踪最新的 splits，避免 useCallback 闭包过期
-  const splitsRef = useRef(splits)
-  useEffect(() => {
-    splitsRef.current = splits
-  }, [splits])
-
-  const handleTerminalData = useCallback((sessionId: string, data: string) => {
-    // 查找这个 session 所在的分屏和同步组
-    const currentSplits = splitsRef.current
-    const split = currentSplits.find((s) => s.sessionId === sessionId)
-    if (!split?.syncGroup) return
-    // 广播到同组其他分屏
-    const groupMembers = currentSplits.filter(
-      (s) => s.syncGroup === split.syncGroup && s.sessionId !== sessionId,
-    )
-    for (const member of groupMembers) {
-      wsClientRef.current?.send({
-        type: 'exec',
-        connectionId: member.sessionId,
-        data,
-      })
-    }
+  // TODO: 分屏命令同步需要每个终端的 WS 引用，当前暂不实现。
+  // 每个 Terminal 创建独立 WS，父组件无法直接访问它们的 WS client。
+  // 替代方案：通过 BroadcastChannel 或后端 relay 实现。
+   
+  const handleTerminalData = useCallback((_sessionId: string, _data: string) => {
+    // 命令同步功能暂未实现（每个终端使用独立 WS 连接）
   }, [])
-  // 在 TerminalView 的 onData 中注入 handleTerminalData
-  // 实际上 TerminalView 内部已经有 onData listener，我们通过修改 wsClient 来注入
-  // 更好的方式：直接在 TerminalView 组件上加 onData prop
-  // 但 TerminalView 不支持——我们后面可以加，现在先不做，后续优化
 
   // ─── 渲染 ───
 
@@ -429,7 +381,6 @@ export default function SshPlaceholder() {
   )
 
   // ─── 兜底：页面刷新后内存 Map 为空时自动解密凭据 ───
-  // 用 ref 收集异步解密结果，避免在 effect 中直接 setState
   const [resolvedCreds, setResolvedCreds] = useState<Record<
     string,
     import('./Terminal').SshCredentials
@@ -454,47 +405,6 @@ export default function SshPlaceholder() {
     }
   }, [activeSessionId, sessions])
 
-  const showWsIndicator = () => (
-    <button
-      onClick={() => {
-        if (wsStatus === 'disconnected') {
-          wsClientRef.current?.reconnect()
-        }
-      }}
-      className="flex min-h-[36px] items-center gap-1.5 px-2 py-1.5"
-      title={
-        wsStatus === 'disconnected'
-          ? wsError
-            ? `${wsError} — 点击重连`
-            : '点击重连'
-          : wsStatus === 'connected'
-            ? 'WebSocket 已连接'
-            : '正在连接...'
-      }
-    >
-      <span
-        className={`inline-block h-2 w-2 shrink-0 rounded-full ${
-          wsStatus === 'connected'
-            ? 'bg-emerald-500'
-            : wsStatus === 'connecting' || wsStatus === 'reconnecting'
-              ? 'animate-pulse bg-amber-500'
-              : 'bg-red-500'
-        }`}
-      />
-      <span className="text-[11px] text-slate-500">
-        {wsStatus === 'connected'
-          ? '已连接'
-          : wsStatus === 'connecting'
-            ? '连接中...'
-            : wsStatus === 'reconnecting'
-              ? '重连中...'
-              : wsError
-                ? '连接失败'
-                : '未连接'}
-      </span>
-    </button>
-  )
-
   return (
     <div className="relative flex h-dvh flex-col overflow-hidden lg:h-auto lg:flex-1">
       {/* 移动端侧边栏遮罩 */}
@@ -512,7 +422,7 @@ export default function SshPlaceholder() {
       >
         <div className="flex h-full flex-col">
           <div className="flex items-center justify-between border-b border-slate-700/50 px-3 py-1.5">
-            {showWsIndicator()}
+            <span className="text-[11px] text-slate-500">连接列表</span>
             <button
               onClick={() => setSidebarOpen(false)}
               className="btn-icon text-slate-500 hover:text-slate-300 md:hidden"
@@ -580,8 +490,6 @@ export default function SshPlaceholder() {
                 ))}
               </div>
 
-              <div className="ml-auto hidden items-center md:flex">{showWsIndicator()}</div>
-
               {/* 工具栏按钮组 */}
               <div className="flex shrink-0 items-center">
                 <button
@@ -606,7 +514,7 @@ export default function SshPlaceholder() {
                     }`}
                     title={aiOpen ? '关闭 AI' : 'AI 助手'}
                   >
-                    <Brain size={14} />
+                    <PlugZap size={14} />
                     <span className="hidden md:inline">AI</span>
                   </button>
                 )}
@@ -680,7 +588,7 @@ export default function SshPlaceholder() {
                     />
                   ) : (
                     <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
-                      <Brain size={32} className="mb-3 text-slate-600" />
+                      <PlugZap size={32} className="mb-3 text-slate-600" />
                       <p className="text-sm text-slate-400">请先连接服务器</p>
                       <p className="mt-1 text-xs text-slate-600">AI Agent 需要 SSH 连接才能使用</p>
                     </div>
@@ -693,57 +601,7 @@ export default function SshPlaceholder() {
           <div className="flex min-h-0 flex-1 items-center justify-center">
             <div className="max-w-full px-4 text-center">
               <Server size={48} className="mx-auto mb-3 text-slate-600" />
-              {/* WebSocket 未连接时显示详细错误和重连按钮 */}
-              {wsStatus !== 'connected' ? (
-                <>
-                  <p className="text-sm text-slate-500">
-                    {wsStatus === 'connecting' || wsStatus === 'reconnecting'
-                      ? '正在连接后端服务...'
-                      : wsError
-                        ? '无法连接到后端服务'
-                        : 'WebSocket 未连接'}
-                  </p>
-                  {wsError && (
-                    <div className="mx-auto mt-3 max-w-sm rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2">
-                      <p className="text-xs text-red-400">{wsError}</p>
-                      <details className="mt-2 text-left">
-                        <summary className="cursor-pointer text-xs text-red-500/70 hover:text-red-400">
-                          排查建议
-                        </summary>
-                        <ul className="mt-1 space-y-1 text-left text-xs text-slate-500">
-                          <li>• 确认 Wrench 后端服务正在运行</li>
-                          <li>• 检查端口 3001 是否被防火墙拦截</li>
-                          <li>• 查看浏览器控制台获取详细错误</li>
-                          <li>
-                            • 运行{' '}
-                            <code className="rounded bg-slate-800 px-1">docker logs wrench</code>{' '}
-                            检查容器日志
-                          </li>
-                        </ul>
-                      </details>
-                    </div>
-                  )}
-                  <button
-                    onClick={() => wsClientRef.current?.reconnect()}
-                    disabled={wsStatus === 'connecting' || wsStatus === 'reconnecting'}
-                    className="btn btn-primary mt-4 min-h-[44px] px-4"
-                  >
-                    {wsStatus === 'connecting' || wsStatus === 'reconnecting' ? (
-                      <>
-                        <span className="animate-spin">⟳</span>
-                        <span>连接中...</span>
-                      </>
-                    ) : (
-                      <>
-                        <PlugZap size={16} />
-                        <span>重新连接</span>
-                      </>
-                    )}
-                  </button>
-                </>
-              ) : (
-                <p className="text-sm text-slate-500">选择一个连接或新建连接</p>
-              )}
+              <p className="text-sm text-slate-500">选择一个连接或新建连接</p>
               {/* 显示 SSH 连接错误信息 */}
               {connectError && (
                 <div className="mx-auto mt-3 max-w-sm rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2">
@@ -760,17 +618,18 @@ export default function SshPlaceholder() {
                 onClick={() => setSidebarOpen(true)}
                 className="btn btn-primary mt-4 min-h-[44px] px-4 md:hidden"
               >
-                <PlugZap size={16} />
-                <span>查看连接列表</span>
+                <Menu size={16} />
+                <span>打开连接列表</span>
               </button>
+              {/* 桌面端：直接显示快速连接选项 */}
               {connections.length > 0 && (
-                <div className="mt-4 hidden space-y-1 md:block">
+                <div className="mt-4 hidden md:block">
+                  <p className="mb-2 text-xs text-slate-600">快速连接</p>
                   {connections.map((conn) => (
                     <button
                       key={conn.id}
                       onClick={() => handleDirectConnect(conn.id)}
-                      disabled={connecting}
-                      className="btn btn-ghost mx-auto block w-64 text-left"
+                      className="mb-1 block w-full rounded-md border border-slate-700/50 bg-slate-800/50 px-3 py-2 text-left text-sm transition-colors hover:bg-slate-700/50"
                     >
                       <div className="flex items-center gap-2">
                         <span className="text-sm">{conn.name}</span>

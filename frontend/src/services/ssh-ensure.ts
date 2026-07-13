@@ -6,6 +6,7 @@
  */
 
 import { authedFetch } from './auth'
+import { decryptField } from './secure-store'
 
 const _pending: Record<string, Promise<string>> = {}
 
@@ -22,6 +23,9 @@ export interface SshCredentials {
  * 如果已有活跃连接（后端 state.connections），直接返回 connectionId；
  * 否则通过 REST API 创建新连接。
  *
+ * 注意：密码/私钥可能来自客户端 SQLite（加密存储），
+ * 本函数会自动解密后再发送给后端。
+ *
  * @param creds - SSH 凭据（host/username/password 或 privateKey）
  * @returns connectionId — 可用于后续 REST API 调用
  * @throws 如果连接失败
@@ -36,6 +40,10 @@ export async function ensureSshConnection(creds: SshCredentials): Promise<string
 
   const promise = (async () => {
     try {
+      // 自动解密加密存储的密码/私钥
+      const password = await decryptField(creds.password)
+      const privateKey = await decryptField(creds.privateKey)
+
       const res = await authedFetch('/api/ssh/ensure', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -43,8 +51,8 @@ export async function ensureSshConnection(creds: SshCredentials): Promise<string
           host: creds.host,
           port: creds.port || 22,
           username: creds.username,
-          password: creds.password || '',
-          privateKey: creds.privateKey || '',
+          password: password || '',
+          privateKey: privateKey || '',
         }),
       })
       const json = (await res.json()) as {

@@ -1,6 +1,7 @@
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { Zap, Terminal, Download, Upload, ArrowLeft, WifiOff } from 'lucide-react'
 import { useSshStore } from '../../stores/ssh-store'
+import { ensureSshConnection } from '../../services/ssh-ensure'
 import { useCommands } from './useCommands'
 import CommandsList from './CommandsList'
 import CommandOutput from './CommandOutput'
@@ -10,9 +11,30 @@ import type { QuickCommand } from './index'
 
 export default function CommandsPage() {
   const sessions = useSshStore((s) => s.sessions)
+  const savedConnections = useSshStore((s) => s.connections)
 
-  // 直接从已有 sessions 获取连接 ID（DockerPage 会负责 ensure 连接）
-  const connectionId = sessions[0]?.id ?? null
+  // 自动 ensure 第一个已保存的连接，返回 connectionId
+  const [autoConnId, setAutoConnId] = useState<string | null>(null)
+  const ensuredRef = useRef(false)
+  useEffect(() => {
+    if (ensuredRef.current || savedConnections.length === 0 || autoConnId) return
+    ensuredRef.current = true
+    const first = savedConnections[0]!
+    ensureSshConnection({
+      host: first.host,
+      port: first.port,
+      username: first.username,
+      password: first.password,
+      privateKey: first.privateKey,
+    })
+      .then((connId) => setAutoConnId(connId))
+      .catch(() => {
+        /* 静默失败 */
+      })
+  }, [savedConnections, autoConnId])
+
+  // 优先用 session，其次用自动 ensure 的
+  const connectionId = sessions[0]?.id ?? autoConnId ?? null
 
   const {
     customCommands,
