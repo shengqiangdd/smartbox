@@ -100,6 +100,7 @@ export class WsClient {
       if (state === WebSocket.OPEN || state === WebSocket.CONNECTING || state === WebSocket.CLOSING)
         return
     }
+    console.log(`[WsClient] connect() — url=${this.url.split('?')[0]}, status=${this._status}`)
     this.setStatus('connecting')
     this._lastError = null
 
@@ -111,8 +112,10 @@ export class WsClient {
 
     try {
       this.ws = new WebSocket(this.url)
+      console.log(`[WsClient] WebSocket created, readyState=${this.ws.readyState}`)
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : 'WebSocket 创建失败'
+      console.error(`[WsClient] WebSocket constructor failed:`, e)
       this.setError(errMsg)
       this.setStatus('disconnected')
       this.scheduleReconnect()
@@ -134,6 +137,7 @@ export class WsClient {
     }, WS_CONNECT_TIMEOUT_MS)
 
     ws.onopen = () => {
+      console.log(`[WsClient] onopen — connected to ${this.url.split('?')[0]}`)
       if (this.connectTimeoutTimer) {
         clearTimeout(this.connectTimeoutTimer)
         this.connectTimeoutTimer = null

@@ -381,6 +381,7 @@ export default function TerminalView({
 
       connectingRef.current = true
       term.write('\r\n\x1b[33m[连接中] 正在连接 ' + creds.host + ' ...\x1b[0m\r\n')
+      console.log(`[Terminal] initTerminalConnection started for ${creds.host}:${creds.port}`)
 
       // 前端 SSH 连接超时检测（后端 15s 超时，前端给 20s 容差）
       const sshTimeout = setTimeout(() => {
@@ -390,18 +391,22 @@ export default function TerminalView({
             term.write(
               '\r\n\x1b[31m[超时] SSH 连接超时，请检查主机地址、端口和凭据是否正确\x1b[0m\r\n',
             )
+            console.error(`[Terminal] SSH connection timeout for ${creds.host}`)
           }
         }
       }, 20_000)
 
       try {
+        console.log('[Terminal] Calling getToken()...')
         const token = await getToken()
+        console.log(`[Terminal] Got token: ${token.substring(0, 20)}... (length=${token.length})`)
         if (gen !== genRef.current) {
           clearTimeout(sshTimeout)
           return
         }
 
         const termWs = createTerminalWsClient(token)
+        console.log(`[Terminal] Created WsClient, URL: ${termWs['url'].split('?')[0]}`)
         termWsRef.current = termWs
 
         // 注册事件处理器（在连接前注册，确保不遗漏）
@@ -484,11 +489,13 @@ export default function TerminalView({
         })
 
         // 连接 WebSocket
-        console.log(`[Terminal] Connecting to WebSocket: ${token.substring(0, 20)}...`)
+        const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws?token=${token.substring(0, 20)}...`
+        console.log(`[Terminal] Connecting WebSocket to: ${wsUrl}`)
         termWs.connect()
 
         // 等待连接建立后发送 SSH connect 消息
         const unsub = termWs.onStatus((status) => {
+          console.log(`[Terminal] onStatus: ${status}`)
           if (status === 'connected') {
             unsub()
             if (gen !== genRef.current) return
