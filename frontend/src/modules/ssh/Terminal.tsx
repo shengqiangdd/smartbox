@@ -497,10 +497,15 @@ export default function TerminalView({
         // 先注册 onStatus handler，再 connect()，避免错过 'connected' 状态
         // （某些浏览器 onopen 可能在微任务内同步触发，connect 后再注册 handler 会丢失事件）
         console.log(`[Terminal] register onStatus, current ws status: ${termWs['status']}`)
+        // ⚠️ 使用 ref 包裹 unsub 避免 TDZ 问题：
+        // onStatus 在注册时会同步触发 handler（用当前状态），
+        // 而 handler 内需要调用 unsub()，但 const unsub 尚未赋值。
+        // 通过 ref 间接引用，绕过 const 的时域死区（Temporal Dead Zone）。
+        const unsubRef: { current: (() => void) | null } = { current: null }
         const unsub = termWs.onStatus((status) => {
           console.log(`[Terminal] onStatus: ${status}`)
           if (status === 'connected') {
-            unsub()
+            unsubRef.current?.()
             if (gen !== genRef.current) return
             console.log(`[Terminal] ✅ WS connected, sending SSH connect to ${creds.host}:${creds.port}`)
             termWs.send({
@@ -514,7 +519,7 @@ export default function TerminalView({
               sudoPassword: creds.sudoPassword || '',
             })
           } else if (status === 'disconnected') {
-            unsub()
+            unsubRef.current?.()
             clearTimeout(sshTimeout)
             const lastErr = termWs.lastError || '未知原因'
             console.error(
@@ -528,6 +533,7 @@ export default function TerminalView({
             onDisconnectedRef.current?.()
           }
         })
+        unsubRef.current = unsub
 
         // 注册完毕后再连接
         console.log(`[Terminal] Calling termWs.connect()...`)
