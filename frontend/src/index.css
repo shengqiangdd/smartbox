@@ -191,8 +191,7 @@ html:not(.dark) {
     -webkit-overflow-scrolling: touch;
   }
 
-  /* ── SFTP 文件条目：彻底禁止移动端长按触发浏览器默认行为 ── */
-  /* 使用全属性覆盖 + 不同浏览器前缀 + 伪元素覆盖，兼容所有 Android WebView */
+  /* ── SFTP 文件条目：禁止文本选择 + 长按，但允许正常 tap/click ── */
   .sftp-file-entry,
   .sftp-file-entry * {
     -webkit-touch-callout: none !important;
@@ -200,12 +199,9 @@ html:not(.dark) {
     -moz-user-select: none !important;
     -ms-user-select: none !important;
     user-select: none !important;
-    touch-action: none !important;
-    -webkit-text-size-adjust: none !important;
-    text-size-adjust: none !important;
-    /* 阻止所有浏览器的长按高亮和选择行为 */
+    /* manipulation = 允许 tap/click，禁止 long-press 触发浏览器默认行为 */
+    touch-action: manipulation !important;
     -webkit-tap-highlight-color: transparent !important;
-    -webkit-touch-callout: none !important;
   }
 
   /* 伪元素覆盖：部分 Android 浏览器通过 ::before/::after 触发选择 */
@@ -213,7 +209,6 @@ html:not(.dark) {
   .sftp-file-entry::after {
     -webkit-user-select: none !important;
     user-select: none !important;
-    touch-action: none !important;
   }
 }
 
@@ -705,7 +700,7 @@ html:not(.dark) .markdown-preview pre.cm-code-block code {
  * 关键：touch-action: manipulation 告诉浏览器底层渲染引擎
  * 在此元素上不处理 long press 手势（即不弹出原生文本选择/操作菜单）。
  * 这是 CSS Touch Events 规范的底层控制，比 JS preventDefault 更可靠。
- * pan-y 保留纵向滚动能力。
+ * 不会影响 tap/click 正常触发。
  */
 .sftp-file-entry,
 .sftp-file-entry * {
@@ -716,9 +711,8 @@ html:not(.dark) .markdown-preview pre.cm-code-block code {
 }
 
 /*
- * 文件列表滚动容器：只允许纵向滚动，禁止浏览器接管 long press
+ * 文件列表滚动容器：允许纵向滚动 + 正常 tap
  * touch-action: pan-y pinch-zoom 是最安全的组合
- * （pinch-zoom 让双指缩放仍然正常，同时 long press 被禁用）
  */
 .sftp-file-list {
   touch-action: pan-y pinch-zoom !important;

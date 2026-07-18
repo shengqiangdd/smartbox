@@ -1276,30 +1276,23 @@ function SftpBrowserInner({
     return () => window.removeEventListener('keydown', handler)
   }, [selectedPaths, entries, clipboard, handleCopy, handleCut, handlePaste, selectAll, batchDelete, clearSelection])
 
-  // ─── 移动端禁用浏览器默认长按行为（5 层防御） ───
-  // 国产 Android 浏览器（OPPO/华为/小米等）对 CSS touch-action 和 user-select
-  // 支持不一致，必须用 JS 多层拦截才能可靠阻止。
-  // 层1: document touchstart capture + passive:false → preventDefault 阻止浏览器启动选择
-  // 层2: selectionchange → 清除意外产生的文本选择
-  // 层3: touchend → 清除残留选择
-  // 层4: pointerdown → 阻止 pointer 事件触发文本选择
-  // 层5: CSS 已设置 touch-action: none + user-select: none（兜底）
+  // ─── 移动端禁用浏览器默认长按行为（兼容所有 Android 浏览器） ──
+  // 策略：只用 selectionchange + touchend 清除意外选择，
+  // 不在 touchstart/pointerdown 上 preventDefault（会阻止 click/tap 生成）。
+  // CSS touch-action: manipulation 已禁止 long-press 手势，JS 层仅做兜底。
   useEffect(() => {
     if (!isTouchDevice) return
 
-    // 记录当前活跃的触摸点信息
+    // 记录当前触摸是否在文件条目上
     let activeTouchEntry = false
 
-    // 层1: touchstart — 在 document capture 阶段拦截，阻止浏览器启动文本选择
+    // 层1: touchstart — 仅标记状态，不 preventDefault（避免阻止 click/tap）
     const handleTouchStart = (e: TouchEvent) => {
       const target = e.target as HTMLElement
       activeTouchEntry = !!target?.closest?.('.sftp-file-entry')
-      if (activeTouchEntry) {
-        e.preventDefault()
-      }
     }
 
-    // 层2: selectionchange — 清除意外产生的文本选择（部分浏览器在 touchstart preventDefault 后仍会触发）
+    // 层2: selectionchange — 清除意外产生的文本选择
     const handleSelectionChange = () => {
       if (!activeTouchEntry) return
       const sel = window.getSelection()
@@ -1311,7 +1304,6 @@ function SftpBrowserInner({
     // 层3: touchend — 清除残留选择，重置状态
     const handleTouchEnd = () => {
       activeTouchEntry = false
-      // 延迟清除，因为部分浏览器在 touchend 后才产生选择
       setTimeout(() => {
         const sel = window.getSelection()
         if (sel && !sel.isCollapsed) {
@@ -1320,29 +1312,17 @@ function SftpBrowserInner({
       }, 50)
     }
 
-    // 层4: pointerdown — 阻止 pointer 事件（部分 Android 浏览器通过 pointer 事件链触发选择）
-    const handlePointerDown = (e: PointerEvent) => {
-      const target = e.target as HTMLElement
-      if (target?.closest?.('.sftp-file-entry')) {
-        e.preventDefault()
-      }
-    }
-
-    // 注册事件监听
-    // touchstart 必须 passive: false + capture: true
-    document.addEventListener('touchstart', handleTouchStart, { capture: true, passive: false } as AddEventListenerOptions)
+    // 注册事件监听（touchstart 用 passive:true 允许浏览器正常处理 tap）
+    document.addEventListener('touchstart', handleTouchStart, { capture: true, passive: true })
     document.addEventListener('selectionchange', handleSelectionChange, { capture: true })
     document.addEventListener('touchend', handleTouchEnd, { capture: true })
     document.addEventListener('touchcancel', handleTouchEnd, { capture: true })
-    // pointerdown 也需要 passive: false 才能 preventDefault
-    document.addEventListener('pointerdown', handlePointerDown, { capture: true, passive: false } as AddEventListenerOptions)
 
     return () => {
-      document.removeEventListener('touchstart', handleTouchStart, { capture: true } as EventListenerOptions)
+      document.removeEventListener('touchstart', handleTouchStart, { capture: true })
       document.removeEventListener('selectionchange', handleSelectionChange, { capture: true })
       document.removeEventListener('touchend', handleTouchEnd, { capture: true })
       document.removeEventListener('touchcancel', handleTouchEnd, { capture: true })
-      document.removeEventListener('pointerdown', handlePointerDown, { capture: true } as EventListenerOptions)
     }
   }, [isTouchDevice])
 
@@ -1566,7 +1546,7 @@ ${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n...还有 ${errors.leng
         <div
           key={entry.path}
           className={`sftp-file-entry flex cursor-pointer items-center gap-2 px-2 py-1 text-xs transition-colors hover:bg-slate-700/30 ${isSelected ? 'bg-sky-900/20' : ''} ${isDir || (isSymlink && (entry.targetType === 'directory' || entry.targetType === 'unknown')) ? 'text-sky-300' : 'text-slate-300'}`}
-          style={{ height: 28, userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none', touchAction: 'none' as const }}
+          style={{ height: 28, userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none', touchAction: 'manipulation' as const }}
           onClick={(e) => {
             // 点击复选框区域不触发打开
             if ((e.target as HTMLElement).closest('[data-select]')) return
