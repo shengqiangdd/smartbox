@@ -4,7 +4,7 @@ export interface CommandItem {
   description?: string
   keywords: string[]
   icon?: string
-  category: '导航' | '主题' | '插件' | '工具'
+  category: '导航' | '主题' | '插件' | '工具' | 'AI'
   action: () => void
 }
 

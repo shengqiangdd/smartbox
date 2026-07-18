@@ -43,7 +43,21 @@ impl AppConfig {
 
         let plugins_dir = std::env::var("PLUGINS_DIR").map(PathBuf::from).unwrap_or_else(|_| {
             let cwd = std::env::current_dir().unwrap_or_default();
-            cwd.join("plugins")
+
+            // 1. cwd/plugins — works when binary runs from project root
+            let primary = cwd.join("plugins");
+            if primary.exists() {
+                return primary;
+            }
+
+            // 2. ../plugins — works when binary runs from backend/ subdir
+            let sibling = cwd.parent().unwrap_or(&cwd).join("plugins");
+            if sibling.exists() {
+                return sibling;
+            }
+
+            // 3. Fallback to primary even if missing (error will surface at runtime)
+            primary
         });
 
         let cors_origins = std::env::var("CORS_ORIGINS")

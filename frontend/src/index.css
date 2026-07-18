@@ -190,6 +190,31 @@ html:not(.dark) {
   .overflow-x-auto {
     -webkit-overflow-scrolling: touch;
   }
+
+  /* ── SFTP 文件条目：彻底禁止移动端长按触发浏览器默认行为 ── */
+  /* 使用全属性覆盖 + 不同浏览器前缀 + 伪元素覆盖，兼容所有 Android WebView */
+  .sftp-file-entry,
+  .sftp-file-entry * {
+    -webkit-touch-callout: none !important;
+    -webkit-user-select: none !important;
+    -moz-user-select: none !important;
+    -ms-user-select: none !important;
+    user-select: none !important;
+    touch-action: none !important;
+    -webkit-text-size-adjust: none !important;
+    text-size-adjust: none !important;
+    /* 阻止所有浏览器的长按高亮和选择行为 */
+    -webkit-tap-highlight-color: transparent !important;
+    -webkit-touch-callout: none !important;
+  }
+
+  /* 伪元素覆盖：部分 Android 浏览器通过 ::before/::after 触发选择 */
+  .sftp-file-entry::before,
+  .sftp-file-entry::after {
+    -webkit-user-select: none !important;
+    user-select: none !important;
+    touch-action: none !important;
+  }
 }
 
 /* ============================================

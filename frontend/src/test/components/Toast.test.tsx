@@ -6,6 +6,7 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { createRoot, type Root as _Root } from 'react-dom/client'
 import Toast from '../../components/Toast'
+import { emit } from '../../services/event-bus'
 
 let container: HTMLElement
 let root: _Root
@@ -30,11 +31,7 @@ async function render(el: React.ReactElement) {
 }
 
 function fireNotification(message: string, type: 'success' | 'error' | 'info' = 'info') {
-  window.dispatchEvent(
-    new CustomEvent('wrench-notification', {
-      detail: { message, type },
-    }),
-  )
+  emit('wrench-notification', { message, type })
 }
 
 async function waitForContent(text: string) {
@@ -72,11 +69,7 @@ describe('Toast', () => {
 
   it('ignores events without message', async () => {
     await render(<Toast />)
-    window.dispatchEvent(
-      new CustomEvent('wrench-notification', {
-        detail: { message: '', type: 'info' },
-      }),
-    )
+    emit('wrench-notification', { message: '', type: 'info' })
     await new Promise((r) => setTimeout(r, 50))
     expect(container.innerHTML).toBe('')
   })

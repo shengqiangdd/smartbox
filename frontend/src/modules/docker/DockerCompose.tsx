@@ -1,5 +1,6 @@
 import { memo, useCallback, useState, useEffect } from 'react'
 import { authedFetch } from '../../services/auth'
+import { notify } from '../../services/event-bus'
 import {
   Layers,
   RefreshCw,
@@ -15,11 +16,6 @@ import {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ApiResponse = { success?: boolean; data?: any; error?: string; msg?: string }
-
-function notify(message: string, type: 'success' | 'error' | 'info' = 'info') {
-  const ev = new CustomEvent('wrench-notification', { detail: { message, type } })
-  window.dispatchEvent(ev)
-}
 
 interface ComposeProject {
   path: string

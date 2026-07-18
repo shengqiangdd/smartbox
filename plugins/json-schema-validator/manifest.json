@@ -1,0 +1,13 @@
+{
+  "id": "json-schema-validator",
+  "name": "JSON Schema 验证器",
+  "version": "1.0.0",
+  "description": "JSON Schema Draft-07 在线验证，错误定位，自动生成 Schema，可视化 Schema",
+  "author": "Wrench",
+  "icon": "check-square",
+  "commands": [
+    { "id": "jsonschema-validate", "label": "验证 JSON", "description": "用 Schema 验证 JSON 数据", "icon": "check-square" },
+    { "id": "jsonschema-gen", "label": "生成 Schema", "description": "从 JSON 数据自动生成 Schema", "icon": "wand" }
+  ],
+  "panels": [{ "id": "jsonschema-panel", "title": "JSON Schema 验证器", "icon": "check-square" }]
+}

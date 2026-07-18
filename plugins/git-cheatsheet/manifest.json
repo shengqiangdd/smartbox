@@ -1,0 +1,13 @@
+{
+  "id": "git-cheatsheet",
+  "name": "Git 速查手册",
+  "version": "1.0.0",
+  "description": "Git 常用命令速查、交互式生成、分支管理、冲突解决指南",
+  "author": "Wrench",
+  "icon": "git-branch",
+  "commands": [
+    { "id": "git-cheatsheet", "label": "Git 速查", "description": "查看 Git 常用命令分类速查表", "icon": "git-branch" },
+    { "id": "git-interactive", "label": "Git 命令生成器", "description": "交互式生成复杂的 Git 命令", "icon": "terminal" }
+  ],
+  "panels": [{ "id": "git-panel", "title": "Git 速查手册", "icon": "git-branch" }]
+}

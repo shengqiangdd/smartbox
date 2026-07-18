@@ -57,12 +57,13 @@ export async function ensureSshConnection(creds: SshCredentials): Promise<string
       })
       const json = (await res.json()) as {
         success?: boolean
-        data?: { connection_id?: string; host?: string }
+        data?: { connection_id?: string; connectionId?: string; host?: string }
         error?: string
         msg?: string
       }
-      if (json.success && json.data?.connection_id) {
-        return json.data.connection_id
+      const cid = json.data?.connection_id ?? json.data?.connectionId
+      if (json.success && cid) {
+        return cid
       }
       throw new Error(json.error || json.msg || 'SSH 连接失败')
     } finally {

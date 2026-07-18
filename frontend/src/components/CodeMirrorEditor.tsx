@@ -170,7 +170,7 @@ export default function CodeMirrorEditor() {
         }
 
         // 策略二：WebSocket fallback（当 REST 失败且 WS 可用时）
-        if (!saved) {
+        if (!saved && wsClient?.status === 'connected') {
           try {
             await wsClient.request({
               type: 'sftp',
@@ -301,6 +301,10 @@ export default function CodeMirrorEditor() {
         }
       })
 
+      const contentLen = (activeTab.content || '').length
+      // 大文件优化：跳过耗时的扩展以减少初始化时间
+      const isLargeFile = contentLen > 500_000 // >500KB
+
       const state = EditorState.create({
         doc: activeTab.content || '',
         extensions: [
@@ -317,12 +321,15 @@ export default function CodeMirrorEditor() {
               },
             },
           ]),
-          history(),
+          // 大文件跳过 history（撤销历史对大文件无意义且占用大量内存）
+          ...(isLargeFile ? [] : [history()]),
           indentOnInput(),
           bracketMatching(),
           closeBrackets(),
-          foldGutter(),
-          autocompletion(),
+          // 大文件跳过代码折叠（解析整个文档的折叠区域很慢）
+          ...(isLargeFile ? [] : [foldGutter()]),
+          // 大文件跳过自动补全（减少解析开销）
+          ...(isLargeFile ? [] : [autocompletion()]),
           syntaxHighlighting(defaultHighlightStyle),
           oneDark,
           langExt as Extension,

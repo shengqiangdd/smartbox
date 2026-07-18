@@ -1,0 +1,13 @@
+{
+  "id": "csv-json",
+  "name": "CSV/JSON 互转",
+  "version": "1.0.0",
+  "description": "CSV 和 JSON 互相转换，支持自定义分隔符、自动检测、格式美化",
+  "author": "Wrench",
+  "icon": "repeat",
+  "commands": [
+    { "id": "csv2json", "label": "CSV → JSON", "description": "将 CSV 数据转换为 JSON", "icon": "arrow-right" },
+    { "id": "json2csv", "label": "JSON → CSV", "description": "将 JSON 数组转换为 CSV", "icon": "arrow-left" }
+  ],
+  "panels": [{ "id": "csvjson-panel", "title": "CSV/JSON 互转", "icon": "repeat" }]
+}

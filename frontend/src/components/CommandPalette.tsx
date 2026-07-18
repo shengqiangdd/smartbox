@@ -82,6 +82,19 @@ export default function CommandPalette() {
         setOpen(false)
       },
     },
+    // AI Agent 命令
+    {
+      id: 'open-agent',
+      label: '打开 AI Agent',
+      description: '打开 AI 智能助手侧边栏',
+      keywords: ['ai', 'agent', 'assistant', '助手', '智能', 'llm', 'chatgpt', '对话'],
+      icon: 'Brain',
+      category: 'AI',
+      action: () => {
+        useAppStore.getState().setAgentOpen(true)
+        setOpen(false)
+      },
+    },
     // 主题命令
     {
       id: 'theme-dark',

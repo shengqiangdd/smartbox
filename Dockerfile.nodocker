@@ -12,7 +12,7 @@ RUN groupadd -r wrench && useradd -r -g wrench -m -d /app wrench
 
 WORKDIR /app
 
-COPY backend/target/release/smartbox-backend /app/wrench
+COPY backend/target/release/wrench-backend /app/wrench
 COPY frontend/dist/ ./frontend/dist/
 COPY backend/.env.example /app/.env.example
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh

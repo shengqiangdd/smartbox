@@ -1,0 +1,13 @@
+{
+  "id": "ip-subnet",
+  "name": "IP/子网计算器",
+  "version": "1.0.0",
+  "description": "IP 地址分析、子网划分、CIDR 计算、可用地址范围、广播地址",
+  "author": "Wrench",
+  "icon": "wifi",
+  "commands": [
+    { "id": "ip-calc", "label": "子网计算", "description": "计算 CIDR 子网信息", "icon": "wifi" },
+    { "id": "ip-info", "label": "IP 分类", "description": "判断 IP 地址类型和所属网段", "icon": "info" }
+  ],
+  "panels": [{ "id": "ip-panel", "title": "IP/子网计算器", "icon": "wifi" }]
+}

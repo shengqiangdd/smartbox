@@ -39,14 +39,30 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy all source code (no-cache ensures this layer always re-runs)
-COPY backend/ ./
+# --- Layer 1: 仅复制依赖清单，用于预编译依赖缓存 ---
+COPY backend/Cargo.toml backend/Cargo.lock* ./
 
-# Build — only mount cargo registry cache (downloaded crates)
-# Do NOT mount /app/target: persistent compiled artifacts can cause
-# stale binaries when source changes but cargo's mtime check misses it.
-# With no-cache:true in CI, a full rebuild is fast enough and guaranteed correct.
+# 创建 dummy src，仅用于 cargo 解析依赖树并编译依赖
+RUN mkdir -p src/api src/websocket src/ssh src/docker src/models src/middleware src/utils src/db/migrations && \
+    echo 'fn main() {}' > src/main.rs && \
+    for d in api websocket ssh docker models middleware utils db db/migrations; do \
+      touch "src/$d/mod.rs"; \
+    done
+
+# 仅下载并编译依赖（不包含业务代码，依赖不变时此层命中缓存）
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/app/target \
+    cargo build --release 2>/dev/null || true
+
+# --- Layer 2: 复制实际源码 ---
+COPY backend/src/ ./src/
+
+# 触发重编译
+RUN touch src/main.rs
+
+# 编译最终二进制
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/app/target \
     cargo build --release && \
     cp /app/target/release/wrench-backend /tmp/wrench-backend
 
@@ -72,6 +88,10 @@ ENV FRONTEND_DIST=/app/frontend/dist \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates tzdata openssl curl tini && \
     rm -rf /var/lib/apt/lists/*
+
+# 设置时区（Asia/Shanghai），确保审计日志等时间戳正确
+ENV TZ=Asia/Shanghai
+RUN ln -sf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 RUN groupadd -r wrench && useradd -r -g wrench -m -d /app wrench
 

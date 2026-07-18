@@ -10,6 +10,7 @@ import {
 } from 'react'
 import { Play, Square, Trash2, FileText, Search, Eye } from 'lucide-react'
 import { authedFetch } from '../../services/auth'
+import { notify } from '../../services/event-bus'
 import type { DockerContainer } from './index'
 import { STATUS_DOTS } from './index'
 
@@ -18,11 +19,6 @@ type ApiResponse = { success?: boolean; data?: any; error?: string; msg?: string
 
 const DockerContainerLogs = lazy(() => import('./DockerContainerLogs'))
 const DockerDetail = lazy(() => import('./DockerDetail'))
-
-function notify(message: string, type: 'success' | 'error' | 'info' = 'info') {
-  const ev = new CustomEvent('wrench-notification', { detail: { message, type } })
-  window.dispatchEvent(ev)
-}
 
 interface Props {
   connectionId: string

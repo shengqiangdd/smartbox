@@ -72,7 +72,7 @@ pub async fn rate_limit_middleware(State(_state): State<Arc<AppState>>, req: Req
     // Use a global static rate limiter
     use std::sync::LazyLock;
     static RATE_LIMITER: LazyLock<RateLimiter> = LazyLock::new(|| {
-        RateLimiter::new(60, 60) // 60 requests per 60 seconds
+        RateLimiter::new(60, 300) // 300 requests per 60 seconds
     });
 
     if !RATE_LIMITER.check(client_ip) {

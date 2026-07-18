@@ -1,0 +1,12 @@
+{
+  "id": "responsive-grid",
+  "name": "响应式栅格生成器",
+  "version": "1.0.0",
+  "description": "可视化配置响应式栅格系统，自定义断点和列数，生成 CSS Grid/Flexbox 代码",
+  "author": "Wrench",
+  "icon": "grid",
+  "commands": [
+    { "id": "resp-grid", "label": "响应式栅格", "description": "生成响应式栅格布局代码", "icon": "grid" }
+  ],
+  "panels": [{ "id": "respgrid-panel", "title": "响应式栅格生成器", "icon": "grid" }]
+}

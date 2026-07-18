@@ -11,6 +11,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { useSshStore } from '../../stores/ssh-store'
+import { on } from '../../services/event-bus'
 
 interface BatchResult {
   connId: string
@@ -40,13 +41,11 @@ export default function BatchExecPanel({ onClose }: { onClose: () => void }) {
 
   // 接收从脚本模板库发送的命令
   useEffect(() => {
-    const handler = (e: CustomEvent) => {
-      if (e.detail?.command) {
-        setCommand(e.detail.command)
+    return on('wrench:send-to-batch', ({ command }) => {
+      if (command) {
+        setCommand(command)
       }
-    }
-    window.addEventListener('wrench:send-to-batch', handler as EventListener)
-    return () => window.removeEventListener('wrench:send-to-batch', handler as EventListener)
+    })
   }, [])
 
   const selectAll = () => {

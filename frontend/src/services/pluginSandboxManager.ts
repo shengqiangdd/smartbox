@@ -4,7 +4,7 @@
  * 轻量级插件沙箱管理器 — 管理插件的沙箱实例、命令分发和编辑器内容桥接。
  */
 
-import type { PluginSandboxHandle } from '../components/PluginSandbox'
+import type { PluginSandboxHandle, RegisteredPanel } from '../components/PluginSandbox'
 
 export interface PluginMeta {
   id: string
@@ -44,6 +44,15 @@ class PluginSandboxManager {
 
   /** setEditorContent 回调 — 由编辑器组件注册 */
   private editorSetter: ((content: string) => void) | null = null
+
+  /** 命令结果缓存 — pluginId → { content, commandId, timestamp } */
+  private lastEditorWrite: Map<string, { content: string; commandId: string; timestamp: number }> = new Map()
+
+  /** 用于订阅命令结果变化的回调列表 */
+  private resultListeners: Array<() => void> = []
+
+  /** 执行命令时设置的当前 commandId（由 PluginsPage 设置） */
+  private currentCommandId: string | null = null
 
   register(meta: PluginMeta, handle: PluginSandboxHandle) {
     this.instances.set(meta.id, { meta, handle, registeredAt: Date.now() })
@@ -113,10 +122,22 @@ class PluginSandboxManager {
   }
 
   /** 将插件的 setEditorContent 调用转发到真实编辑器 */
-  writeToEditor(content: string) {
+  writeToEditor(content: string, pluginId?: string) {
     this.editorContent = content
     if (this.editorSetter) {
       this.editorSetter(content)
+    }
+    // 缓存命令结果
+    if (pluginId) {
+      this.lastEditorWrite.set(pluginId, {
+        content,
+        commandId: this.currentCommandId || 'unknown',
+        timestamp: Date.now(),
+      })
+      // 通知监听者
+      for (const listener of this.resultListeners) {
+        try { listener() } catch { /* */ }
+      }
     }
   }
 
@@ -137,6 +158,48 @@ class PluginSandboxManager {
       }
     }
     return panels
+  }
+
+  /** 获取指定插件已注册的面板（含 render 回调） */
+  getRegisteredPanels(pluginId: string): Map<string, RegisteredPanel> | undefined {
+    const inst = this.instances.get(pluginId)
+    if (inst) {
+      return inst.handle.getRegisteredPanels()
+    }
+    return undefined
+  }
+
+  /** 打开指定插件的面板（触发 PluginsPage 中的渲染） */
+  openPanel(pluginId: string, panelId: string): void {
+    const inst = this.instances.get(pluginId)
+    if (inst) {
+      inst.handle.renderPanelTo(panelId, document.body)
+    }
+  }
+
+  /** 将指定插件的指定面板渲染到给定容器 */
+  renderPanel(pluginId: string, panelId: string, container: HTMLElement): boolean {
+    const inst = this.instances.get(pluginId)
+    if (!inst) return false
+    return inst.handle.renderPanelTo(panelId, container)
+  }
+
+  /** 设置当前正在执行的命令 ID（由 PluginsPage 在执行前调用） */
+  setCurrentCommandId(commandId: string | null) {
+    this.currentCommandId = commandId
+  }
+
+  /** 获取指定插件的最后一次命令结果 */
+  getLastEditorWrite(pluginId: string): { content: string; commandId: string; timestamp: number } | null {
+    return this.lastEditorWrite.get(pluginId) || null
+  }
+
+  /** 订阅命令结果变化 */
+  onResultChange(listener: () => void): () => void {
+    this.resultListeners.push(listener)
+    return () => {
+      this.resultListeners = this.resultListeners.filter((l) => l !== listener)
+    }
   }
 }
 

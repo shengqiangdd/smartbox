@@ -128,7 +128,7 @@ impl AppState {
     /// Writes to the in-memory buffer synchronously, and also persists
     /// to SQLite asynchronously if a database is configured.
     pub fn add_audit_log(&self, action: &str, detail: serde_json::Value, ip: &str) {
-        let timestamp = chrono::Utc::now().to_rfc3339();
+        let timestamp = chrono::Local::now().to_rfc3339();
 
         // Memory write (instant, always works)
         let mut logs = self.audit_logs.write();

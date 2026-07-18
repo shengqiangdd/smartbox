@@ -100,7 +100,7 @@ pub async fn upsert_connection(
         .db
         .as_ref()
         .ok_or_else(|| AppError::NotFound("Database not available".into()))?;
-    let now = chrono::Utc::now().to_rfc3339();
+    let now = chrono::Local::now().to_rfc3339();
     let id = payload.id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
     let conn = SshConnection {

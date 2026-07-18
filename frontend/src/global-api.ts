@@ -7,6 +7,7 @@
 
 import { usePluginStore } from './stores/plugin-store'
 import { useFileStore } from './stores/file-store'
+import { notify } from './services/event-bus'
 import type { PluginCommand, PluginPanel } from './types/plugin'
 
 interface PluginAPIReturn {
@@ -68,12 +69,7 @@ function getPluginAPI(): PluginAPIReturn {
     },
 
     showNotification: (message: string, type: 'info' | 'success' | 'error') => {
-      // 使用自定义事件触发通知
-      window.dispatchEvent(
-        new CustomEvent('wrench-notification', {
-          detail: { message, type },
-        }),
-      )
+      notify(message, type)
     },
   }
 }

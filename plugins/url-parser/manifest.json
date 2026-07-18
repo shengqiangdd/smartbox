@@ -1,0 +1,13 @@
+{
+  "id": "url-parser",
+  "name": "URL 解析器",
+  "version": "1.0.0",
+  "description": "解析 URL 各组成部分，编码/解码查询参数，批量提取链接",
+  "author": "Wrench",
+  "icon": "link",
+  "commands": [
+    { "id": "url-parse", "label": "解析 URL", "description": "分解 URL 各部分", "icon": "link" },
+    { "id": "url-params", "label": "查询参数", "description": "查看和编辑 URL 查询参数", "icon": "list" }
+  ],
+  "panels": [{ "id": "urlparse-panel", "title": "URL 解析器", "icon": "link" }]
+}

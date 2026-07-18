@@ -1,0 +1,12 @@
+{
+  "id": "rest-api-template",
+  "name": "REST API 模板生成器",
+  "version": "1.0.0",
+  "description": "生成 RESTful API 文档模板、cURL 命令、fetch/axios 代码，支持多种认证方式",
+  "author": "Wrench",
+  "icon": "terminal",
+  "commands": [
+    { "id": "rest-api", "label": "REST API 模板", "description": "生成 API 调用代码模板", "icon": "terminal" }
+  ],
+  "panels": [{ "id": "restapi-panel", "title": "REST API 模板生成器", "icon": "terminal" }]
+}

@@ -236,9 +236,9 @@ function LogViewerInner({ connectionId, logPath, onClose }: LogViewerProps) {
   return (
     <div className="flex h-full flex-col">
       {/* 工具栏 */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-slate-700/50 bg-slate-900/80 px-3 py-1.5 text-xs">
-        <span className="text-slate-400">📄</span>
-        <span className="font-mono text-slate-300">{logPath}</span>
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-slate-700/50 bg-slate-900/80 px-3 py-1.5 text-xs sm:gap-2">
+        <span className="shrink-0 text-slate-400">📄</span>
+        <span className="min-w-0 max-w-[120px] truncate font-mono text-slate-300 sm:max-w-none">{logPath}</span>
 
         {/* 行数选择（仅非跟踪模式可用） */}
         {!followMode && (

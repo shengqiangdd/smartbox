@@ -1,0 +1,15 @@
+{
+  "id": "password-generator",
+  "name": "密码生成器",
+  "version": "1.0.0",
+  "description": "生成安全随机密码，支持自定义长度和字符集，可计算密码强度",
+  "author": "Wrench",
+  "icon": "lock",
+  "commands": [
+    { "id": "pwd-generate-short", "label": "生成 16 位密码", "description": "生成 16 位安全密码", "icon": "lock" },
+    { "id": "pwd-generate-long", "label": "生成 32 位密码", "description": "生成 32 位高强度密码", "icon": "lock" },
+    { "id": "pwd-generate-custom", "label": "自定义密码", "description": "指定长度和字符类型生成密码", "icon": "settings" },
+    { "id": "pwd-strength", "label": "检测密码强度", "description": "分析当前编辑器中密码的强度", "icon": "shield" }
+  ],
+  "panels": [{ "id": "pwd-panel", "title": "密码生成器", "icon": "lock" }]
+}

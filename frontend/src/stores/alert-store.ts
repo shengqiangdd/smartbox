@@ -16,6 +16,7 @@ import {
   alertHistoryClear,
   isDbReady,
 } from '../services/client-db'
+import { notify } from '../services/event-bus'
 import type { AlertRuleRow } from '../services/client-db'
 
 // ─── 类型定义 ───
@@ -160,10 +161,7 @@ function playAlertSound(severity: AlertSeverity, enabled: boolean) {
 }
 
 // ─── Toast 通知辅助 ───
-
-function notify(message: string, type: 'error' | 'info') {
-  window.dispatchEvent(new CustomEvent('wrench-notification', { detail: { message, type } }))
-}
+// notify moved to event-bus
 
 const METRIC_LABELS: Record<AlertMetric, string> = {
   cpu: 'CPU',

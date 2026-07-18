@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { CheckCircle, XCircle, Info, X } from 'lucide-react'
+import { on } from '../services/event-bus'
 
 interface ToastItem {
   id: number
@@ -27,23 +28,15 @@ export default function Toast() {
   }, [])
 
   useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as {
-        message: string
-        type: 'success' | 'error' | 'info'
-      }
-      if (!detail?.message) return
+    return on('wrench-notification', ({ message, type }) => {
+      if (!message) return
       const id = ++idRef.current
       setToasts((prev) => [
         ...prev,
-        { id, message: detail.message, type: detail.type || 'info', exiting: false },
+        { id, message, type: type || 'info', exiting: false },
       ])
-      // 自动消失
       setTimeout(() => removeToast(id), 3500)
-    }
-
-    window.addEventListener('wrench-notification', handler)
-    return () => window.removeEventListener('wrench-notification', handler)
+    })
   }, [removeToast])
 
   if (toasts.length === 0) return null

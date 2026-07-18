@@ -117,9 +117,9 @@ export default function DockerPage() {
     void run()
   }, [isVisible, tab, connectionId, fetchContainers, fetchImages])
 
-  // Auto refresh
+  // Auto refresh — 页面不可见时暂停
   useEffect(() => {
-    if (autoRefresh && isVisible) {
+    if (autoRefresh && isVisible && document.visibilityState === 'visible') {
       autoRef.current = setInterval(() => {
         if (tab === 'containers') fetchContainers()
         else if (tab === 'images') fetchImages()
@@ -130,22 +130,41 @@ export default function DockerPage() {
     }
   }, [autoRefresh, isVisible, tab, fetchContainers, fetchImages])
 
+  // 页面可见性变化时恢复/暂停自动刷新
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && autoRefresh && isVisible && !autoRef.current) {
+        if (tab === 'containers') fetchContainers()
+        else if (tab === 'images') fetchImages()
+        autoRef.current = setInterval(() => {
+          if (tab === 'containers') fetchContainers()
+          else if (tab === 'images') fetchImages()
+        }, 10000)
+      } else if (document.visibilityState !== 'visible' && autoRef.current) {
+        clearInterval(autoRef.current)
+        autoRef.current = null
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [autoRefresh, isVisible, tab, fetchContainers, fetchImages])
+
   return (
     <div className="flex h-full flex-col bg-slate-950 text-white">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-800 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 px-3 py-2 sm:p-4">
         <div className="flex items-center gap-2">
-          <Container className="h-5 w-5 text-cyan-400" />
-          <h1 className="text-lg font-semibold">Docker 管理</h1>
+          <Container className="h-5 w-5 shrink-0 text-cyan-400" />
+          <h1 className="text-base font-semibold sm:text-lg">Docker 管理</h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           {/* Host selector */}
           {hosts.length > 0 && (
             <div className="relative">
               <select
                 value={selectedId || ''}
                 onChange={(e) => setSelectedId(e.target.value)}
-                className="appearance-none rounded border border-slate-700 bg-slate-800 px-2 py-1 pr-6 text-sm"
+                className="appearance-none rounded border border-slate-700 bg-slate-800 px-2 py-1 pr-6 text-xs sm:text-sm"
               >
                 {hosts.map((h) => (
                   <option key={h.id} value={h.id}>
@@ -158,7 +177,7 @@ export default function DockerPage() {
           )}
           {connecting && <span className="animate-pulse text-xs text-yellow-400">连接中...</span>}
           {hostLabel && !connecting && (
-            <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-500">
+            <span className="hidden rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-500 sm:inline">
               {hostLabel}
             </span>
           )}

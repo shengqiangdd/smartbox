@@ -9,12 +9,18 @@ use crate::models::PluginManifest;
 use crate::response::ApiResponse;
 
 /// List installed plugins (GET /api/plugins)
+/// 自动去重：同 ID 插件只保留第一个（目录名优先）
 pub async fn list_plugins(State(state): State<Arc<AppState>>) -> ApiResponse<Vec<PluginManifest>> {
     let plugins_dir = &state.config.plugins_dir;
     let mut plugins = Vec::new();
+    let mut seen_ids = std::collections::HashSet::new();
 
     if let Ok(entries) = std::fs::read_dir(plugins_dir) {
-        for entry in entries.flatten() {
+        // 排序保证确定性：目录名靠前的优先
+        let mut entries: Vec<_> = entries.flatten().collect();
+        entries.sort_by_key(|e| e.file_name());
+
+        for entry in entries {
             let path = entry.path();
             if !path.is_dir() {
                 continue;
@@ -26,7 +32,9 @@ pub async fn list_plugins(State(state): State<Arc<AppState>>) -> ApiResponse<Vec
             }
             if let Ok(content) = std::fs::read_to_string(&manifest_path) {
                 if let Ok(manifest) = serde_json::from_str::<PluginManifest>(&content) {
-                    plugins.push(manifest);
+                    if seen_ids.insert(manifest.id.clone()) {
+                        plugins.push(manifest);
+                    }
                 }
             }
         }

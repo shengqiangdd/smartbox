@@ -34,10 +34,13 @@ pub async fn get_market_index(State(state): State<Arc<AppState>>) -> impl IntoRe
                 if resp.status().is_success() {
                     if let Ok(data) = resp.json::<serde_json::Value>().await {
                         if let Some(arr) = data.get("plugins").and_then(|v| v.as_array()) {
-                            let plugins: Vec<MarketPluginListing> = arr
+                            let mut plugins: Vec<MarketPluginListing> = arr
                                 .iter()
                                 .filter_map(|p| serde_json::from_value(p.clone()).ok())
                                 .collect();
+                            // 远程列表去重
+                            let mut seen = std::collections::HashSet::new();
+                            plugins.retain(|p| seen.insert(p.id.clone()));
                             if !plugins.is_empty() {
                                 // 缓存
                                 let manifests: Vec<crate::models::PluginManifest> = plugins
@@ -57,7 +60,7 @@ pub async fn get_market_index(State(state): State<Arc<AppState>>) -> impl IntoRe
 
                                 return axum::Json(serde_json::json!({
                                     "plugins": plugins,
-                                    "updated_at": chrono::Utc::now().to_rfc3339(),
+                                    "updated_at": chrono::Local::now().to_rfc3339(),
                                     "source": "remote"
                                 }))
                                 .into_response();
@@ -69,12 +72,16 @@ pub async fn get_market_index(State(state): State<Arc<AppState>>) -> impl IntoRe
         }
     }
 
-    // 2. 远程不可用，从本地插件目录生成市场列表
+    // 2. 远程不可用，从本地插件目录生成市场列表（自动去重）
     let plugins_dir = &state.config.plugins_dir;
     let mut plugins: Vec<MarketPluginListing> = Vec::new();
+    let mut seen_ids = std::collections::HashSet::new();
 
     if let Ok(entries) = std::fs::read_dir(plugins_dir) {
-        for entry in entries.flatten() {
+        let mut entries: Vec<_> = entries.flatten().collect();
+        entries.sort_by_key(|e| e.file_name());
+
+        for entry in entries {
             let path = entry.path();
             if !path.is_dir() {
                 continue;
@@ -88,6 +95,9 @@ pub async fn get_market_index(State(state): State<Arc<AppState>>) -> impl IntoRe
                 if let Ok(manifest) =
                     serde_json::from_str::<crate::models::PluginManifest>(&content)
                 {
+                    if !seen_ids.insert(manifest.id.clone()) {
+                        continue; // 跳过重复 ID
+                    }
                     plugins.push(MarketPluginListing {
                         id: manifest.id.clone(),
                         name: manifest.name.clone(),
@@ -124,7 +134,7 @@ pub async fn get_market_index(State(state): State<Arc<AppState>>) -> impl IntoRe
 
     axum::Json(serde_json::json!({
         "plugins": plugins,
-        "updated_at": chrono::Utc::now().to_rfc3339(),
+        "updated_at": chrono::Local::now().to_rfc3339(),
         "source": "local"
     }))
     .into_response()

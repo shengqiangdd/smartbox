@@ -13,8 +13,10 @@ import {
   KeyRound,
   Bell,
   History,
+  Brain,
 } from 'lucide-react'
 import { useAppStore } from '../../stores/app-store'
+import { useAiStore } from '../../stores/ai-store'
 
 const navItems = [
   { id: 'ssh', label: 'SSH 连接', icon: Terminal },
@@ -36,6 +38,9 @@ export default function Sidebar() {
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed)
   const toggleSidebar = useAppStore((s) => s.toggleSidebar)
   const sshSessions = useAppStore((s) => s.sshSessions)
+  const agentOpen = useAppStore((s) => s.agentOpen)
+  const setAgentOpen = useAppStore((s) => s.setAgentOpen)
+  const aiEnabled = useAiStore((s) => s.config.enabled)
 
   if (sidebarCollapsed) {
     return (
@@ -102,6 +107,17 @@ export default function Sidebar() {
       })}
 
       <div className="mt-auto border-t border-slate-700/50 pt-3">
+        {/* AI Agent 入口（桌面端） */}
+        {aiEnabled && (
+          <button
+            onClick={() => setAgentOpen(!agentOpen)}
+            className={`sidebar-item mb-2 ${agentOpen ? 'active' : ''}`}
+          >
+            <Brain size={16} />
+            <span>AI Agent</span>
+            <span className="ml-auto text-[10px] text-slate-600">⌘⇧A</span>
+          </button>
+        )}
         <div className="flex items-center gap-2 px-2 text-xs text-slate-500">
           <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
           v0.3.0

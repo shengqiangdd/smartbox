@@ -409,11 +409,11 @@ export default function SshPlaceholder() {
   }, [activeSessionId, sessions])
 
   return (
-    <div className="relative flex h-dvh flex-col overflow-hidden lg:h-auto lg:flex-1">
-      {/* 移动端侧边栏遮罩 */}
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      {/* 移动端侧边栏遮罩 — z-[35] 低于预览模态框 z-50，避免点击预览模态框时误触关闭 */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-30 bg-black/50 lg:hidden"
+          className="fixed inset-0 z-[35] bg-black/50 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}

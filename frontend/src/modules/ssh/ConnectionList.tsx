@@ -41,18 +41,18 @@ export default function ConnectionList({ onConnect }: Props) {
 
   const QUICK_PREFIX = 'quick_'
 
-  // 按分组归类（过滤掉快速连接，它在快速连接栏里展示）
+  // 按分组归类（保留快速连接，使用特殊样式区分）
   const grouped = connections.reduce<Record<string, { label: string; items: SshConnection[] }>>(
     (acc, conn) => {
-      if (conn.id.startsWith(QUICK_PREFIX)) return acc
-      const key = conn.group || '_ungrouped'
+      const isQuick = conn.id.startsWith(QUICK_PREFIX)
+      const key = isQuick ? '_quick' : conn.group || '_ungrouped'
       if (!acc[key]) {
         acc[key] = {
-          label: conn.group || '未分组',
+          label: isQuick ? '快速连接' : conn.group || '未分组',
           items: [],
         }
       }
-      acc[key].items.push(conn)
+      acc[key]!.items.push(conn)
       return acc
     },
     {},
@@ -251,28 +251,42 @@ export default function ConnectionList({ onConnect }: Props) {
               <div key={key}>
                 {Object.keys(grouped).length > 1 && (
                   <div className="mb-1.5 flex items-center gap-1.5 px-1">
-                    <FolderOpen size={12} className="shrink-0 text-slate-500" />
-                    <span className="text-[11px] font-medium tracking-wider text-slate-500 uppercase">
+                    {key === '_quick' ? (
+                      <Zap size={12} className="shrink-0 text-amber-500" />
+                    ) : (
+                      <FolderOpen size={12} className="shrink-0 text-slate-500" />
+                    )}
+                    <span className={`text-[11px] font-medium tracking-wider uppercase ${
+                      key === '_quick' ? 'text-amber-500' : 'text-slate-500'
+                    }`}>
                       {group.label}
                     </span>
                     <span className="text-[10px] text-slate-600">({items.length})</span>
                   </div>
                 )}
                 <div className="space-y-1">
-                  {items.map((conn) => (
+                  {items.map((conn) => {
+                    const isQuick = conn.id.startsWith(QUICK_PREFIX)
+                    return (
                     <div
                       key={conn.id}
-                      className="group flex items-center gap-2 rounded-lg border border-slate-700/30 p-2.5 transition-colors hover:border-slate-700 hover:bg-slate-800/50"
+                      className={`group flex items-center gap-2 rounded-lg border p-2.5 transition-colors ${
+                        isQuick
+                          ? 'border-dashed border-amber-600/30 hover:border-amber-600/50 hover:bg-amber-500/5'
+                          : 'border-slate-700/30 hover:border-slate-700 hover:bg-slate-800/50'
+                      }`}
                     >
                       {/* 状态指示器 */}
                       <span
                         className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
-                          isActive(conn.id)
-                            ? 'bg-emerald-500/10 text-emerald-400'
-                            : 'bg-slate-800 text-slate-500'
+                          isQuick
+                            ? 'bg-amber-500/10 text-amber-400'
+                            : isActive(conn.id)
+                              ? 'bg-emerald-500/10 text-emerald-400'
+                              : 'bg-slate-800 text-slate-500'
                         }`}
                       >
-                        {isActive(conn.id) ? <PlugZap size={14} /> : <Terminal size={14} />}
+                        {isQuick ? <Zap size={14} /> : isActive(conn.id) ? <PlugZap size={14} /> : <Terminal size={14} />}
                       </span>
 
                       {/* 连接信息 */}
@@ -283,7 +297,11 @@ export default function ConnectionList({ onConnect }: Props) {
                           </span>
                           <span
                             className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${
-                              isActive(conn.id) ? 'bg-emerald-500' : 'bg-slate-600'
+                              isQuick
+                                ? 'bg-amber-500'
+                                : isActive(conn.id)
+                                  ? 'bg-emerald-500'
+                                  : 'bg-slate-600'
                             }`}
                           />
                         </div>
@@ -301,26 +319,29 @@ export default function ConnectionList({ onConnect }: Props) {
                         >
                           <PlugZap size={14} />
                         </button>
-                        <button
-                          onClick={() => {
-                            setEditId(conn.id)
-                            setShowForm(true)
-                          }}
-                          className="btn-icon text-slate-500 hover:text-slate-300"
-                          title="编辑"
-                        >
-                          <Pencil size={14} />
-                        </button>
+                        {!isQuick && (
+                          <button
+                            onClick={() => {
+                              setEditId(conn.id)
+                              setShowForm(true)
+                            }}
+                            className="btn-icon text-slate-500 hover:text-slate-300"
+                            title="编辑"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                        )}
                         <button
                           onClick={() => deleteConnection(conn.id)}
                           className="btn-icon text-red-400 hover:bg-red-500/10"
-                          title="删除"
+                          title={isQuick ? '删除快速连接' : '删除'}
                         >
                           <Trash2 size={14} />
                         </button>
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )

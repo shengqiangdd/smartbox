@@ -1,0 +1,14 @@
+{
+  "id": "text-stats",
+  "name": "文本统计分析",
+  "version": "1.0.0",
+  "description": "字符数、单词数、行数、中文字数、阅读时间、字频统计、文本清理",
+  "author": "Wrench",
+  "icon": "bar-chart",
+  "commands": [
+    { "id": "text-analyze", "label": "文本分析", "description": "分析文本的字数、行数、阅读时间等", "icon": "bar-chart" },
+    { "id": "char-freq", "label": "字频统计", "description": "统计文本中字符出现频率", "icon": "pie-chart" },
+    { "id": "text-clean", "label": "文本清理", "description": "去除多余空格、空行、特殊字符", "icon": "sparkles" }
+  ],
+  "panels": [{ "id": "textstats-panel", "title": "文本统计分析", "icon": "bar-chart" }]
+}

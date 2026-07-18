@@ -285,5 +285,60 @@ ${(content || '// 请先在编辑器中打开代码文件').slice(0, 3000)}
     api.showNotification('✅ 提示词已生成，复制后发送给 AI Agent 使用', 'success')
   }
 
+  // ── 面板注册: 提示词模板 ──
+  if (typeof wrench !== 'undefined' && wrench.panels) {
+    wrench.panels.register('prompt-templates-panel', {
+      title: '提示词模板',
+      icon: 'file-text',
+      render: function(container) {
+        container.innerHTML = '<div class="pf"><h3>📝 AI 提示词模板库</h3>' +
+          '<style>.pf{padding:16px;font-family:system-ui,sans-serif;color:#e2e8f0}.pf h3{margin:0 0 12px;font-size:14px;font-weight:600;color:#94a3b8}.pf-input{width:100%;padding:8px 12px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px;outline:none;box-sizing:border-box}.pf-input:focus{border-color:#3b82f6}.pf-btn{padding:6px 14px;background:#3b82f6;color:white;border:none;border-radius:6px;font-size:12px;cursor:pointer}.pf-btn:hover{background:#2563eb}.pf-btn-secondary{background:#334155}.pf-btn-secondary:hover{background:#475569}.pf-result{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;font-family:"Cascadia Code",monospace;font-size:12px;white-space:pre-wrap;word-break:break-all;max-height:400px;overflow-y:auto}.pf-label{font-size:11px;color:#64748b;margin-bottom:4px;display:block}.pf-row{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}</style>' +
+          '<div class="pf-label">选择模板分类</div>' +
+          '<div class="pf-row">' +
+          '<button class="pf-btn prompt-tpl" data-tpl="review">🔍 代码审查</button>' +
+          '<button class="pf-btn pf-btn-secondary prompt-tpl" data-tpl="refactor">🔄 重构建议</button>' +
+          '<button class="pf-btn pf-btn-secondary prompt-tpl" data-tpl="bug">🐛 Bug 修复</button>' +
+          '</div><div class="pf-row">' +
+          '<button class="pf-btn pf-btn-secondary prompt-tpl" data-tpl="docs">📖 文档生成</button>' +
+          '<button class="pf-btn pf-btn-secondary prompt-tpl" data-tpl="security">🛡️ 安全审计</button>' +
+          '<button class="pf-btn pf-btn-secondary prompt-tpl" data-tpl="test">✅ 单元测试</button>' +
+          '</div>' +
+          '<div class="pf-label">补充说明（可选）</div>' +
+          '<textarea class="pf-input" id="prompt-custom" rows="2" placeholder="补充特定要求..."></textarea>' +
+          '<div class="pf-row" style="margin-top:8px">' +
+          '<button class="pf-btn" id="prompt-insert">📋 插入到编辑器</button>' +
+          '</div>' +
+          '<div id="prompt-result" class="pf-result" style="display:none"></div></div>';
+
+        var templates = {
+          review: '# 代码审查请求\n\n请对当前代码进行全面审查：\n1. 代码质量（命名、结构、模块化）\n2. 性能问题（瓶颈、内存泄漏）\n3. 安全性（注入、泄露）\n4. 可维护性（注释、复杂度）\n5. 最佳实践\n\n## 输出格式\n| 问题类型 | 严重程度 | 行号 | 说明 | 建议 |',
+          refactor: '# 重构建议请求\n\n请分析代码并提供重构建议：\n1. 单一职责原则\n2. DRY 违反识别\n3. 复杂度分析\n4. 依赖关系\n\n请给出 2-3 种可选重构策略及代码示例。',
+          bug: '# Bug 分析请求\n\n请分析代码中的潜在 Bug：\n1. 空指针/未定义访问\n2. 类型错误\n3. 边界条件\n4. 竞态条件\n5. 资源泄漏\n\n请提供错误复现步骤和修复方案。',
+          docs: '# 文档生成请求\n\n请为代码生成：\n1. 函数/方法 JSDoc 注释\n2. 复杂逻辑文字说明\n3. README 片段\n4. 使用示例\n\n输出格式使用标准文档格式。',
+          security: '# 安全审计请求\n\n请对代码进行安全审计：\n🔴 高风险：SQL注入、命令注入、路径遍历\n🟡 中风险：XSS、CSRF、不安全加密\n🟢 低风险：信息泄露、缺少验证\n\n输出：风险等级 | 位置 | 说明 | 修复建议',
+          test: '# 单元测试请求\n\n请生成单元测试：\n1. 正常路径测试\n2. 边界条件测试（空值、极值）\n3. 错误路径测试\n4. 目标覆盖率 ≥ 85%\n\n使用 Arrange-Act-Assert 三段式。'
+        };
+
+        var resultEl = container.querySelector('#prompt-result');
+        var currentResult = '';
+
+        container.querySelectorAll('.prompt-tpl').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            var tpl = this.getAttribute('data-tpl');
+            var custom = container.querySelector('#prompt-custom').value.trim();
+            currentResult = templates[tpl] + (custom ? '\n\n## 补充说明\n' + custom : '');
+            resultEl.style.display = 'block';
+            resultEl.textContent = currentResult;
+          });
+        });
+
+        container.querySelector('#prompt-insert').addEventListener('click', function() {
+          if (!currentResult) { resultEl.style.display = 'block'; resultEl.textContent = '请先选择一个模板'; return; }
+          if (typeof api !== 'undefined') api.setEditorContent(currentResult);
+        });
+      }
+    });
+  }
+
   console.log('[插件] AI 提示词模板库已加载')
 })()

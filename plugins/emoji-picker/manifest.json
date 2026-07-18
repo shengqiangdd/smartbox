@@ -1,0 +1,12 @@
+{
+  "id": "emoji-picker",
+  "name": "Emoji 选择器",
+  "version": "1.0.0",
+  "description": "搜索和浏览完整 Emoji 表情库，分类筛选，点击复制，显示 Unicode 信息",
+  "author": "Wrench",
+  "icon": "smile",
+  "commands": [
+    { "id": "emoji-browse", "label": "Emoji 浏览", "description": "浏览完整 Emoji 表情库", "icon": "smile" }
+  ],
+  "panels": [{ "id": "emoji-panel", "title": "Emoji 选择器", "icon": "smile" }]
+}

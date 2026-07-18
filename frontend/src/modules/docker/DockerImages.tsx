@@ -1,5 +1,6 @@
 import { useState, useCallback, memo, useMemo } from 'react'
 import { authedFetch } from '../../services/auth'
+import { notify } from '../../services/event-bus'
 import {
   Trash2,
   Search,
@@ -15,11 +16,6 @@ import type { DockerImage } from './index'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ApiResponse = { success?: boolean; data?: any; error?: string; msg?: string }
-
-function notify(message: string, type: 'success' | 'error' | 'info' = 'info') {
-  const ev = new CustomEvent('wrench-notification', { detail: { message, type } })
-  window.dispatchEvent(ev)
-}
 
 interface Props {
   connectionId: string

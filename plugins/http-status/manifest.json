@@ -1,0 +1,12 @@
+{
+  "id": "http-status",
+  "name": "HTTP 状态码速查",
+  "version": "1.0.0",
+  "description": "HTTP 状态码完整参考表，按类别筛选，快速查找含义和解决方案",
+  "author": "Wrench",
+  "icon": "globe",
+  "commands": [
+    { "id": "http-ref", "label": "HTTP 状态码参考", "description": "查看完整的 HTTP 状态码速查表", "icon": "globe" }
+  ],
+  "panels": [{ "id": "http-panel", "title": "HTTP 状态码速查", "icon": "globe" }]
+}

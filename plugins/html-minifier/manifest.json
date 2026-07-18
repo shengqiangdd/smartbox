@@ -1,0 +1,13 @@
+{
+  "id": "html-minifier",
+  "name": "HTML 压缩/美化",
+  "version": "1.0.0",
+  "description": "HTML 代码压缩（去除空白注释）或美化（格式化缩进），支持选项配置",
+  "author": "Wrench",
+  "icon": "minimize-2",
+  "commands": [
+    { "id": "html-minify", "label": "压缩 HTML", "description": "去除空白和注释，压缩 HTML", "icon": "minimize-2" },
+    { "id": "html-beautify", "label": "美化 HTML", "description": "格式化 HTML 代码", "icon": "maximize-2" }
+  ],
+  "panels": [{ "id": "htmlmin-panel", "title": "HTML 压缩/美化", "icon": "minimize-2" }]
+}

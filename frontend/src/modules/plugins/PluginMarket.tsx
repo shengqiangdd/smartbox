@@ -13,6 +13,7 @@ import {
   X,
   Puzzle,
 } from 'lucide-react'
+import Skeleton from '../../components/Skeleton'
 import { usePluginStore } from '../../stores/plugin-store'
 
 // ─── 类型定义 ───
@@ -251,12 +252,7 @@ export default function PluginMarket() {
 
       {/* 加载中 */}
       {loading && (
-        <div className="flex flex-1 items-center justify-center">
-          <div className="text-center">
-            <Loader2 size={24} className="mx-auto mb-2 animate-spin text-slate-500" />
-            <p className="text-xs text-slate-500">正在加载市场列表...</p>
-          </div>
-        </div>
+        <Skeleton type="card" rows={4} className="flex-1" />
       )}
 
       {/* 错误状态 */}
@@ -422,7 +418,7 @@ export default function PluginMarket() {
       {/* 底部提示 */}
       {!loading && !error && plugins.length > 0 && (
         <div className="mt-2 text-center text-[10px] text-slate-700">
-          插件运行在 iframe 沙箱中，安全隔离
+          插件运行在隔离沙箱中，安全执行
         </div>
       )}
     </div>

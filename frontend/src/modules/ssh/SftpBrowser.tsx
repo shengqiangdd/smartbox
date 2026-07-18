@@ -248,7 +248,7 @@ const FilePreviewModal = memo(function FilePreviewModal({
 
   if (loading) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={(e) => e.stopPropagation()}>
         <div className="rounded-lg border border-slate-700 bg-slate-800 p-6 shadow-xl">
           <Loader2 size={20} className="animate-spin text-sky-400" />
           <p className="mt-2 text-xs text-slate-400">加载中…</p>
@@ -260,21 +260,21 @@ const FilePreviewModal = memo(function FilePreviewModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-      onClick={onClose}
+      onClick={(e) => { e.stopPropagation(); onClose() }}
     >
       <div
-        className="flex max-h-[85vh] w-[90vw] max-w-4xl flex-col rounded-lg border border-slate-700 bg-slate-900 shadow-xl"
+        className="flex max-h-[85vh] w-[95vw] max-w-4xl flex-col rounded-lg border border-slate-700 bg-slate-900 shadow-xl sm:w-[90vw]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 标题栏 */}
-        <div className="flex items-center justify-between border-b border-slate-700/50 px-4 py-2">
-          <div className="flex items-center gap-2 text-sm text-slate-300">
-            {getFileIcon(entry.name, entry.type, entry.targetType)}
-            <span className="font-medium">{entry.name}</span>
-            <span className="text-[10px] text-slate-600">{formatSize(entry.size)}</span>
+        <div className="flex shrink-0 items-center gap-2 border-b border-slate-700/50 px-3 py-2 sm:px-4">
+          <div className="flex min-w-0 shrink items-center gap-2 overflow-hidden text-sm text-slate-300">
+            <span className="shrink-0">{getFileIcon(entry.name, entry.type, entry.targetType)}</span>
+            <span className="min-w-0 truncate font-medium">{entry.name}</span>
+            <span className="shrink-0 whitespace-nowrap text-[10px] text-slate-500">{formatSize(entry.size)}</span>
           </div>
-          <div className="flex items-center gap-1">
-            {error && <span className="text-[10px] text-red-400">{error}</span>}
+          <div className="flex shrink-0 items-center gap-1">
+            {error && <span className="max-w-[100px] truncate text-[10px] text-red-400" title={error}>{error}</span>}
             {saveMsg && <span className="text-[10px] text-emerald-400">{saveMsg}</span>}
             {!isImage && !isVideo && !isAudio && !editMode && content && (
               <button
@@ -316,7 +316,7 @@ const FilePreviewModal = memo(function FilePreviewModal({
           </div>
         </div>
         {/* 内容区 */}
-        <div className="flex-1 overflow-auto p-4">
+        <div className="flex-1 overflow-auto p-3 sm:p-4">
           {error ? (
             <p className="text-xs text-red-400">{error}</p>
           ) : isImage && binaryUrl ? (
@@ -357,7 +357,7 @@ const FilePreviewModal = memo(function FilePreviewModal({
           <div className="flex items-center justify-between border-t border-slate-700/50 px-4 py-2">
             <div className="flex items-center gap-2">
               {!editMode && content && (
-                <span className="text-[10px] text-slate-600">
+                <span className="hidden shrink-0 text-[10px] text-slate-600 sm:inline">
                   点击 ✏️ 编辑{onOpenInEditor ? ' 或 📎 在编辑器中打开' : ''}
                 </span>
               )}
@@ -1276,24 +1276,73 @@ function SftpBrowserInner({
     return () => window.removeEventListener('keydown', handler)
   }, [selectedPaths, entries, clipboard, handleCopy, handleCut, handlePaste, selectAll, batchDelete, clearSelection])
 
-  // ─── 移动端禁用浏览器默认长按行为 ───
-  // CSS touch-action: manipulation 已在 .sftp-file-entry 上禁用 long press
-  // JS 层补充拦截 contextmenu / selectstart（部分浏览器仍会触发）
-  const fileListRef = useRef<HTMLDivElement>(null)
+  // ─── 移动端禁用浏览器默认长按行为（5 层防御） ───
+  // 国产 Android 浏览器（OPPO/华为/小米等）对 CSS touch-action 和 user-select
+  // 支持不一致，必须用 JS 多层拦截才能可靠阻止。
+  // 层1: document touchstart capture + passive:false → preventDefault 阻止浏览器启动选择
+  // 层2: selectionchange → 清除意外产生的文本选择
+  // 层3: touchend → 清除残留选择
+  // 层4: pointerdown → 阻止 pointer 事件触发文本选择
+  // 层5: CSS 已设置 touch-action: none + user-select: none（兜底）
   useEffect(() => {
-    const el = fileListRef.current
-    if (!el || !isTouchDevice) return
+    if (!isTouchDevice) return
 
-    const prevent = (e: Event) => { e.preventDefault() }
+    // 记录当前活跃的触摸点信息
+    let activeTouchEntry = false
 
-    // 阻止浏览器原生长按菜单
-    el.addEventListener('contextmenu', prevent, { capture: true })
-    // 阻止浏览器原生文本选择
-    el.addEventListener('selectstart', prevent, { capture: true })
+    // 层1: touchstart — 在 document capture 阶段拦截，阻止浏览器启动文本选择
+    const handleTouchStart = (e: TouchEvent) => {
+      const target = e.target as HTMLElement
+      activeTouchEntry = !!target?.closest?.('.sftp-file-entry')
+      if (activeTouchEntry) {
+        e.preventDefault()
+      }
+    }
+
+    // 层2: selectionchange — 清除意外产生的文本选择（部分浏览器在 touchstart preventDefault 后仍会触发）
+    const handleSelectionChange = () => {
+      if (!activeTouchEntry) return
+      const sel = window.getSelection()
+      if (sel && !sel.isCollapsed) {
+        try { sel.removeAllRanges() } catch { /* ignore */ }
+      }
+    }
+
+    // 层3: touchend — 清除残留选择，重置状态
+    const handleTouchEnd = () => {
+      activeTouchEntry = false
+      // 延迟清除，因为部分浏览器在 touchend 后才产生选择
+      setTimeout(() => {
+        const sel = window.getSelection()
+        if (sel && !sel.isCollapsed) {
+          try { sel.removeAllRanges() } catch { /* ignore */ }
+        }
+      }, 50)
+    }
+
+    // 层4: pointerdown — 阻止 pointer 事件（部分 Android 浏览器通过 pointer 事件链触发选择）
+    const handlePointerDown = (e: PointerEvent) => {
+      const target = e.target as HTMLElement
+      if (target?.closest?.('.sftp-file-entry')) {
+        e.preventDefault()
+      }
+    }
+
+    // 注册事件监听
+    // touchstart 必须 passive: false + capture: true
+    document.addEventListener('touchstart', handleTouchStart, { capture: true, passive: false } as AddEventListenerOptions)
+    document.addEventListener('selectionchange', handleSelectionChange, { capture: true })
+    document.addEventListener('touchend', handleTouchEnd, { capture: true })
+    document.addEventListener('touchcancel', handleTouchEnd, { capture: true })
+    // pointerdown 也需要 passive: false 才能 preventDefault
+    document.addEventListener('pointerdown', handlePointerDown, { capture: true, passive: false } as AddEventListenerOptions)
 
     return () => {
-      el.removeEventListener('contextmenu', prevent, { capture: true })
-      el.removeEventListener('selectstart', prevent, { capture: true })
+      document.removeEventListener('touchstart', handleTouchStart, { capture: true } as EventListenerOptions)
+      document.removeEventListener('selectionchange', handleSelectionChange, { capture: true })
+      document.removeEventListener('touchend', handleTouchEnd, { capture: true })
+      document.removeEventListener('touchcancel', handleTouchEnd, { capture: true })
+      document.removeEventListener('pointerdown', handlePointerDown, { capture: true } as EventListenerOptions)
     }
   }, [isTouchDevice])
 
@@ -1517,7 +1566,7 @@ ${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n...还有 ${errors.leng
         <div
           key={entry.path}
           className={`sftp-file-entry flex cursor-pointer items-center gap-2 px-2 py-1 text-xs transition-colors hover:bg-slate-700/30 ${isSelected ? 'bg-sky-900/20' : ''} ${isDir || (isSymlink && (entry.targetType === 'directory' || entry.targetType === 'unknown')) ? 'text-sky-300' : 'text-slate-300'}`}
-          style={{ height: 28, userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none', touchAction: 'manipulation' as const }}
+          style={{ height: 28, userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none', touchAction: 'none' as const }}
           onClick={(e) => {
             // 点击复选框区域不触发打开
             if ((e.target as HTMLElement).closest('[data-select]')) return
@@ -2005,7 +2054,6 @@ ${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n...还有 ${errors.leng
 
       {/* 文件列表 */}
       <div
-        ref={fileListRef}
         className="sftp-file-list relative min-h-0 flex-1 overflow-y-auto select-none"
         style={{
           WebkitOverflowScrolling: 'touch',
@@ -2126,10 +2174,6 @@ ${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n...还有 ${errors.leng
         clipboardCount={clipboard?.paths.length ?? 0}
         isTrash={currentPath === TRASH_DIR}
         onRestore={restoreFromTrash}
-        onSelect={(entry) => {
-          setIsSelectMode(true)
-          toggleSelect(entry.path)
-        }}
       />
 
       {/* ── 重命名对话框 ── */}

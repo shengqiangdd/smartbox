@@ -11,11 +11,13 @@ pub struct SshConnection {
     pub username: String,
     pub auth_method: String,
     pub session: Option<Arc<SshSession>>,
+    /// Sudo password for privilege escalation in SFTP fallback operations.
+    pub sudo_password: Option<String>,
 }
 
 impl SshConnection {
     pub fn new(connection_id: String, host: String, port: u16, username: String, auth_method: String) -> Self {
-        Self { connection_id, host, port, username, auth_method, session: None }
+        Self { connection_id, host, port, username, auth_method, session: None, sudo_password: None }
     }
 
     pub async fn is_connected(&self) -> bool {

@@ -8,11 +8,12 @@ use crate::ssh::SshSession;
 
 /// Helper: get the SSH session for a connection ID, or return None.
 /// The caller handles the error response, allowing audit logging.
-fn get_session(state: &AppState, conn_id: &str) -> Option<(String, String, Arc<SshSession>)> {
+fn get_session(state: &AppState, conn_id: &str) -> Option<(String, String, Arc<SshSession>, Option<String>)> {
     let entry = state.connections.get(conn_id)?;
     let host = entry.host.clone();
     let username = entry.username.clone();
-    entry.session.as_ref().map(|s| (host, username, s.clone()))
+    let sudo_password = entry.sudo_password.clone();
+    entry.session.as_ref().map(|s| (host, username, s.clone(), sudo_password))
 }
 
 /// Extract string field from JSON body with a default.
@@ -40,7 +41,7 @@ pub async fn sftp_list_dir(
     let connection_id = s(&body, "connectionId");
     let path = s(&body, "path");
 
-    let (host, username, session) = match get_session(&state, &connection_id) {
+    let (host, username, session, _sudo_password) = match get_session(&state, &connection_id) {
         Some(v) => v,
         None => return Json(ApiResponse::error(1, &format!("SSH not connected: {}", connection_id))),
     };
@@ -76,12 +77,12 @@ pub async fn sftp_upload(
         None => return Json(ApiResponse::error(3, "Missing 'data' field (base64-encoded)")),
     };
 
-    let (host, username, session) = match get_session(&state, &connection_id) {
+    let (host, username, session, sudo_password) = match get_session(&state, &connection_id) {
         Some(v) => v,
         None => return Json(ApiResponse::error(1, &format!("SSH not connected: {}", connection_id))),
     };
 
-    match crate::ssh::sftp::upload_file(&session, &remote_path, data).await {
+    match crate::ssh::sftp::upload_file(&session, &remote_path, data, sudo_password.as_deref()).await {
         Ok(_) => {
             audit(
                 &state,
@@ -105,7 +106,7 @@ pub async fn sftp_download(
     let connection_id = s(&body, "connectionId");
     let remote_path = s(&body, "path");
 
-    let (host, username, session) = match get_session(&state, &connection_id) {
+    let (host, username, session, _sudo_password) = match get_session(&state, &connection_id) {
         Some(v) => v,
         None => return Json(ApiResponse::error(1, &format!("SSH not connected: {}", connection_id))),
     };
@@ -136,12 +137,12 @@ pub async fn sftp_delete(
     let path = s(&body, "path");
     let recursive = body["recursive"].as_bool().unwrap_or(false);
 
-    let (host, username, session) = match get_session(&state, &connection_id) {
+    let (host, username, session, sudo_password) = match get_session(&state, &connection_id) {
         Some(v) => v,
         None => return Json(ApiResponse::error(1, &format!("SSH not connected: {}", connection_id))),
     };
 
-    match crate::ssh::sftp::delete_file(&session, &path, recursive).await {
+    match crate::ssh::sftp::delete_file(&session, &path, recursive, sudo_password.as_deref()).await {
         Ok(_) => {
             audit(
                 &state,
@@ -165,12 +166,12 @@ pub async fn sftp_mkdir(
     let connection_id = s(&body, "connectionId");
     let path = s(&body, "path");
 
-    let (host, username, session) = match get_session(&state, &connection_id) {
+    let (host, username, session, sudo_password) = match get_session(&state, &connection_id) {
         Some(v) => v,
         None => return Json(ApiResponse::error(1, &format!("SSH not connected: {}", connection_id))),
     };
 
-    match crate::ssh::sftp::create_dir(&session, &path).await {
+    match crate::ssh::sftp::create_dir(&session, &path, sudo_password.as_deref()).await {
         Ok(_) => {
             audit(
                 &state,
@@ -195,12 +196,12 @@ pub async fn sftp_rename(
     let from = s(&body, "from");
     let to = s(&body, "to");
 
-    let (host, username, session) = match get_session(&state, &connection_id) {
+    let (host, username, session, sudo_password) = match get_session(&state, &connection_id) {
         Some(v) => v,
         None => return Json(ApiResponse::error(1, &format!("SSH not connected: {}", connection_id))),
     };
 
-    match crate::ssh::sftp::rename(&session, &from, &to).await {
+    match crate::ssh::sftp::rename(&session, &from, &to, sudo_password.as_deref()).await {
         Ok(_) => {
             audit(
                 &state,
@@ -224,7 +225,7 @@ pub async fn sftp_stat(
     let connection_id = s(&body, "connectionId");
     let path = s(&body, "path");
 
-    let (_host, _username, session) = match get_session(&state, &connection_id) {
+    let (_host, _username, session, _sudo_password) = match get_session(&state, &connection_id) {
         Some(v) => v,
         None => return Json(ApiResponse::error(1, &format!("SSH not connected: {}", connection_id))),
     };
@@ -247,12 +248,12 @@ pub async fn sftp_chmod(
         None => return Json(ApiResponse::error(10, "Missing 'permissions' field (numeric octal, e.g. 493 for 0755)")),
     };
 
-    let (host, username, session) = match get_session(&state, &connection_id) {
+    let (host, username, session, sudo_password) = match get_session(&state, &connection_id) {
         Some(v) => v,
         None => return Json(ApiResponse::error(1, &format!("SSH not connected: {}", connection_id))),
     };
 
-    match crate::ssh::sftp::chmod_via_ssh(&session, &path, permissions).await {
+    match crate::ssh::sftp::chmod_via_ssh(&session, &path, permissions, sudo_password.as_deref()).await {
         Ok(_) => {
             audit(
                 &state,
@@ -266,4 +267,110 @@ pub async fn sftp_chmod(
         }
         Err(e) => Json(ApiResponse::error(11, &e)),
     }
+}
+
+/// Get disk usage for a directory
+pub async fn sftp_disk_usage(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<serde_json::Value>,
+) -> Json<ApiResponse<crate::ssh::sftp_ops::DiskUsage>> {
+    let connection_id = s(&body, "connectionId");
+    let path = s(&body, "path");
+
+    let (_host, _username, session, _sudo_password) = match get_session(&state, &connection_id) {
+        Some(v) => v,
+        None => return Json(ApiResponse::error(1, &format!("SSH not connected: {}", connection_id))),
+    };
+
+    match crate::ssh::sftp_ops::disk_usage(&session, &path).await {
+        Ok(usage) => Json(ApiResponse::success(usage)),
+        Err(e) => Json(ApiResponse::error(20, &e)),
+    }
+}
+
+/// Get file hashes (md5, sha1, sha256)
+pub async fn sftp_file_hash(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<serde_json::Value>,
+) -> Json<ApiResponse<crate::ssh::sftp_ops::FileHash>> {
+    let connection_id = s(&body, "connectionId");
+    let path = s(&body, "path");
+
+    let (_host, _username, session, _sudo_password) = match get_session(&state, &connection_id) {
+        Some(v) => v,
+        None => return Json(ApiResponse::error(1, &format!("SSH not connected: {}", connection_id))),
+    };
+
+    match crate::ssh::sftp_ops::file_hash(&session, &path).await {
+        Ok(hash) => Json(ApiResponse::success(hash)),
+        Err(e) => Json(ApiResponse::error(21, &e)),
+    }
+}
+
+/// Batch delete multiple files/directories
+pub async fn sftp_batch_delete(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<serde_json::Value>,
+) -> Json<ApiResponse<crate::ssh::sftp_ops::BatchDeleteResult>> {
+    let connection_id = s(&body, "connectionId");
+    let paths: Vec<String> = body["paths"]
+        .as_array()
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+
+    if paths.is_empty() {
+        return Json(ApiResponse::error(22, "Missing 'paths' array"));
+    }
+
+    let (_host, _username, session, sudo_password) = match get_session(&state, &connection_id) {
+        Some(v) => v,
+        None => return Json(ApiResponse::error(1, &format!("SSH not connected: {}", connection_id))),
+    };
+
+    let result = crate::ssh::sftp_ops::batch_delete(&session, &paths, sudo_password.as_deref()).await;
+    audit(
+        &state,
+        "sftp_batch_delete",
+        &connection_id,
+        &_host,
+        &_username,
+        serde_json::json!({"paths": paths.len(), "success": result.success.len(), "failed": result.failed.len()}),
+    );
+    Json(ApiResponse::success(result))
+}
+
+/// Batch move multiple files to a target directory
+pub async fn sftp_batch_move(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<serde_json::Value>,
+) -> Json<ApiResponse<crate::ssh::sftp_ops::BatchDeleteResult>> {
+    let connection_id = s(&body, "connectionId");
+    let target_dir = s(&body, "targetDir");
+    let paths: Vec<String> = body["paths"]
+        .as_array()
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+
+    if paths.is_empty() {
+        return Json(ApiResponse::error(23, "Missing 'paths' array"));
+    }
+    if target_dir.is_empty() {
+        return Json(ApiResponse::error(24, "Missing 'targetDir'"));
+    }
+
+    let (_host, _username, session, sudo_password) = match get_session(&state, &connection_id) {
+        Some(v) => v,
+        None => return Json(ApiResponse::error(1, &format!("SSH not connected: {}", connection_id))),
+    };
+
+    let result = crate::ssh::sftp_ops::batch_move(&session, &paths, &target_dir, sudo_password.as_deref()).await;
+    audit(
+        &state,
+        "sftp_batch_move",
+        &connection_id,
+        &_host,
+        &_username,
+        serde_json::json!({"paths": paths.len(), "target": target_dir, "success": result.success.len(), "failed": result.failed.len()}),
+    );
+    Json(ApiResponse::success(result))
 }

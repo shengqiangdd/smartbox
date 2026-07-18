@@ -1,0 +1,14 @@
+{
+  "id": "base-converter",
+  "name": "进制转换器",
+  "version": "1.0.0",
+  "description": "在二进制、八进制、十进制、十六进制之间转换，支持位操作可视化",
+  "author": "Wrench",
+  "icon": "binary",
+  "commands": [
+    { "id": "base-convert", "label": "进制转换", "description": "在多种进制间转换数字", "icon": "binary" },
+    { "id": "bit-view", "label": "位视图", "description": "查看数字的二进制位表示", "icon": "grid" },
+    { "id": "bit-ops", "label": "位运算", "description": "执行 AND/OR/XOR/NOT 位运算", "icon": "cpu" }
+  ],
+  "panels": [{ "id": "base-panel", "title": "进制转换", "icon": "binary" }]
+}

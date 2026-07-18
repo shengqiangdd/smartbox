@@ -1,0 +1,13 @@
+{
+  "id": "cron-visualizer",
+  "name": "Cron 可视化器",
+  "version": "1.0.0",
+  "description": "Cron 表达式可视化、自然语言描述、未来触发时间预览、交互式构建器",
+  "author": "Wrench",
+  "icon": "clock",
+  "commands": [
+    { "id": "cron-vis", "label": "Cron 可视化", "description": "查看 Cron 表达式的触发时间和自然语言描述", "icon": "clock" },
+    { "id": "cron-build", "label": "Cron 构建器", "description": "交互式构建 Cron 表达式", "icon": "settings" }
+  ],
+  "panels": [{ "id": "cronvis-panel", "title": "Cron 可视化器", "icon": "clock" }]
+}

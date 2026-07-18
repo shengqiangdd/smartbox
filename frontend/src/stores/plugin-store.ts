@@ -59,17 +59,41 @@ export const usePluginStore = create<PluginState>()(
           enabled: true,
         }
         set((s) => {
-          // 注册命令到插件映射
+          // 去重：如果已存在同 ID 插件，先移除旧的
+          const existingIdx = s.plugins.findIndex((p) => p.manifest.id === manifest.id)
+          const existing = existingIdx >= 0 ? s.plugins[existingIdx] : null
+          const existingCmdIds = existing
+            ? new Set(existing.manifest.commands?.map((c) => c.id) || [])
+            : new Set<string>()
+          const existingPanelIds = existing
+            ? new Set(existing.manifest.panels?.map((p) => p.id) || [])
+            : new Set<string>()
+
+          // 清理旧的命令/面板映射
+          for (const cid of existingCmdIds) {
+            delete commandToPlugin[cid]
+          }
+
+          // 注册新的命令映射
           if (manifest.commands) {
             for (const cmd of manifest.commands) {
               commandToPlugin[cmd.id] = manifest.id
             }
           }
-          return {
-            plugins: [...s.plugins, plugin],
-            commands: [...s.commands, ...(manifest.commands?.map((c) => ({ ...c })) || [])],
-            panels: [...s.panels, ...(manifest.panels?.map((p) => ({ ...p })) || [])],
-          }
+
+          const plugins = existing
+            ? s.plugins.map((p) => (p.manifest.id === manifest.id ? plugin : p))
+            : [...s.plugins, plugin]
+
+          const commands = existing
+            ? [...s.commands.filter((c) => !existingCmdIds.has(c.id)), ...(manifest.commands?.map((c) => ({ ...c })) || [])]
+            : [...s.commands, ...(manifest.commands?.map((c) => ({ ...c })) || [])]
+
+          const panels = existing
+            ? [...s.panels.filter((p) => !existingPanelIds.has(p.id)), ...(manifest.panels?.map((p) => ({ ...p })) || [])]
+            : [...s.panels, ...(manifest.panels?.map((p) => ({ ...p })) || [])]
+
+          return { plugins, commands, panels }
         })
         return manifest.id
       },

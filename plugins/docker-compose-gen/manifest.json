@@ -1,0 +1,14 @@
+{
+  "id": "docker-compose-gen",
+  "name": "Docker Compose 生成器",
+  "version": "1.0.0",
+  "description": "一键生成常用 Docker Compose 配置：Web应用+DB+Redis、Nginx、Prometheus监控栈等",
+  "author": "Wrench",
+  "icon": "box",
+  "commands": [
+    { "id": "docker-webapp", "label": "Web 应用栈", "description": "Web + DB + Redis 完整配置", "icon": "globe" },
+    { "id": "docker-monitor", "label": "监控栈", "description": "Prometheus + Grafana 监控配置", "icon": "activity" },
+    { "id": "docker-tools", "label": "开发工具栈", "description": "MailHog + MinIO + PostgreSQL 开发环境", "icon": "wrench" }
+  ],
+  "panels": [{ "id": "docker-panel", "title": "Docker Compose 生成器", "icon": "box" }]
+}

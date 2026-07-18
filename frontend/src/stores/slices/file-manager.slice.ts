@@ -13,6 +13,6 @@ export const createFileManagerSlice: StateCreator<FileManagerSlice, [], [], File
 ) => ({
   fmSidebarOpen: false,
   setFmSidebarOpen: (open) => set({ fmSidebarOpen: open }),
-  fmSftpState: { connId: null, sessionId: null, pathCache: {} },
+  fmSftpState: { connId: null, sessionId: null, pathCache: {}, currentPath: null },
   setFmSftpState: (state) => set({ fmSftpState: state }),
 })

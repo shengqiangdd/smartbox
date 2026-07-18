@@ -14,6 +14,7 @@
 import { usePluginStore } from '../stores/plugin-store'
 import { pluginSandboxManager } from './pluginSandboxManager'
 import { authedFetch } from './auth'
+import { notify } from './event-bus'
 import type { PluginSandboxHandle } from '../components/PluginSandbox'
 import type { PluginManifest } from '../types/plugin'
 
@@ -171,11 +172,7 @@ export function createSandboxHandlers(pluginId: string) {
       // 面板已通过 pluginAPI.registerPanel 在沙箱内注册
     },
     onNotification: (message: string, type: 'info' | 'success' | 'error') => {
-      window.dispatchEvent(
-        new CustomEvent('wrench-notification', {
-          detail: { message, type },
-        }),
-      )
+      notify(message, type)
     },
     onError: (error: string) => {
       console.error(`[Plugin:${pluginId}] Sandbox error:`, error)

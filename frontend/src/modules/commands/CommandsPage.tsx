@@ -1,7 +1,8 @@
 import { useState, useCallback, useMemo, useEffect } from 'react'
-import { Zap, Terminal, Download, Upload, ArrowLeft, WifiOff } from 'lucide-react'
+import { Zap, Terminal, Download, Upload, ArrowLeft, WifiOff, ChevronDown } from 'lucide-react'
 import { useSshHostSelector } from '../../hooks/useSshHostSelector'
 import { useCommands } from './useCommands'
+import { emit } from '../../services/event-bus'
 import CommandsList from './CommandsList'
 import CommandOutput from './CommandOutput'
 import CommandFormModal from './CommandFormModal'
@@ -11,6 +12,9 @@ import type { QuickCommand } from './index'
 export default function CommandsPage() {
   // ── 统一主机选择器 ──
   const {
+    hosts,
+    selectedId,
+    setSelectedId,
     connectionId,
     connecting,
     hostLabel,
@@ -85,14 +89,12 @@ export default function CommandsPage() {
 
   /** 发送命令到终端 */
   const handleSendToTerminal = useCallback((cmdStr: string) => {
-    window.dispatchEvent(
-      new CustomEvent('wrench:send-to-terminal', { detail: { command: cmdStr } }),
-    )
+    emit('wrench:send-to-terminal', { command: cmdStr })
   }, [])
 
   /** 发送到批量执行面板 */
   const handleSendToBatch = useCallback((cmdStr: string) => {
-    window.dispatchEvent(new CustomEvent('wrench:send-to-batch', { detail: { command: cmdStr } }))
+    emit('wrench:send-to-batch', { command: cmdStr })
   }, [])
 
   /** 新建命令 */
@@ -174,6 +176,23 @@ export default function CommandsPage() {
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-700/50 bg-slate-900/80 px-4 py-2">
         <Zap size={18} className="text-amber-400" />
         <h1 className="text-sm font-semibold text-slate-200">脚本模板库</h1>
+        {/* 主机选择器 */}
+        {hosts.length > 0 && (
+          <div className="relative">
+            <select
+              value={selectedId || ''}
+              onChange={(e) => setSelectedId(e.target.value)}
+              className="appearance-none rounded border border-slate-700 bg-slate-800 px-2 py-1 pr-6 text-xs"
+            >
+              {hosts.map((h) => (
+                <option key={h.id} value={h.id}>
+                  {h.source === 'test-config' ? '⚡ ' : ''}{h.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute top-1/2 right-1.5 h-3 w-3 -translate-y-1/2 text-slate-500" />
+          </div>
+        )}
         {!hasConnection && !connecting && (
           <span className="flex items-center gap-1 rounded bg-amber-900/30 px-1.5 py-0.5 text-[10px] text-amber-400">
             <WifiOff size={10} /> 未连接

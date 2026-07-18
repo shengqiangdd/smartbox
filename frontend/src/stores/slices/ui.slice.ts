@@ -17,6 +17,10 @@ export interface UISlice {
 
   commandPaletteOpen: boolean
   setCommandPaletteOpen: (open: boolean) => void
+
+  /** 全局 AI Agent 侧边栏开关 */
+  agentOpen: boolean
+  setAgentOpen: (open: boolean) => void
 }
 
 export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
@@ -33,4 +37,7 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
 
   commandPaletteOpen: false,
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
+
+  agentOpen: false,
+  setAgentOpen: (open) => set({ agentOpen: open }),
 })

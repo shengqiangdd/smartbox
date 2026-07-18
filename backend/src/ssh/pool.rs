@@ -266,7 +266,7 @@ impl SshSession {
             .request_pty(false, "xterm-256color", cols, rows, 0, 0, &[])
             .await?;
 
-        channel.request_shell(false).await?;
+        channel.exec(true, "bash").await?;
 
         Ok(channel)
     }

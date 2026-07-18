@@ -45,36 +45,58 @@ function render(el: React.ReactNode) {
   }
 }
 
+function clickButton(container: HTMLElement, label: string) {
+  const btn = Array.from(container.querySelectorAll('button')).find((b) =>
+    b.textContent?.includes(label),
+  )
+  expect(btn, `Button "${label}" not found`).toBeTruthy()
+  flushSync(() => btn!.click())
+  return btn!
+}
+
 describe('BottomNav', () => {
-  it('renders all nav items', () => {
+  it('renders 5 core nav items + more button', () => {
     const { container } = render(<BottomNav />)
+    const buttons = container.querySelectorAll('button')
+    // 5 core items + 1 "more" button = 6
+    expect(buttons.length).toBe(6)
     const text = container.textContent!
     expect(text).toContain('SSH')
     expect(text).toContain('命令')
     expect(text).toContain('Docker')
     expect(text).toContain('监控')
     expect(text).toContain('文件')
-    expect(text).toContain('日志')
-    expect(text).toContain('插件')
-    expect(text).toContain('设置')
-    expect(text).toContain('审计')
+    expect(text).toContain('更多')
   })
 
-  it('renders 9 nav buttons', () => {
+  it('shows more panel with remaining items', () => {
     const { container } = render(<BottomNav />)
-    const buttons = container.querySelectorAll('button')
-    expect(buttons.length).toBe(9)
+    clickButton(container, '更多')
+
+    // Panel should appear with the remaining items
+    const text = container.textContent!
+    expect(text).toContain('日志聚合')
+    expect(text).toContain('插件')
+    expect(text).toContain('凭据保险箱')
+    expect(text).toContain('通知渠道')
+    expect(text).toContain('审计日志')
+    expect(text).toContain('系统设置')
   })
 
-  it('highlights the active nav item', () => {
+  it('navigates from more panel and closes it', () => {
+    const { container } = render(<BottomNav />)
+    clickButton(container, '更多')
+    clickButton(container, '插件')
+    expect(mockSetActiveNav).toHaveBeenCalledWith('plugins')
+  })
+
+  it('highlights the active core nav item', () => {
     setAppState({ activeNav: 'docker' })
     const { container } = render(<BottomNav />)
 
-    // Find all buttons and check the active one
     let foundActive = false
     container.querySelectorAll('button').forEach((btn) => {
       if (btn.textContent?.includes('Docker')) {
-        // Active button should have the primary color class
         const svg = btn.querySelector('svg')
         if (svg) {
           expect(svg.getAttribute('class')).toContain('wrench')
@@ -85,39 +107,15 @@ describe('BottomNav', () => {
     expect(foundActive).toBe(true)
   })
 
-  it('calls setActiveNav on click', () => {
+  it('marks more button active when non-core page is active', () => {
+    setAppState({ activeNav: 'vault' })
     const { container } = render(<BottomNav />)
-    const buttons = container.querySelectorAll('button')
-    // Click the Docker button
-    const dockerBtn = Array.from(buttons).find((b) => b.textContent?.includes('Docker'))
-    expect(dockerBtn).toBeTruthy()
-    dockerBtn!.click()
-    expect(mockSetActiveNav).toHaveBeenCalledWith('docker')
-  })
-
-  it('calls setActiveNav with correct id', () => {
-    const { container } = render(<BottomNav />)
-    const buttons = container.querySelectorAll('button')
-
-    const testCases = [
-      { label: 'SSH', id: 'ssh' },
-      { label: '命令', id: 'commands' },
-      { label: 'Docker', id: 'docker' },
-      { label: '监控', id: 'monitor' },
-      { label: '文件', id: 'files' },
-      { label: '日志', id: 'logs' },
-      { label: '插件', id: 'plugins' },
-      { label: '审计', id: 'audit' },
-      { label: '设置', id: 'settings' },
-    ]
-
-    testCases.forEach(({ label, id }) => {
-      mockSetActiveNav.mockClear()
-      const btn = Array.from(buttons).find((b) => b.textContent?.includes(label))
-      expect(btn, `Button "${label}" not found`).toBeTruthy()
-      btn!.click()
-      expect(mockSetActiveNav).toHaveBeenCalledWith(id)
-    })
+    const moreBtn = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('更多'),
+    )
+    expect(moreBtn).toBeTruthy()
+    // More button should have wrench color class
+    expect(moreBtn!.className).toContain('wrench')
   })
 
   it('hides when SSH terminal is fullscreen', () => {
@@ -127,7 +125,6 @@ describe('BottomNav', () => {
       sshSftpOpen: false,
     })
     const { container } = render(<BottomNav />)
-    // Should be empty (null return)
     expect(container.innerHTML).toBe('')
   })
 
@@ -138,15 +135,17 @@ describe('BottomNav', () => {
       sshSftpOpen: true,
     })
     const { container } = render(<BottomNav />)
-    // Should still render because sftp is open
     expect(container.querySelector('button')).toBeTruthy()
   })
 
-  it('renders icons in each button', () => {
+  it('renders icons in each core button', () => {
     const { container } = render(<BottomNav />)
-    container.querySelectorAll('button').forEach((btn) => {
-      const svg = btn.querySelector('svg')
-      expect(svg, `Button "${btn.textContent}" missing icon`).toBeTruthy()
-    })
+    const buttons = container.querySelectorAll('button')
+    // First 5 are core items, 6th is more
+    for (let i = 0; i < 6; i++) {
+      const btn = buttons[i]
+      const svg = btn!.querySelector('svg')
+      expect(svg, `Button "${btn!.textContent}" missing icon`).toBeTruthy()
+    }
   })
 })

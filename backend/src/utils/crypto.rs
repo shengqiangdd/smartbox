@@ -3,7 +3,8 @@ use aes_gcm::{
     Aes256Gcm,
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-use rand::TryRngCore;
+use rand::rngs::SysRng;
+use rand::TryRng;
 
 /// Encrypt sensitive data (SSH passwords, private keys) using AES-256-GCM.
 ///
@@ -15,7 +16,7 @@ pub fn encrypt(plaintext: &str, key: &[u8; 32]) -> Result<String, String> {
     
     // Generate random 12-byte nonce
     let mut nonce_bytes = [0u8; 12];
-    rand::rngs::OsRng.try_fill_bytes(&mut nonce_bytes)
+    SysRng.try_fill_bytes(&mut nonce_bytes)
         .map_err(|e| format!("Failed to generate nonce: {:?}", e))?;
     let nonce = aes_gcm::Nonce::try_from(nonce_bytes.as_slice())
         .map_err(|_| "Invalid nonce length")?;
@@ -59,7 +60,7 @@ pub fn decrypt(encrypted: &str, key: &[u8; 32]) -> Result<String, String> {
 /// Generate a random 256-bit encryption key.
 pub fn generate_key() -> [u8; 32] {
     let mut key = [0u8; 32];
-    rand::rngs::OsRng.try_fill_bytes(&mut key).expect("Failed to generate random key");
+    SysRng.try_fill_bytes(&mut key).expect("Failed to generate random key");
     key
 }
 

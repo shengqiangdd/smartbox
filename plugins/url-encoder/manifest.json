@@ -1,0 +1,14 @@
+{
+  "id": "url-encoder",
+  "name": "URL 编解码器",
+  "version": "1.0.0",
+  "description": "URL 编码和解码工具，支持组件编码和全量编码",
+  "author": "Wrench",
+  "icon": "link",
+  "commands": [
+    { "id": "url-encode", "label": "URL 编码", "description": "将文本编码为 URL 安全格式", "icon": "link" },
+    { "id": "url-decode", "label": "URL 解码", "description": "将 URL 编码文本还原", "icon": "link" },
+    { "id": "url-component-encode", "label": "组件编码", "description": "使用 encodeURIComponent 编码", "icon": "link" }
+  ],
+  "panels": [{ "id": "url-panel", "title": "URL 编解码器", "icon": "link" }]
+}

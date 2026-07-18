@@ -13,6 +13,7 @@ import { refreshAlertStore } from './stores/alert-store'
 import { refreshPluginStore } from './stores/plugin-store'
 import { initGlobalAPI } from './global-api'
 import { ensureClientDbInit } from './services/client-db-init'
+import { on } from './services/event-bus'
 
 // 初始化插件全局 API
 initGlobalAPI()
@@ -103,15 +104,13 @@ function AppContent() {
 
   // 监听导入配置事件，刷新所有 store
   useEffect(() => {
-    const handler = () => {
+    return on('wrench-config-imported', () => {
       refreshAppStore()
       refreshAiStore()
       refreshSshStore()
       refreshAlertStore()
       refreshPluginStore()
-    }
-    window.addEventListener('wrench-config-imported', handler)
-    return () => window.removeEventListener('wrench-config-imported', handler)
+    })
   }, [])
 
   // 主题同步

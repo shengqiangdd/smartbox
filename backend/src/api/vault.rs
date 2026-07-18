@@ -130,7 +130,7 @@ pub async fn create_vault_entry(
     let encrypted =
         crypto::encrypt(&value, &vault_key).map_err(|e| AppError::Internal(format!("Encryption failed: {}", e)))?;
     let tags_str = serde_json::to_string(&tags).unwrap_or_else(|_| "[]".into());
-    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let now = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%:z").to_string();
 
     let entry = VaultEntry {
         id: uuid::Uuid::new_v4().to_string(),
@@ -192,7 +192,7 @@ pub async fn update_vault_entry(
     };
 
     let tags_str = serde_json::to_string(&tags).unwrap_or_else(|_| "[]".into());
-    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let now = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%:z").to_string();
 
     let updated = VaultEntry {
         id: entry_id.clone(),

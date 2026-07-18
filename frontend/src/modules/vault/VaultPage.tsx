@@ -20,8 +20,11 @@ import {
   FileText,
   Search,
   Loader2,
+  Pencil,
 } from 'lucide-react'
-import { vaultList, vaultDelete, type VaultEntry } from '../../services/client-db'
+import { vaultList, vaultDelete, vaultUpsert, type VaultEntry } from '../../services/client-db'
+import { notify } from '../../services/event-bus'
+import { ConfirmModal } from '../../components/ConfirmModal'
 import { useClientDbReady } from '../../services/client-db-init'
 
 const KIND_META: Record<
@@ -52,6 +55,7 @@ interface EntryCardProps {
   onToggleShow: (id: string) => void
   onCopy: (id: string, value: string) => void
   onDelete: (id: string) => void
+  onEdit: (entry: VaultEntry) => void
   kindMeta: (kind: string) => {
     label: string
     icon: React.ComponentType<{ size?: number; className?: string }>
@@ -66,6 +70,7 @@ const EntryCard = memo(function EntryCard({
   onToggleShow,
   onCopy,
   onDelete,
+  onEdit,
   kindMeta,
 }: EntryCardProps) {
   const meta = kindMeta(entry.kind)
@@ -79,7 +84,13 @@ const EntryCard = memo(function EntryCard({
         <div className="flex items-center gap-2">
           <Icon size={16} className={meta.color} />
           <div>
-            <h3 className="text-sm font-medium text-slate-200">{entry.name}</h3>
+            <button
+              onClick={() => onEdit(entry)}
+              className="flex items-center gap-1.5 text-left text-sm font-medium text-slate-200 transition-colors hover:text-wrench-400"
+            >
+              {entry.name}
+              <Pencil size={11} className="text-slate-600 opacity-0 transition-opacity group-hover:opacity-100" />
+            </button>
             <p className="mt-0.5 text-[11px] text-slate-500">{meta.label}</p>
           </div>
         </div>
@@ -142,6 +153,17 @@ export default function VaultPage() {
   const [search, setSearch] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
   const [kindFilter, setKindFilter] = useState<string>('all')
+  const [editingEntry, setEditingEntry] = useState<VaultEntry | null>(null)
+
+  // Form state
+  const [formName, setFormName] = useState('')
+  const [formKind, setFormKind] = useState<string>('ssh_key')
+  const [formValue, setFormValue] = useState('')
+  const [formTags, setFormTags] = useState('')
+  const [showFormValue, setShowFormValue] = useState(false)
+
+  // Delete confirmation
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -174,14 +196,65 @@ export default function VaultPage() {
   }, [dbReady])
 
   const deleteEntry = useCallback((id: string) => {
-    if (!confirm('确定删除此凭据？此操作不可撤销。')) return
     try {
       vaultDelete(id)
       setEntries((prev) => prev.filter((e) => e.id !== id))
+      notify('凭据已删除', 'success')
     } catch (e: unknown) {
-      alert('删除失败: ' + (e instanceof Error ? e.message : '未知错误'))
+      notify('删除失败: ' + (e instanceof Error ? e.message : '未知错误'), 'error')
     }
   }, [])
+
+  const openAddModal = useCallback(() => {
+    setEditingEntry(null)
+    setFormName('')
+    setFormKind('ssh_key')
+    setFormValue('')
+    setFormTags('')
+    setShowFormValue(false)
+    setShowAddModal(true)
+  }, [])
+
+  const openEditModal = useCallback((entry: VaultEntry) => {
+    setEditingEntry(entry)
+    setFormName(entry.name)
+    setFormKind(entry.kind)
+    setFormValue(entry.value)
+    setFormTags(parseTags(entry.tags).join(', '))
+    setShowFormValue(false)
+    setShowAddModal(true)
+  }, [])
+
+  const handleSaveEntry = useCallback(() => {
+    if (!formName.trim()) return
+
+    const now = new Date().toISOString()
+    const tagsArray = formTags
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean)
+    const tagsJson = JSON.stringify(tagsArray)
+
+    const entry: VaultEntry = {
+      id: editingEntry?.id ?? crypto.randomUUID(),
+      name: formName.trim(),
+      kind: formKind,
+      value: formValue,
+      tags: tagsJson,
+      createdAt: editingEntry?.createdAt ?? now,
+      updatedAt: now,
+    }
+
+    try {
+      vaultUpsert(entry)
+      loadEntries()
+      setShowAddModal(false)
+      setEditingEntry(null)
+      notify('凭据已保存', 'success')
+    } catch (e: unknown) {
+      notify('保存失败: ' + (e instanceof Error ? e.message : '未知错误'), 'error')
+    }
+  }, [editingEntry, formName, formKind, formValue, formTags, loadEntries])
 
   const copyValue = useCallback(async (_id: string, value: string) => {
     try {
@@ -246,52 +319,53 @@ export default function VaultPage() {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-700/50 px-6 py-4">
-        <div className="flex items-center gap-3">
-          <KeyRound size={22} className="text-wrench-400" />
-          <h1 className="text-lg font-semibold text-slate-200">凭据保险箱</h1>
-          <span className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-400">本地存储</span>
+      <div className="flex items-center justify-between border-b border-slate-700/50 px-4 py-3 sm:px-6 sm:py-4">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <KeyRound size={18} className="text-wrench-400 sm:text-[22px]" />
+          <h1 className="text-base font-semibold text-slate-200 sm:text-lg">凭据保险箱</h1>
+          <span className="hidden rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-400 sm:inline">本地存储</span>
         </div>
         <button
-          onClick={() => setShowAddModal(true)}
-          className="bg-wrench-600 hover:bg-wrench-500 flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white"
+          onClick={openAddModal}
+          className="bg-wrench-600 hover:bg-wrench-500 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white sm:gap-2 sm:px-4 sm:py-2 sm:text-sm"
         >
-          <Plus size={16} />
-          新增凭据
+          <Plus size={14} />
+          <span className="hidden sm:inline">新增凭据</span>
+          <span className="sm:hidden">新增</span>
         </button>
       </div>
 
       {/* Search & Filter */}
-      <div className="flex items-center gap-3 border-b border-slate-700/50 px-6 py-3">
-        <div className="relative max-w-md flex-1">
-          <Search size={16} className="absolute top-1/2 left-3 -translate-y-1/2 text-slate-500" />
+      <div className="flex flex-col gap-2 border-b border-slate-700/50 px-4 py-2 sm:flex-row sm:items-center sm:gap-3 sm:px-6 sm:py-3">
+        <div className="relative min-w-0 flex-1">
+          <Search size={14} className="absolute top-1/2 left-3 -translate-y-1/2 text-slate-500" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="搜索凭据..."
-            className="focus:border-wrench-500 w-full rounded-lg border border-slate-700 bg-slate-800/50 py-2 pr-3 pl-9 text-sm text-slate-200 placeholder-slate-500 focus:outline-none"
+            className="focus:border-wrench-500 w-full rounded-lg border border-slate-700 bg-slate-800/50 py-1.5 pl-8 pr-3 text-xs text-slate-200 placeholder-slate-500 focus:outline-none sm:py-2 sm:pl-9 sm:text-sm"
           />
         </div>
-        <div className="flex gap-1">
+        <div className="no-scrollbar flex gap-1 overflow-x-auto pb-0.5 sm:gap-1">
           {(['all', 'ssh_key', 'api_key', 'password', 'note'] as const).map((k) => (
             <button
               key={k}
               onClick={() => setKindFilter(k)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+              className={`shrink-0 whitespace-nowrap rounded-lg px-2 py-1 text-[10px] font-medium transition-colors sm:px-3 sm:py-1.5 sm:text-xs ${
                 kindFilter === k
                   ? 'bg-wrench-600 text-white'
                   : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
               }`}
             >
               {k === 'all' ? '全部' : KIND_META[k]?.label || k}
-              <span className="ml-1 text-[10px] opacity-70">{kindCounts[k] || 0}</span>
+              <span className="ml-0.5 opacity-70 sm:ml-1">{kindCounts[k] || 0}</span>
             </button>
           ))}
         </div>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 pb-nav">
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 size={24} className="animate-spin text-slate-500" />
@@ -312,7 +386,7 @@ export default function VaultPage() {
             </p>
             {entries.length === 0 && (
               <button
-                onClick={() => setShowAddModal(true)}
+                onClick={openAddModal}
                 className="text-wrench-400 mt-2 text-sm hover:underline"
               >
                 添加第一个凭据
@@ -329,7 +403,8 @@ export default function VaultPage() {
                 copiedId={copied}
                 onToggleShow={toggleShow}
                 onCopy={copyValue}
-                onDelete={deleteEntry}
+                onDelete={(id) => setDeleteTargetId(id)}
+                onEdit={openEditModal}
                 kindMeta={kindMetaFn}
               />
             ))}
@@ -337,18 +412,114 @@ export default function VaultPage() {
         )}
       </div>
 
-      {/* TODO: Add vault entry modal */}
+      {/* Delete confirmation modal */}
+      <ConfirmModal
+        open={deleteTargetId !== null}
+        title="删除凭据"
+        message="确定删除此凭据？此操作不可撤销。"
+        confirmText="删除"
+        cancelText="取消"
+        variant="danger"
+        onConfirm={() => {
+          if (deleteTargetId) deleteEntry(deleteTargetId)
+          setDeleteTargetId(null)
+        }}
+        onCancel={() => setDeleteTargetId(null)}
+      />
+
+      {/* Add / Edit vault entry modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-full max-w-md rounded-lg border border-slate-700 bg-slate-900 p-6">
-            <h2 className="mb-4 text-lg font-semibold text-slate-200">新增凭据</h2>
-            <p className="text-sm text-slate-400">增加凭据功能开发中，敬请期待...</p>
-            <button
-              onClick={() => setShowAddModal(false)}
-              className="mt-4 rounded-lg bg-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-600"
-            >
-              关闭
-            </button>
+          <div key={editingEntry?.id ?? 'add'} className="w-full max-w-lg rounded-lg border border-slate-700 bg-slate-900 p-6 shadow-2xl">
+            <h2 className="mb-4 text-lg font-semibold text-slate-200">
+              {editingEntry ? '编辑凭据' : '新增凭据'}
+            </h2>
+
+            <div className="space-y-4">
+              {/* Name */}
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">名称 *</label>
+                <input
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                  placeholder="例如：GitHub Token"
+                  autoFocus
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800/50 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:border-wrench-500 focus:outline-none"
+                />
+              </div>
+
+              {/* Kind */}
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">类型</label>
+                <select
+                  value={formKind}
+                  onChange={(e) => setFormKind(e.target.value)}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800/50 px-3 py-2 text-sm text-slate-200 focus:border-wrench-500 focus:outline-none"
+                >
+                  <option value="ssh_key">SSH Key</option>
+                  <option value="api_key">API Key</option>
+                  <option value="password">Password</option>
+                  <option value="note">Note</option>
+                </select>
+              </div>
+
+              {/* Value */}
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">值 *</label>
+                <div className="relative">
+                  <textarea
+                    value={showFormValue ? formValue : '•'.repeat(Math.min(formValue.length || 8, 30))}
+                    onChange={showFormValue ? (e) => setFormValue(e.target.value) : undefined}
+                    readOnly={!showFormValue}
+                    rows={4}
+                    placeholder={showFormValue ? '粘贴凭据内容...' : ''}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-800/50 px-3 py-2 pr-10 text-sm font-mono text-slate-200 placeholder-slate-500 focus:border-wrench-500 focus:outline-none resize-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowFormValue(!showFormValue)}
+                    className="absolute top-2.5 right-2.5 text-slate-500 hover:text-slate-300"
+                    tabIndex={-1}
+                  >
+                    {showFormValue ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                {!showFormValue && formValue && (
+                  <p className="mt-1 text-[10px] text-slate-600">已隐藏内容 · 点击右侧图标显示</p>
+                )}
+              </div>
+
+              {/* Tags */}
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">标签（逗号分隔）</label>
+                <input
+                  value={formTags}
+                  onChange={(e) => setFormTags(e.target.value)}
+                  placeholder="例如：production, api, team-a"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800/50 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:border-wrench-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setShowAddModal(false)
+                  setEditingEntry(null)
+                }}
+                className="rounded-lg border border-slate-600/50 px-4 py-2 text-sm text-slate-400 hover:bg-slate-700/50"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSaveEntry}
+                disabled={!formName.trim()}
+                className="bg-wrench-600 hover:bg-wrench-500 disabled:opacity-40 rounded-lg px-4 py-2 text-sm font-medium text-white"
+              >
+                {editingEntry ? '保存修改' : '添加凭据'}
+              </button>
+            </div>
           </div>
         </div>
       )}

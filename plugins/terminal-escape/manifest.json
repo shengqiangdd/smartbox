@@ -1,0 +1,12 @@
+{
+  "id": "terminal-escape",
+  "name": "终端转义序列生成器",
+  "version": "1.0.0",
+  "description": "生成 ANSI 终端转义序列：前景色、背景色、样式（粗体/斜体/下划线）、光标控制",
+  "author": "Wrench",
+  "icon": "terminal",
+  "commands": [
+    { "id": "term-escape", "label": "终端转义序列", "description": "生成 ANSI 终端转义码", "icon": "terminal" }
+  ],
+  "panels": [{ "id": "termescape-panel", "title": "终端转义序列生成器", "icon": "terminal" }]
+}

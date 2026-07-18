@@ -211,6 +211,10 @@ pub async fn build_app(state: Arc<AppState>) -> Router {
         .route("/sftp/rename", axum::routing::post(api::sftp::sftp_rename))
         .route("/sftp/stat", axum::routing::post(api::sftp::sftp_stat))
         .route("/sftp/chmod", axum::routing::post(api::sftp::sftp_chmod))
+        .route("/sftp/disk-usage", axum::routing::post(api::sftp::sftp_disk_usage))
+        .route("/sftp/file-hash", axum::routing::post(api::sftp::sftp_file_hash))
+        .route("/sftp/batch-delete", axum::routing::post(api::sftp::sftp_batch_delete))
+        .route("/sftp/batch-move", axum::routing::post(api::sftp::sftp_batch_move))
         // ─── Host Health Dashboard ───
         .route("/hosts/health", get(api::host_health::get_all_health))
         .route("/hosts/diagnose", axum::routing::post(api::host_health::diagnose_host))

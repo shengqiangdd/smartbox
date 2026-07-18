@@ -36,7 +36,7 @@ fn build_terminal_output_msg(
     buf.push_str(connection_id);
     buf.push_str(r#"","data":""#);
     buf.push_str(data);
-    buf.push('"');
+    buf.push_str(r#""}"#);
     txt(buf)
 }
 
@@ -52,7 +52,7 @@ fn build_docker_output_msg(
     buf.push_str(container_id);
     buf.push_str(r#"","data":""#);
     buf.push_str(data);
-    buf.push('"');
+    buf.push_str(r#""}"#);
     txt(buf)
 }
 
@@ -204,6 +204,18 @@ async fn handle_terminal_connect(socket: &mut WebSocket, state: &Arc<AppState>, 
         tracing::info!("Creating new SshSession: {}@{}:{} (password_len={}, key_len={})", username, host, port, password.len(), private_key.len());
 
         let new_session = SshSession::new(connection_id.clone(), host.to_string(), port, username.to_string());
+
+        if password.is_empty() && private_key.is_empty() {
+            let err = serde_json::json!({
+                "type": "error",
+                "connectionId": connection_id,
+                "message": "No authentication credentials provided. Please enter a password or provide a private key.",
+                "error": true,
+                "requestId": request_id,
+            });
+            let _ = socket.send(Message::Text(txt(err.to_string()))).await;
+            return;
+        }
 
         if !password.is_empty() {
             match timeout(
@@ -536,7 +548,7 @@ async fn handle_sftp_writefile(
     let data = base64::engine::general_purpose::STANDARD
         .decode(content_b64)
         .unwrap_or_else(|_| content_b64.as_bytes().to_vec());
-    match crate::ssh::sftp::upload_file(session, path, data).await {
+    match crate::ssh::sftp::upload_file(session, path, data, None).await {
         Ok(_) => SftpResponse::success("writefile"),
         Err(e) => SftpResponse::error("writefile", format!("Write failed: {}", e)),
     }
@@ -547,7 +559,7 @@ async fn handle_sftp_mkdir(session: &std::sync::Arc<crate::ssh::pool::SshSession
         Some(p) => p,
         None => return SftpResponse::error("mkdir", "Missing path"),
     };
-    match crate::ssh::sftp::create_dir(session, path).await {
+    match crate::ssh::sftp::create_dir(session, path, None).await {
         Ok(_) => SftpResponse::success("mkdir"),
         Err(e) => SftpResponse::error("mkdir", format!("Mkdir failed: {}", e)),
     }
@@ -558,7 +570,7 @@ async fn handle_sftp_rmdir(session: &std::sync::Arc<crate::ssh::pool::SshSession
         Some(p) => p,
         None => return SftpResponse::error("rmdir", "Missing path"),
     };
-    match crate::ssh::sftp::delete_file(session, path, true).await {
+    match crate::ssh::sftp::delete_file(session, path, true, None).await {
         Ok(_) => SftpResponse::success("rmdir"),
         Err(e) => SftpResponse::error("rmdir", format!("Rmdir failed: {}", e)),
     }
@@ -569,7 +581,7 @@ async fn handle_sftp_unlink(session: &std::sync::Arc<crate::ssh::pool::SshSessio
         Some(p) => p,
         None => return SftpResponse::error("unlink", "Missing path"),
     };
-    match crate::ssh::sftp::delete_file(session, path, false).await {
+    match crate::ssh::sftp::delete_file(session, path, false, None).await {
         Ok(_) => SftpResponse::success("unlink"),
         Err(e) => SftpResponse::error("unlink", format!("Unlink failed: {}", e)),
     }
@@ -584,7 +596,7 @@ async fn handle_sftp_rename(session: &std::sync::Arc<crate::ssh::pool::SshSessio
         Some(t) => t,
         None => return SftpResponse::error("rename", "Missing target"),
     };
-    match crate::ssh::sftp::rename(session, path, target).await {
+    match crate::ssh::sftp::rename(session, path, target, None).await {
         Ok(_) => SftpResponse::success("rename"),
         Err(e) => SftpResponse::error("rename", format!("Rename failed: {}", e)),
     }

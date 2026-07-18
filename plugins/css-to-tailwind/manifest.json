@@ -1,0 +1,13 @@
+{
+  "id": "css-to-tailwind",
+  "name": "CSS 转 Tailwind",
+  "version": "1.0.0",
+  "description": "将 CSS 属性转换为对应的 Tailwind CSS 类名",
+  "author": "Wrench",
+  "icon": "palette",
+  "commands": [
+    { "id": "css-tw-convert", "label": "转换为 Tailwind", "description": "将 CSS 规则转换为 Tailwind 类名", "icon": "palette" },
+    { "id": "css-tw-preview", "label": "CSS 对照表", "description": "查看常用 CSS 属性与 Tailwind 类名的映射", "icon": "table" }
+  ],
+  "panels": [{ "id": "css-tw-panel", "title": "CSS 转 Tailwind", "icon": "palette" }]
+}

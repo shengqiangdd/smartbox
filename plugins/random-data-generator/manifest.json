@@ -1,0 +1,19 @@
+{
+  "id": "random-data-generator",
+  "name": "随机数据生成器",
+  "version": "1.0.0",
+  "description": "生成各种类型的随机测试数据：姓名、邮箱、手机号、地址、IP、UUID、数字、日期等",
+  "author": "Wrench",
+  "icon": "shuffle",
+  "commands": [
+    { "id": "rand-names", "label": "随机姓名", "description": "生成随机中文/英文姓名", "icon": "user" },
+    { "id": "rand-emails", "label": "随机邮箱", "description": "生成随机邮箱地址", "icon": "mail" },
+    { "id": "rand-numbers", "label": "随机数字", "description": "生成指定范围的随机数字序列", "icon": "hash" },
+    { "id": "rand-ip", "label": "随机 IP", "description": "生成随机 IPv4 地址", "icon": "globe" },
+    { "id": "rand-phones", "label": "随机手机号", "description": "生成随机中国手机号", "icon": "phone" },
+    { "id": "rand-address", "label": "随机地址", "description": "生成随机中文地址", "icon": "map-pin" },
+    { "id": "rand-json", "label": "随机 JSON", "description": "生成随机 JSON 对象/数组", "icon": "braces" },
+    { "id": "rand-date", "label": "随机日期", "description": "生成指定范围内的随机日期", "icon": "calendar" }
+  ],
+  "panels": [{ "id": "rand-panel", "title": "随机数据", "icon": "shuffle" }]
+}

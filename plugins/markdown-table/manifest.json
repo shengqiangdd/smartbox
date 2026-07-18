@@ -1,0 +1,12 @@
+{
+  "id": "markdown-table",
+  "name": "Markdown 表格生成器",
+  "version": "1.0.0",
+  "description": "可视化创建 Markdown 表格，支持对齐设置、CSV 导入、自动格式化",
+  "author": "Wrench",
+  "icon": "table",
+  "commands": [
+    { "id": "md-table", "label": "Markdown 表格", "description": "创建和编辑 Markdown 表格", "icon": "table" }
+  ],
+  "panels": [{ "id": "mdtable-panel", "title": "Markdown 表格生成器", "icon": "table" }]
+}

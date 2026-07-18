@@ -1,0 +1,12 @@
+{
+  "id": "jwt-decoder",
+  "name": "JWT 解析器",
+  "version": "1.0.0",
+  "description": "解析 JWT Token 的 Header、Payload、签名，验证过期时间，格式化输出",
+  "author": "Wrench",
+  "icon": "key",
+  "commands": [
+    { "id": "jwt-decode", "label": "解析 JWT", "description": "解码并格式化 JWT Token", "icon": "key" }
+  ],
+  "panels": [{ "id": "jwt-panel", "title": "JWT 解析器", "icon": "key" }]
+}

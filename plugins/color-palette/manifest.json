@@ -1,0 +1,13 @@
+{
+  "id": "color-palette",
+  "name": "配色方案生成器",
+  "version": "1.0.0",
+  "description": "基于颜色生成互补色、类似色、三色组、调色板，支持色盲模拟和对比度检查",
+  "author": "Wrench",
+  "icon": "palette",
+  "commands": [
+    { "id": "color-harmony", "label": "配色方案", "description": "生成和谐的配色方案", "icon": "palette" },
+    { "id": "color-contrast", "label": "对比度检查", "description": "WCAG 对比度检查", "icon": "eye" }
+  ],
+  "panels": [{ "id": "colorpal-panel", "title": "配色方案生成器", "icon": "palette" }]
+}

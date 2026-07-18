@@ -1,15 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { authedFetch } from '../../services/auth'
+import { notify } from '../../services/event-bus'
 import { RefreshCw, Cpu, MemoryStick, Activity } from 'lucide-react'
 import type { DockerContainer } from './index'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ApiResponse = { success?: boolean; data?: any; error?: string; msg?: string }
-
-function notify(message: string, type: 'success' | 'error' | 'info' = 'info') {
-  const ev = new CustomEvent('wrench-notification', { detail: { message, type } })
-  window.dispatchEvent(ev)
-}
 
 interface Props {
   connectionId: string
@@ -316,6 +312,9 @@ export default function DockerMonitor({ connectionId, containers: propContainers
       return
     }
 
+    // 页面不可见时暂停轮询
+    if (document.visibilityState !== 'visible') return
+
     const t = setTimeout(() => fetchStats(), 0)
     timerRef.current = setInterval(fetchStats, INTERVAL_MS)
     return () => {
@@ -325,6 +324,21 @@ export default function DockerMonitor({ connectionId, containers: propContainers
         timerRef.current = null
       }
     }
+  }, [autoRefresh, fetchStats])
+
+  // 页面可见性变化时恢复/暂停轮询
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && autoRefresh && !timerRef.current) {
+        fetchStats()
+        timerRef.current = setInterval(fetchStats, INTERVAL_MS)
+      } else if (document.visibilityState !== 'visible' && timerRef.current) {
+        clearInterval(timerRef.current)
+        timerRef.current = null
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
   }, [autoRefresh, fetchStats])
 
   // 选中容器变化时立即获取一次数据（不等轮询间隔）

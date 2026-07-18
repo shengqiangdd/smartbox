@@ -27,4 +27,6 @@ export interface SftpState {
   connId: string | null
   sessionId: string | null
   pathCache: Record<string, string>
+  /** 当前浏览路径，用于页面切换时保持状态 */
+  currentPath?: string | null
 }

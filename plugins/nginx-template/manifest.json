@@ -1,0 +1,15 @@
+{
+  "id": "nginx-template",
+  "name": "Nginx 配置生成器",
+  "version": "1.0.0",
+  "description": "Nginx 反向代理、负载均衡、SSL、静态服务、限流等常见配置一键生成",
+  "author": "Wrench",
+  "icon": "server",
+  "commands": [
+    { "id": "nginx-reverse-proxy", "label": "反向代理", "description": "生成反向代理配置", "icon": "arrow-up-right" },
+    { "id": "nginx-static", "label": "静态服务", "description": "生成静态文件服务配置", "icon": "folder" },
+    { "id": "nginx-ssl", "label": "HTTPS/SSL", "description": "生成 SSL/TLS 配置", "icon": "lock" },
+    { "id": "nginx-loadbalance", "label": "负载均衡", "description": "生成负载均衡配置", "icon": "split" }
+  ],
+  "panels": [{ "id": "nginx-panel", "title": "Nginx 配置生成器", "icon": "server" }]
+}

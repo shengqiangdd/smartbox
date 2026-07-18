@@ -1,0 +1,14 @@
+{
+  "id": "uuid-generator",
+  "name": "UUID 生成器",
+  "version": "1.0.0",
+  "description": "生成 UUID v4 随机标识符，支持批量生成和自定义格式",
+  "author": "Wrench",
+  "icon": "hash",
+  "commands": [
+    { "id": "uuid-generate", "label": "生成 UUID", "description": "生成一个标准 UUID v4", "icon": "hash" },
+    { "id": "uuid-generate-batch", "label": "批量生成", "description": "一次生成 10 个 UUID", "icon": "list" },
+    { "id": "uuid-format", "label": "格式化 UUID", "description": "将选中文本转为大写无连字符格式", "icon": "edit" }
+  ],
+  "panels": [{ "id": "uuid-panel", "title": "UUID 生成器", "icon": "hash" }]
+}

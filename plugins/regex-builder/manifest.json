@@ -1,0 +1,12 @@
+{
+  "id": "regex-builder",
+  "name": "正则构建器",
+  "version": "1.0.0",
+  "description": "交互式构建正则表达式，点选组件拼装，实时预览匹配结果，代码导出",
+  "author": "Wrench",
+  "icon": "regex",
+  "commands": [
+    { "id": "regex-build", "label": "正则构建器", "description": "交互式拼装正则表达式", "icon": "regex" }
+  ],
+  "panels": [{ "id": "regexbuild-panel", "title": "正则构建器", "icon": "regex" }]
+}

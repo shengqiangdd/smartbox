@@ -19,6 +19,33 @@ struct HostInfo {
     session: Option<Arc<crate::ssh::SshSession>>,
 }
 
+/// Build a default offline HostHealth — shared by "not connected" and "error" branches.
+fn make_offline_health(id: String, info: &HostInfo, error: Option<String>) -> HostHealth {
+    HostHealth {
+        id,
+        host: info.host.clone(),
+        port: info.port,
+        username: info.username.clone(),
+        connected: false,
+        error,
+        cpu_load: None,
+        cpu_load_5: None,
+        cpu_load_15: None,
+        cpu_cores: None,
+        mem_total_mb: None,
+        mem_used_mb: None,
+        mem_percent: None,
+        uptime: None,
+        processes: None,
+        disks: Vec::new(),
+        net_rx_bytes: 0,
+        net_tx_bytes: 0,
+        io_read_sectors: 0,
+        io_write_sectors: 0,
+        top_procs: Vec::new(),
+    }
+}
+
 /// Health check results for a single host.
 #[derive(Debug, serde::Serialize, Default)]
 pub struct HostHealth {
@@ -123,29 +150,7 @@ pub async fn get_all_health(
             let state = Arc::clone(&state);
             async move {
                 if !connected {
-                    return HostHealth {
-                        id,
-                        host: info.host,
-                        port: info.port,
-                        username: info.username,
-                        connected: false,
-                        error: Some("Not connected".into()),
-                        cpu_load: None,
-                        cpu_load_5: None,
-                        cpu_load_15: None,
-                        cpu_cores: None,
-                        mem_total_mb: None,
-                        mem_used_mb: None,
-                        mem_percent: None,
-                        uptime: None,
-                        processes: None,
-                        disks: Vec::new(),
-                        net_rx_bytes: 0,
-                        net_tx_bytes: 0,
-                        io_read_sectors: 0,
-                        io_write_sectors: 0,
-                        top_procs: Vec::new(),
-                    };
+                    return make_offline_health(id, &info, Some("Not connected".into()));
                 }
                 match check_host_health(&state, &id).await {
                     Ok(data) => HostHealth {
@@ -171,29 +176,7 @@ pub async fn get_all_health(
                         io_write_sectors: data.io_write_sectors,
                         top_procs: data.top_procs,
                     },
-                    Err(e) => HostHealth {
-                        id,
-                        host: info.host,
-                        port: info.port,
-                        username: info.username,
-                        connected: false,
-                        error: Some(e),
-                        cpu_load: None,
-                        cpu_load_5: None,
-                        cpu_load_15: None,
-                        cpu_cores: None,
-                        mem_total_mb: None,
-                        mem_used_mb: None,
-                        mem_percent: None,
-                        uptime: None,
-                        processes: None,
-                        disks: Vec::new(),
-                        net_rx_bytes: 0,
-                        net_tx_bytes: 0,
-                        io_read_sectors: 0,
-                        io_write_sectors: 0,
-                        top_procs: Vec::new(),
-                    },
+                    Err(e) => make_offline_health(id, &info, Some(e)),
                 }
             }
         })

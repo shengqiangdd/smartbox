@@ -1,0 +1,12 @@
+{
+  "id": "color-blind-sim",
+  "name": "色觉障碍模拟器",
+  "version": "1.0.0",
+  "description": "模拟 8 种色觉障碍类型（红绿色盲、蓝黄色盲等），辅助无障碍设计验证",
+  "author": "Wrench",
+  "icon": "eye",
+  "commands": [
+    { "id": "cb-sim", "label": "色觉模拟", "description": "模拟不同类型的色觉障碍", "icon": "eye" }
+  ],
+  "panels": [{ "id": "cbsim-panel", "title": "色觉障碍模拟器", "icon": "eye" }]
+}

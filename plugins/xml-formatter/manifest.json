@@ -1,0 +1,14 @@
+{
+  "id": "xml-formatter",
+  "name": "XML 格式化",
+  "version": "1.0.0",
+  "description": "XML 格式化、压缩和验证工具",
+  "author": "Wrench",
+  "icon": "code",
+  "commands": [
+    { "id": "xml-format", "label": "格式化 XML", "description": "美化缩进 XML 文本", "icon": "code" },
+    { "id": "xml-compress", "label": "压缩 XML", "description": "将 XML 压缩为单行", "icon": "code" },
+    { "id": "xml-validate", "label": "验证 XML", "description": "检查 XML 语法是否正确", "icon": "check" }
+  ],
+  "panels": [{ "id": "xml-panel", "title": "XML 格式化", "icon": "code" }]
+}

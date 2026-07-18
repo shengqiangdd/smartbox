@@ -82,5 +82,63 @@
     }
   })
 
+  // ── 面板注册: 二维码 ──
+  if (typeof wrench !== 'undefined' && wrench.panels) {
+    wrench.panels.register('qrcode-panel', {
+      title: '二维码',
+      icon: 'qr-code',
+      render: function(container) {
+        container.innerHTML = '<div class="pf"><h3>📱 二维码生成器</h3>' +
+          '<style>.pf{padding:16px;font-family:system-ui,sans-serif;color:#e2e8f0}.pf h3{margin:0 0 12px;font-size:14px;font-weight:600;color:#94a3b8}.pf-input{width:100%;padding:8px 12px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px;outline:none;box-sizing:border-box}.pf-input:focus{border-color:#3b82f6}.pf-btn{padding:6px 14px;background:#3b82f6;color:white;border:none;border-radius:6px;font-size:12px;cursor:pointer}.pf-btn:hover{background:#2563eb}.pf-btn-secondary{background:#334155}.pf-btn-secondary:hover{background:#475569}.pf-result{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;font-family:"Cascadia Code",monospace;font-size:12px;white-space:pre-wrap;word-break:break-all}.pf-label{font-size:11px;color:#64748b;margin-bottom:4px;display:block}.pf-row{display:flex;gap:8px;margin-bottom:12px}</style>' +
+          '<div class="pf-label">输入文本或 URL</div>' +
+          '<textarea class="pf-input" id="qr-input" rows="3" placeholder="https://example.com 或任意文本..."></textarea>' +
+          '<div class="pf-row" style="margin-top:8px">' +
+          '<button class="pf-btn" id="qr-gen">生成二维码</button>' +
+          '<button class="pf-btn pf-btn-secondary" id="qr-load">📥 从编辑器加载</button>' +
+          '</div>' +
+          '<div id="qr-display" style="text-align:center;margin:12px 0;min-height:200px;display:flex;align-items:center;justify-content:center;color:#64748b">输入内容后点击生成</div>' +
+          '<div class="pf-row" style="justify-content:center">' +
+          '<button class="pf-btn pf-btn-secondary" id="qr-dl-png" style="display:none">下载 PNG</button>' +
+          '<a id="qr-dl-link" style="display:none" download="qrcode.png"></a>' +
+          '</div></div>';
+
+        var displayEl = container.querySelector('#qr-display');
+        var currentUrl = '';
+        var dlPngBtn = container.querySelector('#qr-dl-png');
+
+        function genQR(text) {
+          var encoded = encodeURIComponent(text);
+          return 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encoded;
+        }
+
+        container.querySelector('#qr-load').addEventListener('click', function() {
+          if (typeof api !== 'undefined') {
+            var c = api.getEditorContent();
+            if (c) container.querySelector('#qr-input').value = c;
+          }
+        });
+
+        container.querySelector('#qr-gen').addEventListener('click', function() {
+          var text = container.querySelector('#qr-input').value.trim();
+          if (!text) { displayEl.innerHTML = '<span style="color:#ef4444">请输入内容</span>'; return; }
+          if (text.length > 2000) { displayEl.innerHTML = '<span style="color:#ef4444">文本过长（>2000字符）</span>'; return; }
+          currentUrl = genQR(text);
+          displayEl.innerHTML = '<img src="' + currentUrl + '" alt="QR Code" style="width:200px;height:200px;border-radius:8px;background:white;padding:8px" />';
+          dlPngBtn.style.display = 'inline-block';
+        });
+
+        dlPngBtn.addEventListener('click', function() {
+          if (currentUrl) {
+            var link = document.createElement('a');
+            link.href = currentUrl;
+            link.download = 'qrcode.png';
+            link.target = '_blank';
+            link.click();
+          }
+        });
+      }
+    });
+  }
+
   console.log('[插件] 二维码工具已加载')
 })()

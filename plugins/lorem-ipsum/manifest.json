@@ -1,0 +1,14 @@
+{
+  "id": "lorem-ipsum",
+  "name": "占位文本生成器",
+  "version": "1.0.0",
+  "description": "生成 Lorem Ipsum 占位文本，支持中英文和自定义段落数",
+  "author": "Wrench",
+  "icon": "text",
+  "commands": [
+    { "id": "lorem-en", "label": "英文占位文本", "description": "生成英文 Lorem Ipsum 文本", "icon": "text" },
+    { "id": "lorem-zh", "label": "中文占位文本", "description": "生成中文占位文本", "icon": "text" },
+    { "id": "lorem-paragraphs", "label": "多段落生成", "description": "生成指定段落数的占位文本", "icon": "text" }
+  ],
+  "panels": [{ "id": "lorem-panel", "title": "占位文本", "icon": "text" }]
+}

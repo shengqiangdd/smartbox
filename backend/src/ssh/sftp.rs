@@ -146,45 +146,82 @@ pub async fn list_directory(session: &Arc<SshSession>, path: &str) -> Result<Vec
         })
         .collect();
 
-    // Resolve symlink targets in batch — stat each symlink to get resolved type
-    for entry in &mut entries {
-        if entry.r#type == "symlink" {
-            // First try canonicalize (resolves relative symlinks)
-            if let Ok(resolved) = sftp.canonicalize(&entry.path).await {
-                if let Ok(meta) = sftp.metadata(&resolved).await {
-                    entry.target_type = Some(file_type_from_permissions(meta.permissions));
-                    entry.link_target = Some(resolved);
-                    // Also update size to reflect target size
-                    entry.size = meta.size.unwrap_or(0) as i64;
-                    let perm_str = meta
-                        .permissions
-                        .map(|p| format!("{:o}", p & 0o7777))
-                        .unwrap_or_else(|| "----".to_string());
-                    entry.permissions = perm_str;
-                } else {
-                    // canonicalize worked but metadata failed — broken symlink
-                    entry.target_type = Some("broken".to_string());
-                    entry.link_target = Some(resolved);
-                }
-            } else {
-                // canonicalize failed — try metadata on the path directly
-                // (russh-sftp metadata follows symlinks by default)
-                if let Ok(meta) = sftp.metadata(&entry.path).await {
-                    let resolved_type = file_type_from_permissions(meta.permissions);
-                    // If it resolved to something other than "symlink", it's a followable link
-                    if resolved_type != "symlink" {
-                        entry.target_type = Some(resolved_type);
-                        entry.link_target = Some(entry.path.clone());
-                        entry.size = meta.size.unwrap_or(0) as i64;
-                        let perm_str = meta
-                            .permissions
-                            .map(|p| format!("{:o}", p & 0o7777))
-                            .unwrap_or_else(|| "----".to_string());
-                        entry.permissions = perm_str;
-                    } else {
-                        entry.target_type = Some("broken".to_string());
+    // Resolve symlink targets in parallel — each symlink needs up to 2 SSH roundtrips
+    // (canonicalize + metadata). Use join_all to overlap them across the network.
+    let symlink_indices: Vec<usize> = entries
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.r#type == "symlink")
+        .map(|(i, _)| i)
+        .collect();
+
+    if !symlink_indices.is_empty() {
+        let symlink_futures: Vec<_> = symlink_indices
+            .iter()
+            .map(|&idx| {
+                let sftp = Arc::clone(&sftp);
+                let path = entries[idx].path.clone();
+                async move {
+                    // First try canonicalize (resolves relative symlinks)
+                    match sftp.canonicalize(&path).await {
+                        Ok(resolved) => match sftp.metadata(&resolved).await {
+                            Ok(meta) => {
+                                let resolved_type = file_type_from_permissions(meta.permissions);
+                                let size = meta.size.unwrap_or(0) as i64;
+                                let perm_str = meta
+                                    .permissions
+                                    .map(|p| format!("{:o}", p & 0o7777))
+                                    .unwrap_or_else(|| "----".to_string());
+                                (path, Some(resolved_type), Some(resolved), Some(size), Some(perm_str))
+                            }
+                            Err(_) => {
+                                // canonicalize worked but metadata failed — broken symlink
+                                (path, Some("broken".to_string()), Some(resolved), None, None)
+                            }
+                        },
+                        Err(_) => {
+                            // canonicalize failed — try metadata on the path directly
+                            // (russh-sftp metadata follows symlinks by default)
+                            match sftp.metadata(&path).await {
+                                Ok(meta) => {
+                                    let resolved_type = file_type_from_permissions(meta.permissions);
+                                    if resolved_type != "symlink" {
+                                        let size = meta.size.unwrap_or(0) as i64;
+                                        let perm_str = meta
+                                            .permissions
+                                            .map(|p| format!("{:o}", p & 0o7777))
+                                            .unwrap_or_else(|| "----".to_string());
+                                        let p = path.clone();
+                                        (path, Some(resolved_type), Some(p), Some(size), Some(perm_str))
+                                    } else {
+                                        (path, Some("broken".to_string()), None, None, None)
+                                    }
+                                }
+                                Err(_) => (path, None, None, None, None),
+                            }
+                        }
                     }
                 }
+            })
+            .collect();
+
+        let results = futures_util::future::join_all(symlink_futures).await;
+
+        for (idx, (_path, target_type, link_target, size, perm_str)) in
+            symlink_indices.iter().zip(results)
+        {
+            let entry = &mut entries[*idx];
+            if let Some(tt) = target_type {
+                entry.target_type = Some(tt);
+            }
+            if let Some(lt) = link_target {
+                entry.link_target = Some(lt);
+            }
+            if let Some(s) = size {
+                entry.size = s;
+            }
+            if let Some(p) = perm_str {
+                entry.permissions = p;
             }
         }
     }
@@ -216,12 +253,26 @@ pub async fn download_file(session: &Arc<SshSession>, remote_path: &str) -> Resu
         .await
         .map_err(|e| format!("Failed to canonicalize '{}': {}", remote_path, e))?;
 
+    // 获取文件大小，拒绝超大文件（避免 OOM）
+    let metadata = sftp
+        .metadata(&abs_path)
+        .await
+        .map_err(|e| format!("Failed to stat '{}': {}", abs_path, e))?;
+    let file_size = metadata.len() as usize;
+    const MAX_DOWNLOAD_SIZE: usize = 10 * 1024 * 1024; // 10 MB
+    if file_size > MAX_DOWNLOAD_SIZE {
+        return Err(format!(
+            "File too large ({} MB). Use SSH terminal to edit.",
+            file_size / 1024 / 1024
+        ));
+    }
+
     let mut file = sftp
         .open(&abs_path)
         .await
         .map_err(|e| format!("Failed to open remote file '{}': {}", abs_path, e))?;
 
-    let mut data = Vec::new();
+    let mut data = Vec::with_capacity(file_size.min(1024 * 1024));
     file.read_to_end(&mut data)
         .await
         .map_err(|e| format!("Failed to read remote file '{}': {}", abs_path, e))?;
@@ -230,22 +281,97 @@ pub async fn download_file(session: &Arc<SshSession>, remote_path: &str) -> Resu
 }
 
 /// Upload a file via SFTP.
-pub async fn upload_file(session: &Arc<SshSession>, remote_path: &str, data: Vec<u8>) -> Result<(), String> {
-    let sftp = open_sftp(session).await?;
+/// Falls back to `sudo tee` via SSH exec if SFTP fails due to permissions.
+pub async fn upload_file(
+    session: &Arc<SshSession>,
+    remote_path: &str,
+    data: Vec<u8>,
+    sudo_password: Option<&str>,
+) -> Result<(), String> {
+    // Try SFTP first
+    let result = upload_file_sftp(session, remote_path, &data).await;
+    match result {
+        Ok(()) => return Ok(()),
+        Err(e) if is_permission_error(&e) && sudo_password.is_some() => {
+            // Fallback to sudo tee
+            tracing::info!("SFTP upload failed ({}), trying sudo tee for '{}'", e, remote_path);
+        }
+        Err(e) if sudo_password.is_some() => {
+            // Also try sudo for other errors (e.g., parent dir doesn't exist)
+            tracing::info!("SFTP upload failed ({}), trying sudo tee for '{}'", e, remote_path);
+        }
+        Err(e) => return Err(e),
+    }
+    sudo_upload(session, remote_path, &data, sudo_password.unwrap()).await
+}
 
+/// SFTP upload (no sudo fallback)
+async fn upload_file_sftp(session: &Arc<SshSession>, remote_path: &str, data: &[u8]) -> Result<(), String> {
+    let sftp = open_sftp(session).await?;
     let mut file = sftp
         .open_with_flags(remote_path, OpenFlags::CREATE | OpenFlags::TRUNCATE | OpenFlags::WRITE)
         .await
         .map_err(|e| format!("Failed to open remote file for writing '{}': {}", remote_path, e))?;
-
-    file.write_all(&data)
+    file.write_all(data)
         .await
         .map_err(|e| format!("Failed to write to remote file '{}': {}", remote_path, e))?;
-
     file.flush()
         .await
         .map_err(|e| format!("Failed to flush remote file '{}': {}", remote_path, e))?;
+    Ok(())
+}
 
+/// Upload file content via `sudo tee` (base64-encoded to handle binary safely).
+async fn sudo_upload(
+    session: &Arc<SshSession>,
+    remote_path: &str,
+    data: &[u8],
+    sudo_password: &str,
+) -> Result<(), String> {
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(data);
+    // Use printf + base64 -d | sudo tee to avoid shell quoting issues with large data
+    // Write the base64 to a temp file, decode with sudo tee
+    let tmp_b64 = "/tmp/.wrench_upload_b64";
+    let tmp_bin = "/tmp/.wrench_upload_bin";
+
+    // Step 1: Write base64 to temp file (small enough for echo)
+    // For large files, use heredoc
+    let write_b64_cmd = if b64.len() < 4000 {
+        format!("echo {} | base64 -d > {}", shell_escape(&b64), tmp_bin)
+    } else {
+        // Split into chunks and write
+        let mut cmds = Vec::new();
+        cmds.push(format!("> {}", tmp_bin));
+        for chunk in b64.as_bytes().chunks(4000) {
+            let chunk_str = std::str::from_utf8(chunk).unwrap_or("");
+            cmds.push(format!("echo -n {} >> {}", shell_escape(chunk_str), tmp_b64));
+        }
+        cmds.push(format!("base64 -d {} > {}", tmp_b64, tmp_bin));
+        cmds.join(" && ")
+    };
+
+    // Step 2: sudo tee to target path
+    let cmd = format!(
+        "{} && echo {} | sudo -S tee {} > /dev/null && rm -f {} {}",
+        write_b64_cmd,
+        shell_escape(sudo_password),
+        shell_escape(remote_path),
+        tmp_bin,
+        tmp_b64,
+    );
+
+    let result = crate::ssh::executor::execute_command(session, &cmd).await
+        .map_err(|e| format!("sudo upload failed: {}", e))?;
+    if result.exit_code != 0 {
+        let stderr = result.stderr.trim();
+        // Filter out sudo password prompt noise
+        let clean_err = stderr.lines()
+            .filter(|l| !l.contains("[sudo]") && !l.contains("password for"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Err(format!("sudo tee failed (exit {}): {}", result.exit_code, clean_err));
+    }
     Ok(())
 }
 
@@ -276,18 +402,36 @@ async fn remove_dir_recursive(sftp: &SftpSession, path: &str) -> Result<(), Stri
 }
 
 /// Delete a file or directory via SFTP.
-pub async fn delete_file(session: &Arc<SshSession>, remote_path: &str, recursive: bool) -> Result<(), String> {
+/// Falls back to `sudo rm` via SSH exec if SFTP fails due to permissions.
+pub async fn delete_file(
+    session: &Arc<SshSession>,
+    remote_path: &str,
+    recursive: bool,
+    sudo_password: Option<&str>,
+) -> Result<(), String> {
+    // Try SFTP first
+    let result = delete_file_sftp(session, remote_path, recursive).await;
+    match result {
+        Ok(()) => return Ok(()),
+        Err(e) if sudo_password.is_some() => {
+            tracing::info!("SFTP delete failed ({}), trying sudo rm for '{}'", e, remote_path);
+        }
+        Err(e) => return Err(e),
+    }
+    sudo_rm(session, remote_path, recursive, sudo_password.unwrap()).await
+}
+
+/// SFTP delete (no sudo fallback)
+async fn delete_file_sftp(session: &Arc<SshSession>, remote_path: &str, recursive: bool) -> Result<(), String> {
     let sftp = open_sftp(session).await?;
     let abs_path = sftp
         .canonicalize(remote_path)
         .await
         .map_err(|e| format!("Failed to canonicalize '{}': {}", remote_path, e))?;
-
     let meta = sftp
         .metadata(&abs_path)
         .await
         .map_err(|e| format!("Failed to stat '{}': {}", abs_path, e))?;
-
     if meta.is_dir() && recursive {
         remove_dir_recursive(&sftp, &abs_path).await?;
     } else if meta.is_dir() {
@@ -299,26 +443,138 @@ pub async fn delete_file(session: &Arc<SshSession>, remote_path: &str, recursive
             .await
             .map_err(|e| format!("Failed to remove file '{}': {}", abs_path, e))?;
     }
+    Ok(())
+}
 
-    // Clear SFTP cache on error to force re-create next time
+/// Delete via `sudo rm -rf` or `sudo rm -f`.
+async fn sudo_rm(
+    session: &Arc<SshSession>,
+    remote_path: &str,
+    recursive: bool,
+    sudo_password: &str,
+) -> Result<(), String> {
+    let flag = if recursive { "-rf" } else { "-f" };
+    let cmd = format!(
+        "echo {} | sudo -S rm {} {} 2>&1",
+        shell_escape(sudo_password),
+        flag,
+        shell_escape(remote_path),
+    );
+    let result = crate::ssh::executor::execute_command(session, &cmd).await
+        .map_err(|e| format!("sudo rm failed: {}", e))?;
+    if result.exit_code != 0 {
+        let stderr = result.stderr.trim();
+        let clean_err = stderr.lines()
+            .filter(|l| !l.contains("[sudo]") && !l.contains("password for"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Err(format!("sudo rm failed (exit {}): {}", result.exit_code, clean_err));
+    }
     Ok(())
 }
 
 /// Create a directory via SFTP.
-pub async fn create_dir(session: &Arc<SshSession>, remote_path: &str) -> Result<(), String> {
-    let sftp = open_sftp(session).await?;
-    sftp.create_dir(remote_path)
-        .await
-        .map_err(|e| format!("Failed to create directory '{}': {}", remote_path, e))?;
+/// Falls back to `sudo mkdir` via SSH exec if SFTP fails due to permissions.
+pub async fn create_dir(
+    session: &Arc<SshSession>,
+    remote_path: &str,
+    sudo_password: Option<&str>,
+) -> Result<(), String> {
+    let sftp = open_sftp(session).await;
+    match sftp {
+        Ok(sftp) => {
+            let result = sftp.create_dir(remote_path).await;
+            match result {
+                Ok(()) => return Ok(()),
+                Err(e) if sudo_password.is_some() => {
+                    tracing::info!("SFTP mkdir failed ({}), trying sudo mkdir for '{}'", e, remote_path);
+                }
+                Err(e) => return Err(format!("Failed to create directory '{}': {}", remote_path, e)),
+            }
+        }
+        Err(e) if sudo_password.is_some() => {
+            tracing::info!("SFTP open failed ({}), trying sudo mkdir for '{}'", e, remote_path);
+        }
+        Err(e) => return Err(format!("Failed to open SFTP session: {}", e)),
+    }
+    sudo_mkdir(session, remote_path, sudo_password.unwrap()).await
+}
+
+/// Create directory via `sudo mkdir -p`.
+async fn sudo_mkdir(
+    session: &Arc<SshSession>,
+    remote_path: &str,
+    sudo_password: &str,
+) -> Result<(), String> {
+    let cmd = format!(
+        "echo {} | sudo -S mkdir -p {} 2>&1",
+        shell_escape(sudo_password),
+        shell_escape(remote_path),
+    );
+    let result = crate::ssh::executor::execute_command(session, &cmd).await
+        .map_err(|e| format!("sudo mkdir failed: {}", e))?;
+    if result.exit_code != 0 {
+        let stderr = result.stderr.trim();
+        let clean_err = stderr.lines()
+            .filter(|l| !l.contains("[sudo]") && !l.contains("password for"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Err(format!("sudo mkdir failed (exit {}): {}", result.exit_code, clean_err));
+    }
     Ok(())
 }
 
 /// Rename (move) a file/directory via SFTP.
-pub async fn rename(session: &Arc<SshSession>, from: &str, to: &str) -> Result<(), String> {
-    let sftp = open_sftp(session).await?;
-    sftp.rename(from, to)
-        .await
-        .map_err(|e| format!("Failed to rename '{}' to '{}': {}", from, to, e))?;
+/// Falls back to `sudo mv` via SSH exec if SFTP fails due to permissions.
+pub async fn rename(
+    session: &Arc<SshSession>,
+    from: &str,
+    to: &str,
+    sudo_password: Option<&str>,
+) -> Result<(), String> {
+    let sftp = open_sftp(session).await;
+    match sftp {
+        Ok(sftp) => {
+            let result = sftp.rename(from, to).await;
+            match result {
+                Ok(()) => return Ok(()),
+                Err(e) if sudo_password.is_some() => {
+                    tracing::info!("SFTP rename failed ({}), trying sudo mv '{}' -> '{}'", e, from, to);
+                }
+                Err(e) => return Err(format!("Failed to rename '{}' to '{}': {}", from, to, e)),
+            }
+        }
+        Err(e) if sudo_password.is_some() => {
+            tracing::info!("SFTP open failed ({}), trying sudo mv '{}' -> '{}'", e, from, to);
+        }
+        Err(e) => return Err(format!("Failed to open SFTP session: {}", e)),
+    }
+    sudo_mv(session, from, to, sudo_password.unwrap()).await
+}
+
+/// Rename/move via `sudo mv`.
+async fn sudo_mv(
+    session: &Arc<SshSession>,
+    from: &str,
+    to: &str,
+    sudo_password: &str,
+) -> Result<(), String> {
+    let cmd = format!(
+        "echo {} | sudo -S mv {} {} 2>&1",
+        shell_escape(sudo_password),
+        shell_escape(from),
+        shell_escape(to),
+    );
+    let result = crate::ssh::executor::execute_command(session, &cmd).await
+        .map_err(|e| format!("sudo mv failed: {}", e))?;
+    if result.exit_code != 0 {
+        let stderr = result.stderr.trim();
+        let clean_err = stderr.lines()
+            .filter(|l| !l.contains("[sudo]") && !l.contains("password for"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Err(format!("sudo mv failed (exit {}): {}", result.exit_code, clean_err));
+    }
     Ok(())
 }
 
@@ -341,22 +597,43 @@ pub async fn stat(session: &Arc<SshSession>, remote_path: &str) -> Result<FileEn
 }
 
 /// Set file permissions via SSH exec (chmod command).
-/// More reliable than SFTP setstat across different SSH server configurations.
+/// Falls back to `sudo chmod` if the first attempt fails due to permissions.
 pub async fn chmod_via_ssh(
     session: &Arc<SshSession>,
     remote_path: &str,
     permissions: u32,
+    sudo_password: Option<&str>,
 ) -> Result<(), String> {
-    // Convert numeric permissions to octal string (e.g., 493 → "755")
     let octal = format!("{:04}", permissions & 0o7777);
     let cmd = format!("chmod {} {}", octal, shell_escape(remote_path));
     let result = crate::ssh::executor::execute_command(session, &cmd)
         .await
         .map_err(|e| format!("chmod failed: {}", e))?;
-    if result.exit_code != 0 {
-        return Err(format!("chmod exited with code {}: {}", result.exit_code, result.stderr));
+    if result.exit_code == 0 {
+        return Ok(());
     }
-    Ok(())
+    // Fallback to sudo chmod
+    if let Some(pwd) = sudo_password {
+        tracing::info!("chmod failed ({}), trying sudo chmod for '{}'", result.stderr.trim(), remote_path);
+        let sudo_cmd = format!(
+            "echo {} | sudo -S chmod {} {} 2>&1",
+            shell_escape(pwd),
+            octal,
+            shell_escape(remote_path),
+        );
+        let sudo_result = crate::ssh::executor::execute_command(session, &sudo_cmd).await
+            .map_err(|e| format!("sudo chmod failed: {}", e))?;
+        if sudo_result.exit_code == 0 {
+            return Ok(());
+        }
+        let stderr = sudo_result.stderr.trim();
+        let clean_err = stderr.lines()
+            .filter(|l| !l.contains("[sudo]") && !l.contains("password for"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Err(format!("sudo chmod failed (exit {}): {}", sudo_result.exit_code, clean_err));
+    }
+    Err(format!("chmod exited with code {}: {}", result.exit_code, result.stderr))
 }
 
 /// Escape a path for safe use in shell commands.
@@ -364,6 +641,16 @@ fn shell_escape(path: &str) -> String {
     // Wrap in single quotes, escaping any embedded single quotes
     let escaped = path.replace('\'', "'\\''");
     format!("'{}'", escaped)
+}
+
+/// Check if an SFTP error is likely a permission issue.
+fn is_permission_error(err: &str) -> bool {
+    let lower = err.to_lowercase();
+    lower.contains("permission denied")
+        || lower.contains("permission")
+        || lower.contains("access denied")
+        || lower.contains("failure")
+        || lower.contains("ssh_fx_permission")
 }
 
 #[cfg(test)]

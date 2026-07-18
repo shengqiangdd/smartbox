@@ -1,0 +1,15 @@
+{
+  "id": "code-snippet",
+  "name": "代码片段生成器",
+  "version": "1.0.0",
+  "description": "常用代码片段一键生成：fetch请求、正则表达式、SQL查询、循环、错误处理等",
+  "author": "Wrench",
+  "icon": "code",
+  "commands": [
+    { "id": "snippet-fetch", "label": "Fetch 请求", "description": "生成标准 fetch API 代码", "icon": "globe" },
+    { "id": "snippet-sql", "label": "SQL 模板", "description": "生成常用 SQL 查询", "icon": "database" },
+    { "id": "snippet-loop", "label": "循环模板", "description": "生成 for/while/forEach 循环", "icon": "repeat" },
+    { "id": "snippet-try", "label": "错误处理", "description": "生成 try-catch 错误处理", "icon": "alert-triangle" }
+  ],
+  "panels": [{ "id": "snippet-panel", "title": "代码片段生成器", "icon": "code" }]
+}

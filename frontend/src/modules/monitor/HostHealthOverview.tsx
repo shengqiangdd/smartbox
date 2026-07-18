@@ -336,8 +336,23 @@ function HostHealthOverviewInner() {
 
   useEffect(() => {
     loadHealth()
-    const timer = setInterval(loadHealth, 30000)
-    return () => clearInterval(timer)
+    let timer: ReturnType<typeof setInterval> | null = null
+    if (document.visibilityState === 'visible') {
+      timer = setInterval(loadHealth, 30000)
+    }
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        loadHealth()
+        if (!timer) timer = setInterval(loadHealth, 30000)
+      } else {
+        if (timer) { clearInterval(timer); timer = null }
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      if (timer) clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [loadHealth])
 
   const runDiagnosis = useCallback(async (hostId: string) => {

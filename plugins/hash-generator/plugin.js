@@ -227,5 +227,60 @@
     }
   })
 
+  // ── 面板注册: 哈希生成器 ──
+  if (typeof wrench !== 'undefined' && wrench.panels) {
+    wrench.panels.register('hash-panel', {
+      title: '哈希生成',
+      icon: 'hash',
+      render: function(container) {
+        container.innerHTML = '<div class="pf"><h3>#️⃣ 哈希生成器</h3>' +
+          '<style>.pf{padding:16px;font-family:system-ui,sans-serif;color:#e2e8f0}.pf h3{margin:0 0 12px;font-size:14px;font-weight:600;color:#94a3b8}.pf-input{width:100%;padding:8px 12px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px;outline:none;box-sizing:border-box}.pf-input:focus{border-color:#3b82f6}.pf-btn{padding:6px 14px;background:#3b82f6;color:white;border:none;border-radius:6px;font-size:12px;cursor:pointer}.pf-btn:hover{background:#2563eb}.pf-btn-secondary{background:#334155}.pf-btn-secondary:hover{background:#475569}.pf-result{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;font-family:"Cascadia Code",monospace;font-size:12px;white-space:pre-wrap;word-break:break-all}.pf-label{font-size:11px;color:#64748b;margin-bottom:4px;display:block}.pf-row{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}</style>' +
+          '<textarea class="pf-input" id="hash-input" rows="3" placeholder="输入要计算哈希的文本..."></textarea>' +
+          '<div class="pf-row" style="margin-top:8px">' +
+          '<button class="pf-btn" id="hash-all-btn">全部计算</button>' +
+          '<button class="pf-btn pf-btn-secondary" id="hash-md5-btn">MD5</button>' +
+          '<button class="pf-btn pf-btn-secondary" id="hash-sha1-btn">SHA-1</button>' +
+          '<button class="pf-btn pf-btn-secondary" id="hash-sha256-btn">SHA-256</button>' +
+          '<button class="pf-btn pf-btn-secondary" id="hash-sha512-btn">SHA-512</button>' +
+          '</div>' +
+          '<div id="hash-result" class="pf-result">等待输入...</div></div>';
+
+        var resultEl = container.querySelector('#hash-result');
+        var inputEl = container.querySelector('#hash-input');
+
+        async function computeHash(algo, text) {
+          var encoder = new TextEncoder();
+          var data = encoder.encode(text);
+          var hashBuffer = await crypto.subtle.digest(algo, data);
+          return Array.from(new Uint8Array(hashBuffer)).map(function(b){return b.toString(16).padStart(2,'0')}).join('');
+        }
+
+        async function runHash(algo) {
+          var text = inputEl.value;
+          if (!text) { resultEl.textContent = '请输入文本'; return; }
+          if (algo === 'all') {
+            try {
+              var sha1 = await computeHash('SHA-1', text);
+              var sha256 = await computeHash('SHA-256', text);
+              var sha512 = await computeHash('SHA-512', text);
+              resultEl.textContent = '输入: ' + text.slice(0,50) + (text.length>50?'...':'') + '\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\nMD5:        ' + (typeof md5==='function'?md5(text):'(未实现)') + '\\nSHA-1:      ' + sha1 + '\\nSHA-256:    ' + sha256 + '\\nSHA-512:    ' + sha512 + '\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n字节数: ' + new TextEncoder().encode(text).length;
+            } catch(e) { resultEl.textContent = '计算失败: ' + e.message; }
+          } else {
+            try {
+              var h = await computeHash(algo, text);
+              resultEl.textContent = '算法: ' + algo + '\\n输入: ' + text.slice(0,50) + (text.length>50?'...':'') + '\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n' + h;
+            } catch(e) { resultEl.textContent = algo + ' 计算失败: ' + e.message; }
+          }
+        }
+
+        container.querySelector('#hash-all-btn').addEventListener('click', function(){runHash('all')});
+        container.querySelector('#hash-md5-btn').addEventListener('click', function(){runHash('MD5')});
+        container.querySelector('#hash-sha1-btn').addEventListener('click', function(){runHash('SHA-1')});
+        container.querySelector('#hash-sha256-btn').addEventListener('click', function(){runHash('SHA-256')});
+        container.querySelector('#hash-sha512-btn').addEventListener('click', function(){runHash('SHA-512')});
+      }
+    });
+  }
+
   console.log('[插件] 哈希生成器已加载')
 })()

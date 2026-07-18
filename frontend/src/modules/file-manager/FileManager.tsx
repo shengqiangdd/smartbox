@@ -555,9 +555,9 @@ function FileManagerInner() {
       {/* ─── 移动端 overlay 侧边栏 ─── */}
       {isMobile && sidebarOpen && (
         <>
-          {/* 遮罩层 */}
+          {/* 遮罩层 — z-[35] 低于预览模态框 z-50，避免点击预览模态框时误触关闭 */}
           <div
-            className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm transition-opacity"
+            className="fixed inset-0 z-[35] bg-black/50 backdrop-blur-sm transition-opacity"
             onClick={() => setSidebarOpen(false)}
           />
           {/* 滑出面板 */}

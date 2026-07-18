@@ -1,0 +1,12 @@
+{
+  "id": "css-gradient",
+  "name": "CSS 渐变构建器",
+  "version": "1.0.0",
+  "description": "可视化构建线性渐变、径向渐变、锥形渐变，实时预览，代码导出",
+  "author": "Wrench",
+  "icon": "sunrise",
+  "commands": [
+    { "id": "css-grad", "label": "CSS 渐变构建器", "description": "可视化编辑 CSS 渐变效果", "icon": "sunrise" }
+  ],
+  "panels": [{ "id": "cssgrad-panel", "title": "CSS 渐变构建器", "icon": "sunrise" }]
+}

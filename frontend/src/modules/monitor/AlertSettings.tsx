@@ -22,6 +22,7 @@ import {
   VolumeX,
 } from 'lucide-react'
 import { useAlertStore } from '../../stores/alert-store'
+import { notify } from '../../services/event-bus'
 import type { AlertRule, AlertMetric, AlertSeverity } from '../../stores/alert-store'
 
 const METRIC_OPTIONS: { value: AlertMetric; label: string }[] = [
@@ -121,14 +122,6 @@ function RuleRow({
         <Trash2 size={12} />
       </button>
     </div>
-  )
-}
-
-function notify(message: string, type: 'error' | 'info') {
-  window.dispatchEvent(
-    new CustomEvent('wrench-notification', {
-      detail: { message, type },
-    }),
   )
 }
 

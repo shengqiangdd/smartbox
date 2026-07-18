@@ -278,5 +278,65 @@ ${content ? extractTitle(content) : '请输入技能名称'}
     return '自定义技能'
   }
 
+  // ── 面板注册: AI 技能工具 ──
+  if (typeof wrench !== 'undefined' && wrench.panels) {
+    wrench.panels.register('ai-skill-panel', {
+      title: 'AI 技能工具',
+      icon: 'wand',
+      render: function(container) {
+        container.innerHTML = '<div class="pf"><h3>🤖 AI Agent 技能生成器</h3>' +
+          '<style>.pf{padding:16px;font-family:system-ui,sans-serif;color:#e2e8f0}.pf h3{margin:0 0 12px;font-size:14px;font-weight:600;color:#94a3b8}.pf-input{width:100%;padding:8px 12px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px;outline:none;box-sizing:border-box}.pf-input:focus{border-color:#3b82f6}.pf-btn{padding:6px 14px;background:#3b82f6;color:white;border:none;border-radius:6px;font-size:12px;cursor:pointer}.pf-btn:hover{background:#2563eb}.pf-btn-secondary{background:#334155}.pf-btn-secondary:hover{background:#475569}.pf-result{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;font-family:"Cascadia Code",monospace;font-size:12px;white-space:pre-wrap;word-break:break-all;max-height:400px;overflow-y:auto}.pf-label{font-size:11px;color:#64748b;margin-bottom:4px;display:block}.pf-row{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}</style>' +
+          '<textarea class="pf-input" id="aiskill-desc" rows="3" placeholder="描述你想要的技能功能..."></textarea>' +
+          '<div class="pf-row" style="margin-top:8px">' +
+          '<button class="pf-btn" id="aiskill-gen">⚡ 生成脚本</button>' +
+          '<button class="pf-btn pf-btn-secondary" id="aiskill-prompt">📝 优化提示词</button>' +
+          '<button class="pf-btn pf-btn-secondary" id="aiskill-wizard">🧙 向导模板</button>' +
+          '</div>' +
+          '<div class="pf-label">快速模板</div>' +
+          '<div class="pf-row">' +
+          '<button class="pf-btn pf-btn-secondary aiskill-tpl" data-tpl="install">📦 安装部署</button>' +
+          '<button class="pf-btn pf-btn-secondary aiskill-tpl" data-tpl="check">🔍 状态检查</button>' +
+          '<button class="pf-btn pf-btn-secondary aiskill-tpl" data-tpl="backup">💾 备份恢复</button>' +
+          '<button class="pf-btn pf-btn-secondary aiskill-tpl" data-tpl="clean">🧹 清理维护</button>' +
+          '<button class="pf-btn pf-btn-secondary aiskill-tpl" data-tpl="monitor">📊 监控告警</button>' +
+          '</div>' +
+          '<div id="aiskill-result" class="pf-result" style="display:none"></div></div>';
+
+        var resultEl = container.querySelector('#aiskill-result');
+        function showResult(text) { resultEl.style.display = 'block'; resultEl.textContent = text; }
+        function getInput() { var el = container.querySelector('#aiskill-desc'); return el ? el.value.trim() : ''; }
+
+        var templates = {
+          install: '#!/bin/bash\nset -euo pipefail\necho "📦 开始安装..."\n# TODO: 添加安装命令\necho "✅ 安装完成"',
+          check: '#!/bin/bash\necho "📊 系统状态..."\ntop -bn1 | head -5\nfree -h\ndf -h /',
+          backup: '#!/bin/bash\nBACKUP_DIR="./backup_$(date +%Y%m%d)"\nmkdir -p "$BACKUP_DIR"\n# TODO: 备份文件\necho "✅ 备份完成: $BACKUP_DIR"',
+          clean: '#!/bin/bash\necho "🧹 清理中..."\nrm -rf /tmp/* 2>/dev/null || true\necho "✅ 清理完成"',
+          monitor: '#!/bin/bash\nwhile true; do\n  echo "=== $(date) ==="\n  uptime\n  free -h | head -2\n  sleep 5\ndone'
+        };
+
+        container.querySelector('#aiskill-gen').addEventListener('click', function() {
+          var desc = getInput();
+          if (!desc) { showResult('请先输入任务描述'); return; }
+          showResult('#!/bin/bash\nset -euo pipefail\n# ' + desc + '\n\necho "🔧 执行中..."\n# TODO: 根据描述添加具体命令\n\necho "✅ 执行完毕"');
+        });
+        container.querySelector('#aiskill-prompt').addEventListener('click', function() {
+          var desc = getInput() || '请描述任务';
+          showResult('# 优化后的提示词\n\n## 角色\n你是一个专业的 DevOps 助手。\n\n## 任务\n' + desc + '\n\n## 约束\n- 使用结构化输出\n- 包含错误处理');
+        });
+        container.querySelector('#aiskill-wizard').addEventListener('click', function() {
+          showResult('# AI Agent 技能定义模板\n\n## 技能名称\n[请输入]\n\n## 触发条件\n- 关键词: \n- 输入来源: \n\n## 执行逻辑\n1. \n2. \n3. \n\n## 输出格式\n- 类型: \n- 格式: ');
+        });
+
+        var tplBtns = container.querySelectorAll('.aiskill-tpl');
+        for (var i = 0; i < tplBtns.length; i++) {
+          tplBtns[i].addEventListener('click', function() {
+            var tpl = this.getAttribute('data-tpl');
+            if (templates[tpl]) showResult(templates[tpl]);
+          });
+        }
+      }
+    });
+  }
+
   console.log('[插件] AI Agent 技能生成器已加载')
 })()

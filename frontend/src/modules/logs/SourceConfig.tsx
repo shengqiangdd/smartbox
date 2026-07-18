@@ -332,7 +332,8 @@ export default function SourceConfig({ connectionId, onSelectPath, scanKey }: Pr
                 const match = allFiles.find(
                   (f) => f.path.toLowerCase().includes(q) || f.label.toLowerCase().includes(q),
                 )
-                if (match) handleClick(match.path)
+                // 仅高亮匹配项，不自动选中（避免移动端面板自动关闭）
+                if (match) setActivePath(match.path)
               }
             }}
           />

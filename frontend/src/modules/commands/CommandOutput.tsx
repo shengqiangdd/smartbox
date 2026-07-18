@@ -1,5 +1,6 @@
 import { X, Copy, Check, Trash2, Terminal } from 'lucide-react'
 import { useState } from 'react'
+import { emit } from '../../services/event-bus'
 import type { CommandResult } from './useCommands'
 
 interface CommandOutputProps {
@@ -22,10 +23,36 @@ export default function CommandOutput({
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text)
+      } else {
+        // Fallback: 创建 textarea 并使用 execCommand
+        const ta = document.createElement('textarea')
+        ta.value = text
+        ta.style.position = 'fixed'
+        ta.style.left = '-9999px'
+        document.body.appendChild(ta)
+        ta.select()
+        document.execCommand('copy')
+        document.body.removeChild(ta)
       }
       setCopiedIdx(idx)
       setTimeout(() => setCopiedIdx(null), 2000)
-    } catch {}
+    } catch {
+      // Fallback: 创建 textarea 并使用 execCommand
+      try {
+        const ta = document.createElement('textarea')
+        ta.value = text
+        ta.style.position = 'fixed'
+        ta.style.left = '-9999px'
+        document.body.appendChild(ta)
+        ta.select()
+        document.execCommand('copy')
+        document.body.removeChild(ta)
+        setCopiedIdx(idx)
+        setTimeout(() => setCopiedIdx(null), 2000)
+      } catch {
+        // 静默失败
+      }
+    }
   }
 
   if (results.length === 0) {
@@ -117,7 +144,13 @@ export default function CommandOutput({
                   )}
                   <div className="mt-2 flex gap-2">
                     <button
-                      onClick={() => onSendToTerminal(result.command)}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        // 直接通过回调发送到终端，确保在移动端覆盖层也能正常工作
+                        onSendToTerminal(result.command)
+                        // 同时触发事件，供其他监听器（如终端组件）消费
+                        emit('wrench:send-to-terminal', { command: result.command })
+                      }}
                       className="flex items-center gap-1 rounded bg-slate-800 px-2 py-1 text-[10px] text-slate-400 transition-colors hover:bg-slate-700 hover:text-slate-200"
                     >
                       <Terminal size={10} /> 再次执行

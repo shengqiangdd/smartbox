@@ -17,13 +17,17 @@ import {
   Globe,
   Mail,
   MessageCircle,
+  Pencil,
 } from 'lucide-react'
 import {
   notificationChannelsList,
   notificationChannelsDelete,
+  notificationChannelsUpsert,
   type NotificationChannelRow,
 } from '../../services/client-db'
 import { useClientDbReady } from '../../services/client-db-init'
+import { notify } from '../../services/event-bus'
+import { ConfirmModal } from '../../components/ConfirmModal'
 
 const CHANNEL_META: Record<
   string,
@@ -61,6 +65,7 @@ interface ChannelCardProps {
   testingId: string | null
   onTest: (id: string) => void
   onDelete: (id: string) => void
+  onEdit: (channel: LocalChannel) => void
 }
 
 const ChannelCard = memo(function ChannelCard({
@@ -68,6 +73,7 @@ const ChannelCard = memo(function ChannelCard({
   testingId,
   onTest,
   onDelete,
+  onEdit,
 }: ChannelCardProps) {
   const meta = CHANNEL_META[channel.type] ?? {
     label: channel.type,
@@ -82,7 +88,13 @@ const ChannelCard = memo(function ChannelCard({
         <div className="flex items-center gap-2">
           <Icon size={18} className={meta.color} />
           <div>
-            <h3 className="text-sm font-medium text-slate-200">{channel.name}</h3>
+            <button
+              onClick={() => onEdit(channel)}
+              className="text-sm font-medium text-slate-200 hover:text-wrench-400 transition-colors flex items-center gap-1.5 group"
+            >
+              {channel.name}
+              <Pencil size={11} className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-500" />
+            </button>
             <p className="mt-0.5 text-[11px] text-slate-500">{meta.label}</p>
           </div>
         </div>
@@ -137,12 +149,341 @@ const ChannelCard = memo(function ChannelCard({
   )
 })
 
+// ─── Add / Edit Channel Modal ───
+
+const TYPE_OPTIONS = [
+  { value: 'discord', label: 'Discord' },
+  { value: 'slack', label: 'Slack' },
+  { value: 'telegram', label: 'Telegram' },
+  { value: 'email', label: 'Email' },
+  { value: 'webhook', label: 'Webhook' },
+]
+
+interface AddEditChannelModalProps {
+  editingChannel: LocalChannel | null
+  onClose: () => void
+  onSaved: () => void
+}
+
+function AddEditChannelModal({ editingChannel, onClose, onSaved }: AddEditChannelModalProps) {
+  const isEdit = editingChannel !== null
+
+  const [name, setName] = useState(editingChannel?.name ?? '')
+  const [type, setType] = useState(editingChannel?.type ?? 'discord')
+  const [enabled, setEnabled] = useState(editingChannel?.enabled ?? true)
+  const [saving, setSaving] = useState(false)
+
+  // Config fields state — always a flat Record<string, string>
+  const [config, setConfig] = useState<Record<string, string>>(() => {
+    if (editingChannel?.config) {
+      const raw = editingChannel.config
+      const out: Record<string, string> = {}
+      for (const [k, v] of Object.entries(raw)) {
+        out[k] = typeof v === 'string' ? v : JSON.stringify(v)
+      }
+      return out
+    }
+    return {}
+  })
+
+  // Reset config fields when type changes (only if not editing)
+  const resetConfigForType = useCallback(
+    (newType: string) => {
+      if (isEdit) return
+      const defaults: Record<string, string> = {}
+      switch (newType) {
+        case 'discord':
+        case 'slack':
+          defaults.webhook_url = ''
+          break
+        case 'telegram':
+          defaults.bot_token = ''
+          defaults.chat_id = ''
+          break
+        case 'email':
+          defaults.smtp_host = ''
+          defaults.smtp_port = '587'
+          defaults.smtp_username = ''
+          defaults.smtp_password = ''
+          defaults.recipients = ''
+          break
+        case 'webhook':
+          defaults.url = ''
+          defaults.method = 'POST'
+          defaults.headers = ''
+          break
+      }
+      setConfig(defaults)
+    },
+    [isEdit],
+  )
+
+  const handleTypeChange = (newType: string) => {
+    setType(newType)
+    resetConfigForType(newType)
+  }
+
+  const updateConfig = (key: string, value: string) => {
+    setConfig((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const handleSave = () => {
+    if (!name.trim()) return
+    setSaving(true)
+    try {
+      const now = new Date().toISOString()
+      const row: NotificationChannelRow = {
+        id: editingChannel?.id ?? crypto.randomUUID(),
+        name: name.trim(),
+        type,
+        enabled: enabled ? 1 : 0,
+        config: JSON.stringify(config),
+        created_at: editingChannel?.created_at ?? now,
+        updated_at: now,
+      }
+      notificationChannelsUpsert(row)
+      notify('通知渠道已保存', 'success')
+      onSaved()
+    } catch (e: unknown) {
+      notify('保存失败: ' + (e instanceof Error ? e.message : '未知错误'), 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Render config fields based on type
+  const renderConfigFields = () => {
+    const inputCls =
+      'w-full rounded-lg border border-slate-700 bg-slate-800/50 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:border-wrench-500 focus:outline-none'
+    const labelCls = 'block text-xs font-medium text-slate-400 mb-1'
+
+    switch (type) {
+      case 'discord':
+        return (
+          <div>
+            <label className={labelCls}>Webhook URL</label>
+            <input
+              type="url"
+              className={inputCls}
+              placeholder="https://discord.com/api/webhooks/..."
+              value={config.webhook_url ?? ''}
+              onChange={(e) => updateConfig('webhook_url', e.target.value)}
+            />
+          </div>
+        )
+      case 'slack':
+        return (
+          <div>
+            <label className={labelCls}>Webhook URL</label>
+            <input
+              type="url"
+              className={inputCls}
+              placeholder="https://hooks.slack.com/services/..."
+              value={config.webhook_url ?? ''}
+              onChange={(e) => updateConfig('webhook_url', e.target.value)}
+            />
+          </div>
+        )
+      case 'telegram':
+        return (
+          <>
+            <div className="mb-3">
+              <label className={labelCls}>Bot Token</label>
+              <input
+                type="text"
+                className={inputCls}
+                placeholder="123456:ABC-DEF..."
+                value={config.bot_token ?? ''}
+                onChange={(e) => updateConfig('bot_token', e.target.value)}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Chat ID</label>
+              <input
+                type="text"
+                className={inputCls}
+                placeholder="-1001234567890"
+                value={config.chat_id ?? ''}
+                onChange={(e) => updateConfig('chat_id', e.target.value)}
+              />
+            </div>
+          </>
+        )
+      case 'email':
+        return (
+          <>
+            <div className="mb-3">
+              <label className={labelCls}>SMTP Host</label>
+              <input
+                type="text"
+                className={inputCls}
+                placeholder="smtp.gmail.com"
+                value={config.smtp_host ?? ''}
+                onChange={(e) => updateConfig('smtp_host', e.target.value)}
+              />
+            </div>
+            <div className="mb-3">
+              <label className={labelCls}>Port</label>
+              <input
+                type="number"
+                className={inputCls}
+                placeholder="587"
+                value={config.smtp_port ?? ''}
+                onChange={(e) => updateConfig('smtp_port', e.target.value)}
+              />
+            </div>
+            <div className="mb-3">
+              <label className={labelCls}>Username</label>
+              <input
+                type="text"
+                className={inputCls}
+                placeholder="your@email.com"
+                value={config.smtp_username ?? ''}
+                onChange={(e) => updateConfig('smtp_username', e.target.value)}
+              />
+            </div>
+            <div className="mb-3">
+              <label className={labelCls}>Password</label>
+              <input
+                type="password"
+                className={inputCls}
+                placeholder="••••••••"
+                value={config.smtp_password ?? ''}
+                onChange={(e) => updateConfig('smtp_password', e.target.value)}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Recipients (逗号分隔)</label>
+              <input
+                type="text"
+                className={inputCls}
+                placeholder="alice@example.com, bob@example.com"
+                value={config.recipients ?? ''}
+                onChange={(e) => updateConfig('recipients', e.target.value)}
+              />
+            </div>
+          </>
+        )
+      case 'webhook':
+        return (
+          <>
+            <div className="mb-3">
+              <label className={labelCls}>URL</label>
+              <input
+                type="url"
+                className={inputCls}
+                placeholder="https://example.com/webhook"
+                value={config.url ?? ''}
+                onChange={(e) => updateConfig('url', e.target.value)}
+              />
+            </div>
+            <div className="mb-3">
+              <label className={labelCls}>Method</label>
+              <select
+                className={inputCls}
+                value={config.method ?? 'POST'}
+                onChange={(e) => updateConfig('method', e.target.value)}
+              >
+                <option value="GET">GET</option>
+                <option value="POST">POST</option>
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Headers (可选, JSON)</label>
+              <input
+                type="text"
+                className={inputCls}
+                placeholder='{"Authorization": "Bearer xxx"}'
+                value={config.headers ?? ''}
+                onChange={(e) => updateConfig('headers', e.target.value)}
+              />
+            </div>
+          </>
+        )
+      default:
+        return null
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="w-full max-w-lg rounded-lg border border-slate-700 bg-slate-900 p-6 shadow-2xl">
+        <h2 className="mb-4 text-lg font-semibold text-slate-200">
+          {isEdit ? '编辑通知渠道' : '添加通知渠道'}
+        </h2>
+
+        <div className="space-y-4">
+          {/* Name */}
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">名称</label>
+            <input
+              type="text"
+              className="w-full rounded-lg border border-slate-700 bg-slate-800/50 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:border-wrench-500 focus:outline-none"
+              placeholder="我的 Discord 渠道"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+
+          {/* Type */}
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">类型</label>
+            <select
+              className="w-full rounded-lg border border-slate-700 bg-slate-800/50 px-3 py-2 text-sm text-slate-200 focus:border-wrench-500 focus:outline-none"
+              value={type}
+              onChange={(e) => handleTypeChange(e.target.value)}
+            >
+              {TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Config fields */}
+          <div className="space-y-3">{renderConfigFields()}</div>
+
+          {/* Enabled toggle */}
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-medium text-slate-400">启用</label>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={enabled}
+                onChange={(e) => setEnabled(e.target.checked)}
+              />
+              <div className="w-9 h-5 bg-slate-700 rounded-full peer peer-checked:bg-wrench-600 peer-focus:ring-2 peer-focus:ring-wrench-500/30 after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full" />
+            </label>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="mt-6 flex items-center justify-end gap-3">
+          <button onClick={onClose} className="rounded-lg border border-slate-600/50 px-4 py-2 text-sm text-slate-400 hover:bg-slate-700/50">
+            取消
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || !name.trim()}
+            className="bg-wrench-600 hover:bg-wrench-500 rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {saving ? '保存中...' : isEdit ? '更新' : '保存'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function NotificationsPage() {
   const dbReady = useClientDbReady()
   const [channels, setChannels] = useState<LocalChannel[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [editingChannel, setEditingChannel] = useState<LocalChannel | null>(null)
   const [testingId, setTestingId] = useState<string | null>(null)
 
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -175,13 +516,15 @@ export default function NotificationsPage() {
     }
   }, [dbReady])
 
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
+
   const deleteChannel = useCallback((id: string) => {
-    if (!confirm('确定删除此通知渠道？')) return
     try {
       notificationChannelsDelete(id)
       setChannels((prev) => prev.filter((ch) => ch.id !== id))
+      notify('通知渠道已删除', 'success')
     } catch (e: unknown) {
-      alert('删除失败: ' + (e instanceof Error ? e.message : '未知错误'))
+      notify('删除失败: ' + (e instanceof Error ? e.message : '未知错误'), 'error')
     }
   }, [])
 
@@ -190,9 +533,9 @@ export default function NotificationsPage() {
     try {
       // 测试功能需要调用后端，暂时模拟成功
       await new Promise((resolve) => setTimeout(resolve, 1000))
-      alert('✅ 测试消息发送成功！')
+      notify('✅ 测试消息发送成功！', 'success')
     } catch (e: unknown) {
-      alert('❌ 测试失败: ' + (e instanceof Error ? e.message : '网络错误'))
+      notify('❌ 测试失败: ' + (e instanceof Error ? e.message : '网络错误'), 'error')
     } finally {
       setTestingId(null)
     }
@@ -206,6 +549,11 @@ export default function NotificationsPage() {
     }
     return counts
   }, [channels])
+
+  const openEdit = useCallback((channel: LocalChannel) => {
+    setEditingChannel(channel)
+    setShowAddModal(true)
+  }, [])
 
   if (!dbReady) {
     return (
@@ -221,10 +569,10 @@ export default function NotificationsPage() {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-700/50 px-6 py-4">
-        <div className="flex items-center gap-3">
-          <Bell size={22} className="text-wrench-400" />
-          <h1 className="text-lg font-semibold text-slate-200">通知渠道</h1>
+      <div className="flex items-center justify-between border-b border-slate-700/50 px-4 py-3 sm:px-6 sm:py-4">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Bell size={18} className="text-wrench-400 sm:text-[22px]" />
+          <h1 className="text-base font-semibold text-slate-200 sm:text-lg">通知渠道</h1>
           <span className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-400">本地配置</span>
           {Object.keys(channelTypeCounts).length > 0 && (
             <span className="text-[10px] text-slate-600">
@@ -236,15 +584,15 @@ export default function NotificationsPage() {
         </div>
         <button
           onClick={() => setShowAddModal(true)}
-          className="bg-wrench-600 hover:bg-wrench-500 flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white"
+          className="bg-wrench-600 hover:bg-wrench-500 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white sm:gap-2 sm:px-4 sm:py-2 sm:text-sm"
         >
-          <Plus size={16} />
+          <Plus size={14} />
           添加渠道
         </button>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 pb-nav">
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-600 border-t-blue-500" />
@@ -276,28 +624,38 @@ export default function NotificationsPage() {
                 channel={ch}
                 testingId={testingId}
                 onTest={testChannel}
-                onDelete={deleteChannel}
+                onDelete={(id) => setDeleteTargetId(id)}
+                onEdit={openEdit}
               />
             ))}
           </div>
         )}
       </div>
 
-      {/* TODO: Add notification channel modal */}
+      {/* Add / Edit notification channel modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-full max-w-md rounded-lg border border-slate-700 bg-slate-900 p-6">
-            <h2 className="mb-4 text-lg font-semibold text-slate-200">添加通知渠道</h2>
-            <p className="text-sm text-slate-400">通知渠道配置功能开发中，敬请期待...</p>
-            <button
-              onClick={() => setShowAddModal(false)}
-              className="mt-4 rounded-lg bg-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-600"
-            >
-              关闭
-            </button>
-          </div>
-        </div>
+        <AddEditChannelModal
+          key={editingChannel?.id ?? 'add'}
+          editingChannel={editingChannel}
+          onClose={() => { setShowAddModal(false); setEditingChannel(null) }}
+          onSaved={() => { loadChannels(); setShowAddModal(false); setEditingChannel(null) }}
+        />
       )}
+
+      {/* Delete confirmation modal */}
+      <ConfirmModal
+        open={deleteTargetId !== null}
+        title="删除通知渠道"
+        message="确定删除此通知渠道？此操作不可撤销。"
+        confirmText="删除"
+        cancelText="取消"
+        variant="danger"
+        onConfirm={() => {
+          if (deleteTargetId) deleteChannel(deleteTargetId)
+          setDeleteTargetId(null)
+        }}
+        onCancel={() => setDeleteTargetId(null)}
+      />
     </div>
   )
 }

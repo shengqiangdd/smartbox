@@ -84,7 +84,7 @@ pub async fn upsert_channel(
         .map(String::from)
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let now = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%:z").to_string();
     let config_str = serde_json::to_string(&config).unwrap_or_else(|_| "{}".into());
 
     let channel = NotificationChannel {

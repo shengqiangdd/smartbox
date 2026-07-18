@@ -1,0 +1,14 @@
+{
+  "id": "pinyin-converter",
+  "name": "拼音转换器",
+  "version": "1.0.0",
+  "description": "中文转拼音（全拼/首字母/声调）、拼音转汉字、汉字笔画、Unicode 信息",
+  "author": "Wrench",
+  "icon": "languages",
+  "commands": [
+    { "id": "cn2pinyin", "label": "中文→拼音", "description": "将中文转换为拼音", "icon": "text" },
+    { "id": "pinyin-initials", "label": "首字母缩写", "description": "提取中文首字母", "icon": "type" },
+    { "id": "char-info", "label": "汉字信息", "description": "查看汉字的 Unicode、笔画等信息", "icon": "info" }
+  ],
+  "panels": [{ "id": "pinyin-panel", "title": "拼音转换器", "icon": "languages" }]
+}

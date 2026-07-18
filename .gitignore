@@ -58,3 +58,10 @@ _push.py
 bridge/
 memory/
 tests/
+
+# 二进制/构建产物
+backend/core
+backend/plugins
+check_cmds.py
+test-plugins.js
+test-plugins-browser.js

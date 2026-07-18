@@ -29,7 +29,7 @@ pub async fn stream_stats(_container_id: &str, _callback: impl Fn(ContainerStats
             net_tx: 0,
             block_read: 0,
             block_write: 0,
-            timestamp: chrono::Utc::now().to_rfc3339(),
+            timestamp: chrono::Local::now().to_rfc3339(),
         };
 
         _callback(stats);

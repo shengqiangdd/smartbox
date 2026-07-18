@@ -23,7 +23,7 @@ pub async fn create_alert(State(state): State<Arc<AppState>>, Json(body): Json<s
 
     let alert = AlertEntry {
         id: uuid::Uuid::new_v4().to_string(),
-        timestamp: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string(),
+        timestamp: chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f%:z").to_string(),
         level: body
             .get("level")
             .and_then(|v| v.as_str())

@@ -536,10 +536,12 @@ export default function MonitorPage() {
     }
   }, [selected, hosts])
 
-  // 自动刷新
+  // 自动刷新 — 页面不可见时暂停，节省资源
   const startAutoRefresh = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current)
-    timerRef.current = setInterval(collectAll, interval * 1000)
+    if (document.visibilityState === 'visible') {
+      timerRef.current = setInterval(collectAll, interval * 1000)
+    }
   }, [collectAll, interval])
 
   const stopAutoRefresh = useCallback(() => {
@@ -583,12 +585,33 @@ export default function MonitorPage() {
     }
   }, [])
 
+  // Bridge 健康检查 — 页面不可见时暂停
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const healthTimerRef = useRef<any>(null)
+
   useEffect(() => {
     const t = setTimeout(() => fetchHealth(), 0)
-    const timer = window.setInterval(fetchHealth, 30_000)
+    if (document.visibilityState === 'visible') {
+      healthTimerRef.current = window.setInterval(fetchHealth, 30_000)
+    }
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        fetchHealth()
+        if (!healthTimerRef.current) {
+          healthTimerRef.current = window.setInterval(fetchHealth, 30_000)
+        }
+      } else {
+        if (healthTimerRef.current) {
+          clearInterval(healthTimerRef.current)
+          healthTimerRef.current = null
+        }
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
     return () => {
       clearTimeout(t)
-      clearInterval(timer)
+      if (healthTimerRef.current) clearInterval(healthTimerRef.current)
+      document.removeEventListener('visibilitychange', onVisible)
     }
   }, [fetchHealth])
 
@@ -597,11 +620,18 @@ export default function MonitorPage() {
       if (document.visibilityState === 'visible') {
         scanHosts()
         fetchHealth()
+        // 恢复轮询
+        if (hosts.length > 0 && timerRef.current === null) {
+          startAutoRefresh()
+        }
+      } else {
+        // 页面隐藏时暂停轮询，节省 CPU/网络
+        stopAutoRefresh()
       }
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
-  }, [scanHosts, fetchHealth])
+  }, [scanHosts, fetchHealth, hosts.length, startAutoRefresh, stopAutoRefresh])
 
   useEffect(() => {
     return () => stopAutoRefresh()

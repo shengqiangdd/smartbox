@@ -79,7 +79,7 @@ pub async fn connect_ssh(
         if !password.is_empty() {
             match session.connect_password(password).await {
                 Ok(()) => {
-                    save_connection(&state, &connection_id, &host, port, &username, session).await;
+                    save_connection(&state, &connection_id, &host, port, &username, session, body.sudo_password.clone()).await;
                     return ApiResponse::success(SshConnectResponse { connection_id, host, port, username });
                 }
                 Err(e) => {
@@ -92,7 +92,7 @@ pub async fn connect_ssh(
     // Try key auth
     if let Some(private_key) = &body.private_key {
         if !private_key.is_empty() && session.connect_key(private_key, None).await.is_ok() {
-            save_connection(&state, &connection_id, &host, port, &username, session).await;
+            save_connection(&state, &connection_id, &host, port, &username, session, body.sudo_password.clone()).await;
             return ApiResponse::success(SshConnectResponse { connection_id, host, port, username });
         }
     }
@@ -136,6 +136,7 @@ async fn save_connection(
     port: u16,
     username: &str,
     session: SshSession,
+    sudo_password: Option<String>,
 ) {
     let entry = SshConnection {
         connection_id: connection_id.to_string(),
@@ -144,6 +145,7 @@ async fn save_connection(
         username: username.to_string(),
         auth_method: "password".to_string(),
         session: Some(Arc::new(session)),
+        sudo_password,
     };
 
     state.connections.insert(connection_id.to_string(), entry);
@@ -188,7 +190,7 @@ pub async fn ensure_connection(
         if !password.is_empty() {
             match session.connect_password(password).await {
                 Ok(()) => {
-                    save_connection(&state, &connection_id, &host, port, &username, session).await;
+                    save_connection(&state, &connection_id, &host, port, &username, session, body.sudo_password.clone()).await;
                     return ApiResponse::success(SshConnectResponse { connection_id, host, port, username });
                 }
                 Err(e) => {
@@ -200,7 +202,7 @@ pub async fn ensure_connection(
 
     if let Some(private_key) = &body.private_key {
         if !private_key.is_empty() && session.connect_key(private_key, None).await.is_ok() {
-            save_connection(&state, &connection_id, &host, port, &username, session).await;
+            save_connection(&state, &connection_id, &host, port, &username, session, body.sudo_password.clone()).await;
             return ApiResponse::success(SshConnectResponse { connection_id, host, port, username });
         }
     }

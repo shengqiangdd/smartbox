@@ -1,0 +1,13 @@
+{
+  "id": "markdown-preview",
+  "name": "Markdown 预览",
+  "version": "1.0.0",
+  "description": "将编辑器中的 Markdown 文本渲染为 HTML 预览",
+  "author": "Wrench",
+  "icon": "file-text",
+  "commands": [
+    { "id": "md-preview", "label": "预览 Markdown", "description": "将 Markdown 渲染为 HTML 并在面板中显示", "icon": "file-text" },
+    { "id": "md-to-html", "label": "转换为 HTML", "description": "将 Markdown 转换为纯 HTML 源码", "icon": "file-text" }
+  ],
+  "panels": [{ "id": "md-panel", "title": "Markdown 预览", "icon": "file-text" }]
+}

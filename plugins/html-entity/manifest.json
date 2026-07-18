@@ -1,0 +1,13 @@
+{
+  "id": "html-entity",
+  "name": "HTML 实体编解码",
+  "version": "1.0.0",
+  "description": "HTML 实体编码/解码，支持中文转义、特殊字符处理、批量转换",
+  "author": "Wrench",
+  "icon": "code",
+  "commands": [
+    { "id": "html-encode", "label": "HTML 编码", "description": "将文本转换为 HTML 实体", "icon": "lock" },
+    { "id": "html-decode", "label": "HTML 解码", "description": "将 HTML 实体还原为文本", "icon": "unlock" }
+  ],
+  "panels": [{ "id": "htmlentity-panel", "title": "HTML 实体编解码", "icon": "code" }]
+}

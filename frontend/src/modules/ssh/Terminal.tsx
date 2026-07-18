@@ -3,9 +3,10 @@ import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
-import { Search, X, ChevronUp, ChevronDown } from 'lucide-react'
+import { Search, X, ChevronUp, ChevronDown, Copy } from 'lucide-react'
 import { createTerminalWsClient, type WsClient } from '../../services/websocket'
 import { getToken } from '../../services/auth'
+import { on } from '../../services/event-bus'
 
 /** 安全读取剪贴板（WebView 中 navigator.clipboard 可能为 undefined） */
 async function safeReadClipboard(): Promise<string> {
@@ -19,15 +20,58 @@ async function safeReadClipboard(): Promise<string> {
   return ''
 }
 
-/** 安全写入剪贴板 */
-async function safeWriteClipboard(text: string): Promise<void> {
+/** 安全写入剪贴板 — 多层 fallback：clipboard API → execCommand → 静默失败 */
+async function safeWriteClipboard(text: string): Promise<boolean> {
+  if (!text) return false
+
+  // 方案 1：Clipboard API（HTTPS + 有权限时可用）
   try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text)
+      return true
     }
   } catch {
-    /* ignore */
+    /* fallthrough */
   }
+
+  // 方案 2：execCommand('copy') — 利用 textarea + 选区触发浏览器原生复制
+  // 在移动端 WebView / HTTP 页面中仍可工作（需要用户手势触发的调用栈）
+  try {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    // 防止滚动条闪现
+    textarea.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0;pointer-events:none;'
+    document.body.appendChild(textarea)
+    textarea.focus()
+    textarea.select()
+    // 移动端需要 setSelectionRange 确保选中
+    textarea.setSelectionRange(0, text.length)
+    const ok = document.execCommand('copy')
+    document.body.removeChild(textarea)
+    if (ok) return true
+  } catch {
+    /* fallthrough */
+  }
+
+  // 方案 3：如果在 iframe 中，尝试 parent window
+  try {
+    if (window.parent && window.parent !== window && window.parent.document) {
+      const textarea = window.parent.document.createElement('textarea')
+      textarea.value = text
+      textarea.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0;'
+      window.parent.document.body.appendChild(textarea)
+      textarea.focus()
+      textarea.select()
+      textarea.setSelectionRange(0, text.length)
+      const ok = window.parent.document.execCommand('copy')
+      window.parent.document.body.removeChild(textarea)
+      if (ok) return true
+    }
+  } catch {
+    /* fallthrough */
+  }
+
+  return false
 }
 
 /** 分屏面板配置 */
@@ -108,9 +152,15 @@ export default function TerminalView({
   const [searchMatchIndex, _setSearchMatchIndex] = useState(0)
   const [searchMatchCount, _setSearchMatchCount] = useState(0)
   const searchInputRef = useRef<HTMLInputElement>(null)
-  // 复制模态框状态
-  const [showCopyModal, setShowCopyModal] = useState(false)
-  const [copyText, setCopyText] = useState('')
+  // ─── 桌面端：选中文本后浮现复制按钮 ───
+  const [hasSelection, setHasSelection] = useState(false)
+  // ─── 移动端：长按浮动菜单 ───
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null)
+  // contextMenuRef 用于点击外部关闭
+  const contextMenuRef = useRef<HTMLDivElement>(null)
+  // ─── 移动端：选择文本模态框（textarea 让用户自由选择复制） ───
+  const [selectModalText, setSelectModalText] = useState<string | null>(null)
+  const selectModalRef = useRef<HTMLTextAreaElement>(null)
   // 快捷键防抖 ref
   const lastShortcutTime = useRef(0)
   // 用 ref 避免 event handler 中的闭包过期
@@ -309,34 +359,48 @@ export default function TerminalView({
     container.addEventListener('touchmove', handleTouchMove, { passive: false })
     container.addEventListener('touchend', handleTouchEnd, { passive: true })
 
-    // ─── 长按检测：长按 500ms 弹出复制模态框 ───
+    // ─── 长按检测：长按 500ms 弹出浮动上下文菜单 ───
     let longPressTimer: ReturnType<typeof setTimeout> | null = null
+    let longPressTouchX = 0
+    let longPressTouchY = 0
     const handleLongPressStart = (e: TouchEvent) => {
       const touch = e.touches[0]
       if (!touch) return
+      longPressTouchX = touch.clientX
+      longPressTouchY = touch.clientY
       longPressTimer = setTimeout(() => {
-        // 获取选中文本或剪贴板内容
-        const selection = term.getSelection()
-        if (selection && selection.trim()) {
-          setCopyText(selection)
-          setShowCopyModal(true)
-        } else {
-          // 没有选中文本时，读取剪贴板
-          safeReadClipboard().then((text) => {
-            if (text && text.trim()) {
-              setCopyText(text)
-              setShowCopyModal(true)
+        // 先用 selection API 尝试选中触碰位置的文本
+        try {
+          const range = document.caretRangeFromPoint(touch.clientX, touch.clientY)
+          if (range) {
+            const selection = window.getSelection()
+            if (selection) {
+              selection.removeAllRanges()
+              selection.addRange(range)
             }
-          })
+          }
+        } catch {
+          // caretRangeFromPoint 不可用
         }
+        // 检查 xterm selection（用户可能通过 selection API 选中了文本）
+        const selection = term.getSelection()
+        const hasSelection = !!(selection && selection.trim())
+        setContextMenu({
+          x: longPressTouchX,
+          y: longPressTouchY,
+          hasSelection,
+        })
       }, 500)
     }
     const handleLongPressMove = (e: TouchEvent) => {
-      // 移动超过 10px 取消长按
       if (longPressTimer && e.touches[0]) {
-        // 复用已有的 handleTouchStart 中的坐标判断
-        clearTimeout(longPressTimer)
-        longPressTimer = null
+        const touch = e.touches[0]
+        const dx = touch.clientX - longPressTouchX
+        const dy = touch.clientY - longPressTouchY
+        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+          clearTimeout(longPressTimer)
+          longPressTimer = null
+        }
       }
     }
     const handleLongPressEnd = () => {
@@ -349,6 +413,16 @@ export default function TerminalView({
     container.addEventListener('touchmove', handleLongPressMove, { passive: true })
     container.addEventListener('touchend', handleLongPressEnd, { passive: true })
     container.addEventListener('touchcancel', handleLongPressEnd, { passive: true })
+
+
+
+    // ─── 桌面端：监听文本选区变化，选中时浮现复制按钮 ───
+    const handleSelectionChange = () => {
+      const sel = window.getSelection()
+      const text = sel?.toString() || ''
+      setHasSelection(text.trim().length > 0)
+    }
+    document.addEventListener('selectionchange', handleSelectionChange)
 
     // 延迟执行 fit 确保容器已渲染
     const fitTimer = setTimeout(() => {
@@ -375,12 +449,12 @@ export default function TerminalView({
 
       const creds = credentialsRef.current
       if (!creds) {
-        term.write('\r\n\x1b[33m[等待凭据] 连接凭据尚未就绪，等待中...\x1b[0m\r\n')
+        term.write('\r\x1b[2K\x1b[33m[等待凭据] 连接凭据尚未就绪，等待中...\x1b[0m\r\n')
         return
       }
 
       connectingRef.current = true
-      term.write('\r\n\x1b[33m[连接中] 正在连接 ' + creds.host + ' ...\x1b[0m\r\n')
+      term.write('\r\x1b[2K')
       console.log(`[Terminal] initTerminalConnection started for ${creds.host}:${creds.port}`)
 
       // 前端 SSH 连接超时检测（后端 15s 超时，前端给 20s 容差）
@@ -462,9 +536,16 @@ export default function TerminalView({
 
         termWs.on('connected', () => {
           // SSH 连接成功 ack（dispatch type:"connected"）
+          console.log('[Terminal] ✅ termWs.on("connected") fired!')
           clearTimeout(sshTimeout)
           connectingRef.current = false
           connectedRef.current = true
+          // 清除 [连接中] 提示行，替换为 [已连接] 确认
+          if (!disposedRef.current) {
+            // 清除 [连接中] 等状态行，让 SSH banner/prompt 从第一行开始
+            term.clear()
+            term.scrollToBottom()
+          }
           term.focus()
           onConnectedRef.current?.()
         })
@@ -582,6 +663,17 @@ export default function TerminalView({
         return false // 阻止发送到终端
       }
 
+      // Ctrl+Shift+A → 全选并复制全部终端内容
+      if (type === 'keydown' && ctrlKey && shiftKey && key.toLowerCase() === 'a') {
+        term.selectAll()
+        const allText = term.getSelection()
+        term.clearSelection()
+        if (allText) {
+          safeWriteClipboard(allText)
+        }
+        return false
+      }
+
       // Ctrl+Shift+V → 粘贴
       if (type === 'keydown' && ctrlKey && shiftKey && key.toLowerCase() === 'v') {
         safeReadClipboard().then((text) => {
@@ -636,6 +728,16 @@ export default function TerminalView({
       onTerminalData?.(encoded)
     })
 
+    // 监听来自命令页"再次执行"的事件
+    const unsubTerminal = on('wrench:send-to-terminal', ({ command }) => {
+      if (command && termWsRef.current) {
+        // 追加换行符模拟回车
+        const text = command + '\n'
+        const encoded = btoa(unescape(encodeURIComponent(text)))
+        termWsRef.current.send({ type: 'exec', connectionId, data: encoded })
+        onTerminalData?.(encoded)
+      }
+    })
     // Resize 监听 — 只有尺寸真正变化时才 fit，避免清空内容
     let lastFitWidth = 0
     let lastFitHeight = 0
@@ -688,6 +790,7 @@ export default function TerminalView({
       clearTimeout(fitTimer)
       observer.disconnect()
       window.removeEventListener('keydown', searchKeyHandler)
+      unsubTerminal()
       // 移除触摸事件监听器
       container.removeEventListener('touchstart', handleTouchStart)
       container.removeEventListener('touchmove', handleTouchMove)
@@ -696,6 +799,7 @@ export default function TerminalView({
       container.removeEventListener('touchmove', handleLongPressMove)
       container.removeEventListener('touchend', handleLongPressEnd)
       container.removeEventListener('touchcancel', handleLongPressEnd)
+      document.removeEventListener('selectionchange', handleSelectionChange)
       // 断开并清理独立 WebSocket
       if (termWsRef.current) {
         termWsRef.current.disconnect()
@@ -730,8 +834,50 @@ export default function TerminalView({
     }
   }, [])
 
+  // ─── 复制操作辅助函数 ───
+
+  /** 获取终端全部文本（优先用 buffer，fallback 到 selection API） */
+  const getTerminalAllText = useCallback((): string => {
+    const term = terminalRef.current
+    if (!term) return ''
+    // 方式 1：从 buffer 逐行读取（最可靠，不依赖 selection API）
+    try {
+      const buffer = term.buffer.active
+      const lines: string[] = []
+      for (let i = 0; i < buffer.length; i++) {
+        lines.push(buffer.getLine(i)?.translateToString(true) || '')
+      }
+      return lines.join('\n')
+    } catch {
+      // fallthrough
+    }
+    // 方式 2：selection API fallback
+    try {
+      term.selectAll()
+      const text = term.getSelection() || ''
+      term.clearSelection()
+      return text
+    } catch {
+      return ''
+    }
+  }, [])
+
+  /** 复制操作（有选区则复制选中，无则复制全部） */
+  const handleCopyAction = useCallback(() => {
+    const term = terminalRef.current
+    if (!term) return
+    // 检查是否有选区
+    const selection = term.getSelection() || ''
+    if (selection.trim()) {
+      safeWriteClipboard(selection)
+    } else {
+      const allText = getTerminalAllText()
+      if (allText) safeWriteClipboard(allText)
+    }
+  }, [getTerminalAllText])
+
   return (
-    <div className={`relative flex flex-col ${className}`} style={{ minHeight: 0 }}>
+    <div className={`group relative flex flex-col ${className}`} style={{ minHeight: 0 }}>
       {/* 搜索面板 */}
       {showSearch && (
         <div className="absolute right-0 bottom-0 left-0 z-20 flex items-center gap-1 border-t border-slate-700/50 bg-slate-900 px-2 py-1">
@@ -792,6 +938,160 @@ export default function TerminalView({
           touchAction: 'none',
         }}
       />
+      {/* ─── 桌面端：选中文本后在右上角浮现复制按钮 ─── */}
+      <button
+        onClick={handleCopyAction}
+        className={`absolute top-1 right-1 z-10 flex items-center gap-1 rounded bg-slate-800/90 px-2 py-1 text-[11px] text-slate-300 shadow-lg backdrop-blur-sm transition-all duration-150 hover:bg-slate-700 hover:text-white md:flex ${
+          hasSelection ? 'scale-100 opacity-100' : 'pointer-events-none scale-95 opacity-0'
+        }`}
+        title="复制选中文本 (Ctrl+Shift+C)"
+      >
+        <Copy size={12} />
+        <span>复制</span>
+      </button>
+
+      {/* ─── 移动端：长按浮动上下文菜单 ─── */}
+      {contextMenu && (
+        <>
+          {/* 透明遮罩：点击关闭菜单 */}
+          <div
+            className="fixed inset-0 z-40"
+            onPointerDown={(e) => {
+              e.preventDefault()
+              setContextMenu(null)
+            }}
+          />
+          <div
+            ref={contextMenuRef}
+            className="fixed z-50 overflow-hidden rounded-xl border border-slate-600/50 bg-slate-800/95 shadow-2xl backdrop-blur-md"
+            style={{
+              left: `${Math.min(contextMenu.x, window.innerWidth - 180)}px`,
+              top: `${Math.min(contextMenu.y, window.innerHeight - 120)}px`,
+              minWidth: '160px',
+            }}
+          >
+            {/* 复制全部内容 */}
+            <button
+              onPointerDown={async (e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                const text = getTerminalAllText()
+                console.log(`[Copy] 全选复制: text length=${text.length}, sample=${text.substring(0, 80)}`)
+                const ok = await safeWriteClipboard(text)
+                console.log(`[Copy] 全选复制 result: ${ok}`)
+                setContextMenu(null)
+              }}
+              className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-slate-200 active:bg-slate-700"
+            >
+              <Copy size={14} className="text-slate-400" />
+              全选复制
+            </button>
+            {/* 复制选中内容 — 弹出 textarea 让用户自由选择 */}
+            <button
+              onPointerDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                // 获取全部文本，弹出模态框让用户选择
+                const text = getTerminalAllText()
+                setContextMenu(null)
+                // 微延迟等菜单关闭后再弹出模态框，避免 z-index 冲突
+                setTimeout(() => setSelectModalText(text), 50)
+              }}
+              className="flex w-full items-center gap-2 border-t border-slate-700/50 px-4 py-2.5 text-left text-sm text-slate-200 active:bg-slate-700"
+            >
+              <Copy size={14} className="text-slate-400" />
+              选择并复制
+            </button>
+            {/* 取消 */}
+            <button
+              onPointerDown={(e) => {
+                e.preventDefault()
+                setContextMenu(null)
+              }}
+              className="flex w-full items-center gap-2 border-t border-slate-700/50 px-4 py-2.5 text-left text-sm text-slate-400 active:bg-slate-700"
+            >
+              <X size={14} className="text-slate-500" />
+              取消
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* ─── 移动端：选择文本模态框（textarea 让用户自由选择复制） ─── */}
+      {selectModalText !== null && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col bg-slate-950"
+          style={{
+            // 留出系统安全区域（刘海屏、状态栏）
+            paddingTop: 'env(safe-area-inset-top, 0px)',
+            paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+          }}
+        >
+          {/* 顶栏：标题 + 操作按钮 */}
+          <div className="flex shrink-0 items-center justify-between border-b border-slate-700/50 bg-slate-900 px-3 py-2">
+            <span className="text-xs font-medium text-slate-400">选择文本后复制</span>
+            <div className="flex gap-1.5">
+              <button
+                onPointerDown={(e) => {
+                  e.preventDefault()
+                  const ta = selectModalRef.current
+                  if (ta) {
+                    ta.focus()
+                    ta.select()
+                    document.execCommand('copy')
+                  }
+                }}
+                className="rounded bg-wrench-600 px-3 py-1 text-xs font-medium text-white active:bg-wrench-700"
+              >
+                全选复制
+              </button>
+              <button
+                onPointerDown={(e) => {
+                  e.preventDefault()
+                  const ta = selectModalRef.current
+                  if (ta) {
+                    const start = ta.selectionStart
+                    const end = ta.selectionEnd
+                    const selected = ta.value.substring(start, end)
+                    if (selected.trim()) {
+                      safeWriteClipboard(selected)
+                    } else {
+                      ta.focus()
+                      ta.select()
+                      document.execCommand('copy')
+                    }
+                  }
+                }}
+                className="rounded bg-slate-700 px-3 py-1 text-xs text-slate-300 active:bg-slate-600"
+              >
+                复制选中
+              </button>
+              <button
+                onPointerDown={(e) => {
+                  e.preventDefault()
+                  setSelectModalText(null)
+                }}
+                className="rounded bg-slate-800 px-3 py-1 text-xs text-slate-400 active:bg-slate-700"
+              >
+                关闭
+              </button>
+            </div>
+          </div>
+          {/* textarea：用户可以自由选择、滚动、复制 */}
+          <textarea
+            ref={selectModalRef}
+            readOnly
+            value={selectModalText}
+            className="flex-1 resize-none border-none bg-slate-950 p-3 font-mono text-xs leading-4 text-slate-300 outline-none"
+            style={{
+              userSelect: 'text',
+              WebkitUserSelect: 'text',
+              // 确保 textarea 填满剩余空间
+              minHeight: 0,
+            }}
+          />
+        </div>
+      )}
 
       {/* 移动端快捷键工具栏 — 三行紧凑布局 */}
       <div
@@ -892,38 +1192,7 @@ export default function TerminalView({
         </div>
       </div>
 
-      {/* 终端长按复制模态框 */}
-      {showCopyModal && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-sm rounded-xl border border-slate-700/50 bg-slate-900 p-4 shadow-2xl">
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-sm font-medium text-slate-200">复制文本</span>
-              <button
-                onClick={() => setShowCopyModal(false)}
-                className="text-slate-500 hover:text-slate-300"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <textarea
-              readOnly
-              value={copyText}
-              className="mb-3 w-full rounded-lg border border-slate-700/50 bg-slate-800 p-2 font-mono text-xs text-slate-300"
-              rows={6}
-              onClick={(e) => (e.target as HTMLTextAreaElement).select()}
-            />
-            <button
-              onClick={() => {
-                safeWriteClipboard(copyText)
-                setShowCopyModal(false)
-              }}
-              className="bg-wrench-600 hover:bg-wrench-500 active:bg-wrench-700 w-full rounded-lg px-4 py-2 text-sm font-medium text-white"
-            >
-              复制到剪贴板
-            </button>
-          </div>
-        </div>
-      )}
+
     </div>
   )
 }

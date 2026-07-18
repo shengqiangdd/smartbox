@@ -1,0 +1,14 @@
+{
+  "id": "cron-expression",
+  "name": "Cron 表达式工具",
+  "version": "1.0.0",
+  "description": "Cron 定时表达式的生成、解析和下次执行时间计算",
+  "author": "Wrench",
+  "icon": "clock",
+  "commands": [
+    { "id": "cron-parse", "label": "解析 Cron", "description": "将 Cron 表达式解析为人类可读的描述", "icon": "clock" },
+    { "id": "cron-next", "label": "下次执行时间", "description": "计算 Cron 表达式接下来 5 次执行时间", "icon": "clock" },
+    { "id": "cron-common", "label": "常用 Cron 模板", "description": "生成常用定时任务的 Cron 表达式", "icon": "list" }
+  ],
+  "panels": [{ "id": "cron-panel", "title": "Cron 工具", "icon": "clock" }]
+}
