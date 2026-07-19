@@ -192,6 +192,7 @@ html:not(.dark) {
   }
 
   /* ── SFTP 文件条目：禁止文本选择 + 长按，但允许正常 tap/click ── */
+  /* 只限文件列表条目（.sftp-file-entry），不干预模态框/弹窗内容 */
   .sftp-file-entry,
   .sftp-file-entry * {
     -webkit-touch-callout: none !important;
@@ -199,12 +200,10 @@ html:not(.dark) {
     -moz-user-select: none !important;
     -ms-user-select: none !important;
     user-select: none !important;
-    /* manipulation = 允许 tap/click，禁止 long-press 触发浏览器默认行为 */
     touch-action: manipulation !important;
     -webkit-tap-highlight-color: transparent !important;
   }
 
-  /* 伪元素覆盖：部分 Android 浏览器通过 ::before/::after 触发选择 */
   .sftp-file-entry::before,
   .sftp-file-entry::after {
     -webkit-user-select: none !important;
@@ -694,14 +693,9 @@ html:not(.dark) .markdown-preview pre.cm-code-block code {
 }
 
 /* ============================================
-   移动端禁用长按默认行为 — 文件列表区域
+   移动端禁用长按默认行为 — 仅文件列表条目
+   不干预模态框/弹窗内容（文件信息等可以长按复制）
    ============================================ */
-/*
- * 关键：touch-action: manipulation 告诉浏览器底层渲染引擎
- * 在此元素上不处理 long press 手势（即不弹出原生文本选择/操作菜单）。
- * 这是 CSS Touch Events 规范的底层控制，比 JS preventDefault 更可靠。
- * 不会影响 tap/click 正常触发。
- */
 .sftp-file-entry,
 .sftp-file-entry * {
   -webkit-user-select: none;
@@ -710,10 +704,6 @@ html:not(.dark) .markdown-preview pre.cm-code-block code {
   touch-action: manipulation;
 }
 
-/*
- * 文件列表滚动容器：允许纵向滚动 + 正常 tap
- * touch-action: pan-y pinch-zoom 是最安全的组合
- */
 .sftp-file-list {
   touch-action: pan-y pinch-zoom !important;
   -webkit-user-select: none;

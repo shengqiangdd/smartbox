@@ -1277,22 +1277,18 @@ function SftpBrowserInner({
   }, [selectedPaths, entries, clipboard, handleCopy, handleCut, handlePaste, selectAll, batchDelete, clearSelection])
 
   // ─── 移动端禁用浏览器默认长按行为（兼容所有 Android 浏览器） ──
-  // 策略：只用 selectionchange + touchend 清除意外选择，
-  // 不在 touchstart/pointerdown 上 preventDefault（会阻止 click/tap 生成）。
-  // CSS touch-action: manipulation 已禁止 long-press 手势，JS 层仅做兜底。
+  // 只作用于 .sftp-file-entry（文件列表条目），不干预模态框/弹窗内容。
+  // 只在 .sftp-file-list 容器内清除意外选择，移出文件列表后（如点击文件信息弹窗）不做拦截。
   useEffect(() => {
     if (!isTouchDevice) return
 
-    // 记录当前触摸是否在文件条目上
     let activeTouchEntry = false
 
-    // 层1: touchstart — 仅标记状态，不 preventDefault（避免阻止 click/tap）
     const handleTouchStart = (e: TouchEvent) => {
       const target = e.target as HTMLElement
       activeTouchEntry = !!target?.closest?.('.sftp-file-entry')
     }
 
-    // 层2: selectionchange — 清除意外产生的文本选择
     const handleSelectionChange = () => {
       if (!activeTouchEntry) return
       const sel = window.getSelection()
@@ -1301,7 +1297,6 @@ function SftpBrowserInner({
       }
     }
 
-    // 层3: touchend — 清除残留选择，重置状态
     const handleTouchEnd = () => {
       activeTouchEntry = false
       setTimeout(() => {
@@ -1312,7 +1307,6 @@ function SftpBrowserInner({
       }, 50)
     }
 
-    // 注册事件监听（touchstart 用 passive:true 允许浏览器正常处理 tap）
     document.addEventListener('touchstart', handleTouchStart, { capture: true, passive: true })
     document.addEventListener('selectionchange', handleSelectionChange, { capture: true })
     document.addEventListener('touchend', handleTouchEnd, { capture: true })
@@ -1699,12 +1693,12 @@ ${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n...还有 ${errors.leng
     )
   }, [sortedEntries.dirs.length, sortedEntries.files.length, entries, sortKey, sortDir, clipboard])
 
-  // ── 批量选择工具栏 ──
+  // ── 批量选择工具栏 —— 固定在底部的操作栏 ──
   const selectionBar = useMemo(() => {
     if (selectedPaths.size === 0) return null
     const selectedEntries = entries.filter((e) => selectedPaths.has(e.path))
     return (
-      <div className="flex items-center gap-1 overflow-x-auto border-t border-sky-900/50 bg-sky-950/30 px-2 py-1 text-[11px] text-sky-300 pb-nav sm:gap-2">
+      <div className="sticky bottom-0 z-20 flex items-center gap-1 overflow-x-auto border-t border-sky-900/50 bg-sky-950/70 px-2 py-1 text-[11px] text-sky-300 backdrop-blur-sm sm:gap-2 sm:backdrop-blur-none">
         <span className="shrink-0 font-medium">已选 {selectedPaths.size} 项</span>
         <button
           onClick={selectAll}
@@ -1759,6 +1753,10 @@ ${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n...还有 ${errors.leng
 
   // ─── 文件信息弹窗 ───
   const [infoEntry, setInfoEntry] = useState<SftpEntry | null>(null)
+
+  // ─── 可编辑面包屑路径 ───
+  const [pathEditMode, setPathEditMode] = useState(false)
+  const [pathEditValue, setPathEditValue] = useState('')
 
   // ─── 右键菜单增强：添加「文件信息」 ───
 
@@ -1978,33 +1976,73 @@ ${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n...还有 ${errors.leng
       )}
 
       {/* 上传进度条 */}
-      {/* 面包屑导航 */}
-      {breadcrumb.length > 0 && (
-        <div
-          className="flex items-center gap-0 overflow-x-auto border-b border-slate-700/30 px-2 py-0.5 text-[11px] text-slate-500"
-          style={{ scrollbarWidth: 'none' }}
-        >
-          <button
-            onClick={goHome}
-            className="shrink-0 rounded px-0.5 py-0 text-slate-600 hover:text-slate-300"
-            title="/"
-          >
-            <Home size={11} />
-          </button>
-          {breadcrumb.map((crumb, i) => (
-            <span key={crumb.path} className="flex items-center">
-              <span className="mx-0.5 text-slate-700">/</span>
-              <button
-                onClick={() => navigateTo(crumb.path)}
-                className={`shrink-0 rounded px-0.5 py-0 hover:text-slate-300 ${i === breadcrumb.length - 1 ? 'text-slate-400' : 'text-slate-600'}`}
-                title={crumb.path}
-              >
-                {crumb.label}
-              </button>
+      {/* 面包屑导航 — 单击整条路径进入编辑模式 */}
+      <div
+        className="flex min-h-[22px] items-center gap-0 overflow-x-auto border-b border-slate-700/30 px-2 text-[11px] text-slate-500 select-none"
+        style={{ scrollbarWidth: 'none' }}
+      >
+        {pathEditMode ? (
+          <div className="flex items-center gap-1 py-0.5">
+            <input
+              autoFocus
+              value={pathEditValue}
+              onChange={(e) => setPathEditValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && pathEditValue.trim()) {
+                  setPathEditMode(false)
+                  navigateTo(pathEditValue.trim())
+                }
+                if (e.key === 'Escape') {
+                  setPathEditMode(false)
+                }
+              }}
+              onBlur={() => setPathEditMode(false)}
+              className="flex-1 rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-200 outline-none ring-1 ring-sky-500/50"
+              placeholder="输入路径后按 Enter 跳转"
+            />
+            <span
+              onClick={() => setPathEditMode(false)}
+              className="cursor-pointer rounded px-1 py-0.5 text-[10px] text-slate-600 hover:text-slate-400"
+            >
+              ESC
             </span>
-          ))}
-        </div>
-      )}
+          </div>
+        ) : (
+          <>
+            <button
+              onClick={goHome}
+              className="shrink-0 rounded px-0.5 py-0 text-slate-600 hover:text-slate-300"
+              title="/"
+            >
+              <Home size={11} />
+            </button>
+            {breadcrumb.map((crumb, i) => (
+              <span key={crumb.path} className="flex items-center">
+                <span className="mx-0.5 text-slate-700">/</span>
+                <button
+                  onClick={() => navigateTo(crumb.path)}
+                  className={`shrink-0 rounded px-0.5 py-0 hover:text-slate-300 ${
+                    i === breadcrumb.length - 1 ? 'text-slate-400' : 'text-slate-600'
+                  }`}
+                  title={crumb.path}
+                >
+                  {crumb.label}
+                </button>
+              </span>
+            ))}
+            <span
+              className="ml-auto cursor-pointer px-1 text-[10px] text-slate-700 hover:text-slate-500"
+              title="点击编辑路径"
+              onClick={() => {
+                setPathEditValue(currentPath)
+                setPathEditMode(true)
+              }}
+            >
+              ✏️
+            </span>
+          </>
+        )}
+      </div>
 
       {uploadProgress && (
         <div className="mx-2 mt-1 flex items-center gap-2 rounded bg-blue-500/10 px-3 py-1.5 text-xs text-blue-300">
