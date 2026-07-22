@@ -504,11 +504,15 @@ class SshSessionManager {
    * 确保能复用 SSH 页面创建的连接
    */
   private findReusableSession(connectionId: string): SessionInfo | null {
+    console.log(`[SshSessionManager] findReusableSession called for connectionId: ${connectionId}`)
+    console.log(`[SshSessionManager] Internal sessions:`, Array.from(this.sessions.keys()))
+
     // 1. 优先在 SshSessionManager 内部查找 SSH session（功能更完整）
     for (const [, session] of this.sessions) {
       if (session.connectionId === connectionId && 
           session.type === 'ssh' && 
           session.status === 'connected') {
+        console.log(`[SshSessionManager] Found reusable SSH session in internal: ${session.id}`)
         return session
       }
     }
@@ -518,6 +522,7 @@ class SshSessionManager {
       if (session.connectionId === connectionId && 
           session.type === 'sftp' && 
           session.status === 'connected') {
+        console.log(`[SshSessionManager] Found reusable SFTP session in internal: ${session.id}`)
         return session
       }
     }
@@ -526,12 +531,15 @@ class SshSessionManager {
     //    SSH 页面创建的 session 不在 SshSessionManager.sessions 中，
     //    但它们是有效的、可复用的连接
     const storeSessions = useSshStore.getState().sessions
+    console.log(`[SshSessionManager] Store sessions:`, storeSessions.map(s => `${s.id} (connId: ${s.connectionId}, status: ${s.status})`))
+    
     for (const storeSession of storeSessions) {
       if (storeSession.connectionId === connectionId && 
           storeSession.status === 'connected') {
         // 转换为 SessionInfo 格式
         const type = storeSession.id.startsWith('sftp_') ? 'sftp' : 'ssh'
         const conn = useSshStore.getState().connections.find(c => c.id === connectionId)
+        console.log(`[SshSessionManager] Found reusable session in store: ${storeSession.id}`)
         return {
           id: storeSession.id,
           connectionId,
@@ -544,6 +552,7 @@ class SshSessionManager {
       }
     }
 
+    console.log(`[SshSessionManager] No reusable session found for connectionId: ${connectionId}`)
     return null
   }
 
