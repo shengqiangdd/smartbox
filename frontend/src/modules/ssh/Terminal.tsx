@@ -270,6 +270,15 @@ export default function TerminalView({
     container.addEventListener('contextmenu', preventContextMenu)
     container.addEventListener('selectstart', preventSelectStart)
 
+    // ⚠️ xterm.js 内部元素会覆盖容器的事件阻止
+    // 需要直接在 xterm-screen 和 xterm-viewport 上也注册
+    const xtermScreen = container.querySelector('.xterm-screen') as HTMLElement | null
+    const xtermViewport = container.querySelector('.xterm-viewport') as HTMLElement | null
+    xtermScreen?.addEventListener('contextmenu', preventContextMenu)
+    xtermViewport?.addEventListener('contextmenu', preventContextMenu)
+    xtermScreen?.addEventListener('selectstart', preventSelectStart)
+    xtermViewport?.addEventListener('selectstart', preventSelectStart)
+
     // ─── 自定义触摸滚动处理器（含惯性滚动） ───
     // xterm.js 的 .xterm-screen 覆盖在 .xterm-viewport 之上，
     // 触摸事件被 screen 层拦截，无法到达 viewport 的滚动机制。
@@ -377,11 +386,21 @@ export default function TerminalView({
     let longPressTimer: ReturnType<typeof setTimeout> | null = null
     let longPressTouchX = 0
     let longPressTouchY = 0
+
+    // 合并到 handleTouchStart 中（已注册 non-passive），在非滚动时 preventDefault 阻止浏览器默认长按行为
+    // 注意：不能在 passive listener 中 preventDefault，所以这里直接在已有的 touchstart handler 中处理
+    // 但 handleTouchStart 已注册为 passive: true，无法 preventDefault
+    // 因此我们用一个新的 non-passive touchstart handler 专门处理长按阻止
+
     const handleLongPressStart = (e: TouchEvent) => {
       const touch = e.touches[0]
       if (!touch) return
       longPressTouchX = touch.clientX
       longPressTouchY = touch.clientY
+
+      // 不在 touchstart 阻止默认行为（会阻止 click/focus）
+      // 改为在 contextmenu 事件中阻止（长按后浏览器会触发 contextmenu）
+
       longPressTimer = setTimeout(() => {
         // 先用 selection API 尝试选中触碰位置的文本
         try {
@@ -821,6 +840,10 @@ export default function TerminalView({
       // 移除阻止默认行为的监听器
       container.removeEventListener('contextmenu', preventContextMenu)
       container.removeEventListener('selectstart', preventSelectStart)
+      xtermScreen?.removeEventListener('contextmenu', preventContextMenu)
+      xtermViewport?.removeEventListener('contextmenu', preventContextMenu)
+      xtermScreen?.removeEventListener('selectstart', preventSelectStart)
+      xtermViewport?.removeEventListener('selectstart', preventSelectStart)
       // 断开并清理独立 WebSocket
       if (termWsRef.current) {
         termWsRef.current.disconnect()

@@ -711,6 +711,23 @@ html:not(.dark) .markdown-preview pre.cm-code-block code {
   -webkit-touch-callout: none;
 }
 
+/* ── xterm.js 终端容器：禁止长按触发浏览器默认行为 ── */
+/* 覆盖 xterm-screen / xterm-viewport / xterm-helper-textarea */
+.xterm .xterm-screen,
+.xterm .xterm-viewport,
+.xterm .xterm-helper-textarea {
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+}
+/* helper-textarea 是 xterm 用于捕获输入的隐藏元素，需要允许内部编辑但禁止长按菜单 */
+.xterm .xterm-helper-textarea {
+  -webkit-touch-callout: none !important;
+  caret-color: transparent; /* 隐藏光标避免移动端闪烁 */
+}
+
 /* ============================================
    移动端触摸目标保底：所有小图标按钮至少 44×44
    ============================================ */
