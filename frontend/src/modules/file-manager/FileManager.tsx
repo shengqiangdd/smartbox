@@ -396,9 +396,10 @@ function FileManagerInner() {
   // 连接并打开 SFTP
   const connectAndSftp = useCallback(
     async (connId: string) => {
-      // 使用 getState() 避免闭包快照未更新的竞态问题
+      // 使用 getState() 获取最新状态，避免闭包快照问题
       const conn = useSshStore.getState().connections.find((c) => c.id === connId)
       const client = wsClientRef.current
+      const currentSessions = useSshStore.getState().sessions  // 🔧 实时获取 sessions
       if (!conn || !client || connectingRef.current) return
 
       connectingRef.current = true
@@ -406,15 +407,15 @@ function FileManagerInner() {
 
       // 🔧 修复：只清理同一主机的旧 sftp session（重连场景），
       // 不再断开其他主机的 session — 支持多主机并存
-      const storeSessions = useSshStore.getState().sessions
-      for (const sess of storeSessions) {
+      for (const sess of currentSessions) {
         if (sess.connectionId === connId && sess.id.startsWith('sftp_')) {
           client.send({ type: 'disconnect', connectionId: sess.id })
           removeSession(sess.id)
         }
       }
 
-      const sid = await ensureSftpSession(connId, sessions, addSession, client, (msg) => {
+      // 🔧 使用实时获取的 sessions
+      const sid = await ensureSftpSession(connId, currentSessions, addSession, client, (msg) => {
         if (msg) dispatch({ statusMsg: msg })
       })
 
@@ -434,7 +435,7 @@ function FileManagerInner() {
       dispatch({ connecting: false })
       return
     },
-    [sessions, addSession, removeSession, setFmState],
+    [addSession, removeSession, setFmState],  // 🔧 移除 sessions 依赖
   )
 
   // 同步 ref 供 useEffect 使用（避免 hook 顺序问题）
