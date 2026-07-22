@@ -8,10 +8,12 @@
  * - 复用 SSH 页面已有的连接，避免重复建连
  *
  * 🔧 主要修复：
+ * - 使用 SshSessionManager 统一管理会话，支持智能复用
  * - mount effect 不再只用 [] 依赖，同时监听 sessions 变化自动重试
  * - 新建连接后等待 sftp-ready 事件再返回，避免 SFTP_NOT_READY
  * - 支持 persist 异步恢复后自动重连
  * - clipboard 兜底方案（fallbackCopy）
+ * - 🔧 修复：支持同时连接多个主机，不再冲突
  */
 
 import { useEffect, useCallback, useRef, useReducer, useState, useMemo, memo } from 'react'
@@ -21,6 +23,7 @@ import { useSshStore, decryptConnection } from '../../stores/ssh-store'
 import { useAppStore } from '../../stores/app-store'
 import { useFileStore } from '../../stores/file-store'
 import { getWsClientSync, WsClient } from '../../services/websocket'
+import { sshSessionManager } from '../../services/ssh-session-manager'
 import { setSessionCredentials } from '../../services/session-credentials'
 import SftpBrowser from '../ssh/SftpBrowser'
 import CodeMirrorEditor from '../../components/CodeMirrorEditor'
@@ -153,6 +156,8 @@ const _waitForSftpReady = (
 /**
  * 尝试复用已有的 SSH session 来获取 SFTP 能力。
  * 新建连接后等待 sftp-ready 事件再返回，确保 SFTP 已就绪。
+ *
+ * 🔧 修复：使用 SshSessionManager 智能管理会话，支持多连接
  */
 async function ensureSftpSession(
   connId: string,
@@ -161,103 +166,8 @@ async function ensureSftpSession(
   wsClient: WsClient,
   onStatus: (msg: string) => void,
 ): Promise<string | null> {
-  const conns = useSshStore.getState().connections
-  const conn = conns.find((c) => c.id === connId)
-  if (!conn) return null
-
-  // 1. 检查是否已有同连接ID的 session（从 SSH 页面复用的）
-  const existing = existingSessions.find(
-    (s) => s.connectionId === connId && s.status === 'connected',
-  )
-  if (existing) {
-    onStatus('检测到已有 SSH 连接，尝试复用 SFTP...')
-    try {
-      const resp = await authedFetch('/api/sftp/stat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ connectionId: existing.id, path: '/' }),
-      })
-      const json = (await resp.json()) as { success: boolean; error?: string }
-      if (json.success) {
-        onStatus('')
-        return existing.id // ✅ 可用，直接复用
-      }
-      throw new Error(json.error || 'SFTP stat failed')
-    } catch {
-      // 不可用，继续建新连接
-      onStatus('已有连接 SFTP 未就绪，创建新连接...')
-    }
-  }
-
-  // 2. 创建新的 SFTP 专用连接
-  const sessionId = `sftp_${connId}_${Date.now()}`
-  onStatus('正在连接...')
-
-  try {
-    // 🔐 解密存储的密码/私钥后再发送
-    const decryptedConn = await decryptConnection(conn)
-
-    // ⚠️ 必须先注册 sftp-ready 监听再发 connect，
-    //    因为后端 SSH ready 后会立即 openSftp，sftp-ready 可能
-    //    在 connect request 兑现之前/同时到达，导致事件丢失。
-    let sftpUnsub: (() => void) | null = null
-    const sftpReadyPromise = new Promise<boolean>((resolve) => {
-      const timer = setTimeout(() => {
-        sftpUnsub?.()
-        resolve(false)
-      }, 8000)
-      sftpUnsub = wsClient.on('sftp-ready', (data: Record<string, unknown>) => {
-        if (data.connectionId === sessionId) {
-          clearTimeout(timer)
-          sftpUnsub?.()
-          resolve(true)
-        }
-      })
-    })
-
-    await wsClient.request({
-      type: 'connect',
-      connectionId: sessionId,
-      host: conn.host,
-      port: conn.port,
-      username: conn.username,
-      password: decryptedConn.password,
-      privateKey: decryptedConn.privateKey,
-    })
-    addSession({
-      id: sessionId,
-      connectionId: connId,
-      connectionName: conn.name,
-      host: conn.host,
-      status: 'connected',
-      terminalCols: 80,
-      terminalRows: 24,
-    })
-
-    // 存储解密凭据（供 SSH 页面 Terminal 组件使用）
-    setSessionCredentials(sessionId, {
-      host: conn.host,
-      port: conn.port,
-      username: conn.username,
-      password: decryptedConn.password,
-      privateKey: decryptedConn.privateKey,
-      sudoPassword: decryptedConn.sudoPassword,
-    })
-
-    // 等待 sftp-ready 事件（可能在 connect 响应之前/同时/之后到达）
-    onStatus('等待 SFTP 就绪...')
-    const ready = await sftpReadyPromise
-    if (!ready) {
-      console.warn('[FileManager] SFTP ready timeout, will retry on first request')
-    }
-
-    onStatus('')
-    return sessionId
-  } catch (err) {
-    onStatus('')
-    console.error('SFTP 连接失败:', err)
-    return null
-  }
+  // 🔧 使用 SshSessionManager 智能管理会话
+  return sshSessionManager.getOrCreateSftpSession(connId, { onStatus })
 }
 
 // ─── 主组件 ───
@@ -294,6 +204,8 @@ function FileManagerInner() {
   useEffect(() => {
     const client = getWsClientSync()
     wsClientRef.current = client
+    // 🔧 初始化 session 管理器
+    sshSessionManager.setWsClient(client)
     // 使用 queueMicrotask 避免在 effect 中同步调用 setState
     queueMicrotask(() => setWsReady(true))
   }, [])
@@ -328,15 +240,22 @@ function FileManagerInner() {
       return false
     }
 
-    // 检查 persist 恢复后 SSH 页面是否已有可用 session
+    // 🔧 使用 SshSessionManager 智能复用会话
     const sessArr = useSshStore.getState().sessions
-    const existingValid = sessArr.find(
-      (s) => s.connectionId === cached.connId && s.status === 'connected',
+
+    // 优先查找已有的 SSH session（功能更完整）
+    const existingSshSession = sessArr.find(
+      (s) => s.connectionId === cached.connId && 
+             s.status === 'connected' && 
+             !s.id.startsWith('sftp_'),
     )
-    if (existingValid) {
+
+    if (existingSshSession) {
+      // 直接复用 SSH 页面的 session，无需重新连接
+      console.log('[FileManager] Found existing SSH session, reusing:', existingSshSession.id)
       setFmState({
         connId: cached.connId,
-        sessionId: existingValid.id,
+        sessionId: existingSshSession.id,
         pathCache: cached.pathCache,
       })
       return true
@@ -390,6 +309,7 @@ function FileManagerInner() {
 
   // 当 sessions 变化且当前 session 无效时自动重试
   // 解决 Zustand persist 异步恢复的问题
+  // 🔧 修复：增加 debounce 和更智能的重试逻辑
   useEffect(() => {
     // 如果已有有效 session，不做任何事
     if (
@@ -398,12 +318,29 @@ function FileManagerInner() {
     ) {
       return
     }
+
     // 如果 connId 还在且 sessions 非空（persist 已恢复），尝试重建
     if (fmState.connId && sessions.length > 0 && !connectingRef.current && wsClientRef.current) {
+      // 🔧 修复：检查是否有可复用的 SSH session（从 SSH 页面已连接的）
+      const existingSshSession = sessions.find(
+        (s) => s.connectionId === fmState.connId && s.status === 'connected' && !s.id.startsWith('sftp_'),
+      )
+
+      if (existingSshSession) {
+        // 直接复用 SSH 页面的 session，无需重新连接
+        console.log('[FileManager] Found existing SSH session, reusing:', existingSshSession.id)
+        setFmState({
+          ...fmState,
+          sessionId: existingSshSession.id,
+        })
+        return
+      }
+
+      // 没有可复用的 session，尝试重建 SFTP 连接
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
       retryTimerRef.current = setTimeout(() => {
         if (mountedRef.current) tryRestoreSession()
-      }, 500)
+      }, 800)
     }
   }, [sessions, fmState.sessionId, fmState.connId, tryRestoreSession, wsReady])
 

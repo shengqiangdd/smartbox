@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { useAppStore } from '../../stores/app-store'
 import { useAiStore } from '../../stores/ai-store'
+import { NetworkQualityIndicator } from '../NetworkQualityIndicator'
 
 const navItems = [
   { id: 'ssh', label: 'SSH 连接', icon: Terminal },
@@ -118,6 +119,12 @@ export default function Sidebar() {
             <span className="ml-auto text-[10px] text-slate-600">⌘⇧A</span>
           </button>
         )}
+
+        {/* 网络质量指示器 */}
+        <div className="mb-2 px-1">
+          <NetworkQualityIndicator />
+        </div>
+
         <div className="flex items-center gap-2 px-2 text-xs text-slate-500">
           <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
           v0.3.0

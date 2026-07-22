@@ -87,6 +87,12 @@ impl Database {
                 tracing::info!("DB migration V3 applied (ssh_connections)");
             }
 
+            if version < 4 {
+                conn.execute_batch(SCHEMA_V4)?;
+                conn.pragma_update(None, "user_version", 4)?;
+                tracing::info!("DB migration V4 applied (scheduler)");
+            }
+
             Ok::<_, anyhow::Error>(())
         })
         .await
@@ -378,6 +384,239 @@ impl Database {
         .await
     }
 
+    // ─── Scheduler ────────────────────────────────────────────
+
+    /// List all scheduled tasks.
+    pub async fn list_scheduled_tasks(&self) -> anyhow::Result<Vec<ScheduledTask>> {
+        self.exec(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, name, description, cron_expr, task_type, task_config,
+                        target_host_id, enabled, last_run_at, next_run_at,
+                        created_at, updated_at
+                 FROM scheduled_tasks ORDER BY id ASC",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                Ok(ScheduledTask {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    description: row.get(2)?,
+                    cron_expr: row.get(3)?,
+                    task_type: row.get(4)?,
+                    task_config: row.get(5)?,
+                    target_host_id: row.get(6)?,
+                    enabled: row.get::<_, i32>(7)? != 0,
+                    last_run_at: row.get(8)?,
+                    next_run_at: row.get(9)?,
+                    created_at: row.get(10)?,
+                    updated_at: row.get(11)?,
+                })
+            })?;
+            let mut tasks = Vec::new();
+            for row in rows {
+                tasks.push(row?);
+            }
+            Ok(tasks)
+        })
+        .await
+    }
+
+    /// Get a single scheduled task by ID.
+    pub async fn get_scheduled_task(&self, task_id: i64) -> anyhow::Result<Option<ScheduledTask>> {
+        self.exec(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, name, description, cron_expr, task_type, task_config,
+                        target_host_id, enabled, last_run_at, next_run_at,
+                        created_at, updated_at
+                 FROM scheduled_tasks WHERE id = ?1",
+            )?;
+            let mut rows = stmt.query_map(rusqlite::params![task_id], |row| {
+                Ok(ScheduledTask {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    description: row.get(2)?,
+                    cron_expr: row.get(3)?,
+                    task_type: row.get(4)?,
+                    task_config: row.get(5)?,
+                    target_host_id: row.get(6)?,
+                    enabled: row.get::<_, i32>(7)? != 0,
+                    last_run_at: row.get(8)?,
+                    next_run_at: row.get(9)?,
+                    created_at: row.get(10)?,
+                    updated_at: row.get(11)?,
+                })
+            })?;
+            Ok(rows.next().transpose()?)
+        })
+        .await
+    }
+
+    /// Insert a scheduled task. Returns the new row id.
+    pub async fn insert_scheduled_task(&self, task: &ScheduledTask) -> anyhow::Result<i64> {
+        let name = task.name.clone();
+        let description = task.description.clone();
+        let cron_expr = task.cron_expr.clone();
+        let task_type = task.task_type.clone();
+        let task_config = task.task_config.clone();
+        let target_host_id = task.target_host_id.clone();
+        let enabled = if task.enabled { 1 } else { 0 };
+        let last_run_at = task.last_run_at.clone();
+        let next_run_at = task.next_run_at.clone();
+        let now = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f").to_string();
+
+        self.exec(move |conn| {
+            conn.execute(
+                "INSERT INTO scheduled_tasks (name, description, cron_expr, task_type, task_config,
+                 target_host_id, enabled, last_run_at, next_run_at, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                rusqlite::params![name, description, cron_expr, task_type, task_config,
+                    target_host_id, enabled, last_run_at, next_run_at, now, now],
+            )?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+    }
+
+    /// Update a scheduled task.
+    pub async fn update_scheduled_task(&self, task_id: i64, task: &ScheduledTask) -> anyhow::Result<bool> {
+        let name = task.name.clone();
+        let description = task.description.clone();
+        let cron_expr = task.cron_expr.clone();
+        let task_type = task.task_type.clone();
+        let task_config = task.task_config.clone();
+        let target_host_id = task.target_host_id.clone();
+        let enabled = if task.enabled { 1 } else { 0 };
+        let last_run_at = task.last_run_at.clone();
+        let next_run_at = task.next_run_at.clone();
+        let now = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f").to_string();
+
+        self.exec(move |conn| {
+            let affected = conn.execute(
+                "UPDATE scheduled_tasks SET name=?1, description=?2, cron_expr=?3,
+                 task_type=?4, task_config=?5, target_host_id=?6, enabled=?7,
+                 last_run_at=?8, next_run_at=?9, updated_at=?10
+                 WHERE id=?11",
+                rusqlite::params![name, description, cron_expr, task_type, task_config,
+                    target_host_id, enabled, last_run_at, next_run_at, now, task_id],
+            )?;
+            Ok(affected > 0)
+        })
+        .await
+    }
+
+    /// Delete a scheduled task.
+    pub async fn delete_scheduled_task(&self, task_id: i64) -> anyhow::Result<bool> {
+        self.exec(move |conn| {
+            let affected = conn.execute("DELETE FROM scheduled_tasks WHERE id = ?1", rusqlite::params![task_id])?;
+            Ok(affected > 0)
+        })
+        .await
+    }
+
+    /// Toggle the enabled state of a task.
+    pub async fn toggle_scheduled_task(&self, task_id: i64) -> anyhow::Result<bool> {
+        self.exec(move |conn| {
+            let affected = conn.execute(
+                "UPDATE scheduled_tasks SET enabled = NOT enabled, updated_at = datetime('now') WHERE id = ?1",
+                rusqlite::params![task_id],
+            )?;
+            Ok(affected > 0)
+        })
+        .await
+    }
+
+    /// Update a scheduled task's execution timestamps.
+    pub async fn update_task_timestamps(
+        &self,
+        task_id: i64,
+        last_run_at: &str,
+        next_run_at: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let last = last_run_at.to_string();
+        let next = next_run_at.map(|s| s.to_string());
+        self.exec(move |conn| {
+            conn.execute(
+                "UPDATE scheduled_tasks SET last_run_at=?1, next_run_at=?2, updated_at=datetime('now') WHERE id=?3",
+                rusqlite::params![last, next, task_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// List execution history for a task.
+    pub async fn list_task_history(&self, task_id: i64, limit: usize) -> anyhow::Result<Vec<TaskExecution>> {
+        let limit_i64 = limit as i64;
+        self.exec(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, task_id, status, output, error_message, started_at, finished_at
+                 FROM task_execution_history
+                 WHERE task_id = ?1
+                 ORDER BY id DESC
+                 LIMIT ?2",
+            )?;
+            let rows = stmt.query_map(rusqlite::params![task_id, limit_i64], |row| {
+                Ok(TaskExecution {
+                    id: row.get(0)?,
+                    task_id: row.get(1)?,
+                    status: row.get(2)?,
+                    output: row.get(3)?,
+                    error_message: row.get(4)?,
+                    started_at: row.get(5)?,
+                    finished_at: row.get(6)?,
+                })
+            })?;
+            let mut history = Vec::new();
+            for row in rows {
+                history.push(row?);
+            }
+            Ok(history)
+        })
+        .await
+    }
+
+    /// Insert a task execution record.
+    pub async fn insert_task_execution(&self, exec: &TaskExecution) -> anyhow::Result<i64> {
+        let task_id = exec.task_id;
+        let status = exec.status.clone();
+        let output = exec.output.clone();
+        let error_message = exec.error_message.clone();
+        let started_at = exec.started_at.clone();
+        let finished_at = exec.finished_at.clone();
+
+        self.exec(move |conn| {
+            conn.execute(
+                "INSERT INTO task_execution_history (task_id, status, output, error_message, started_at, finished_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![task_id, status, output, error_message, started_at, finished_at],
+            )?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+    }
+
+    /// Update a task execution record with completion data.
+    pub async fn update_task_execution(
+        &self,
+        exec_id: i64,
+        status: &str,
+        output: &str,
+        error_message: Option<&str>,
+        finished_at: &str,
+    ) -> anyhow::Result<()> {
+        let s = status.to_string();
+        let o = output.to_string();
+        let e = error_message.map(|s| s.to_string());
+        let f = finished_at.to_string();
+        self.exec(move |conn| {
+            conn.execute(
+                "UPDATE task_execution_history SET status=?1, output=?2, error_message=?3, finished_at=?4 WHERE id=?5",
+                rusqlite::params![s, o, e, f, exec_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
     // ─── Internal helpers ────────────────────────────────────────
 
     /// Execute a closure on the database connection via `spawn_blocking`.
@@ -523,9 +762,38 @@ pub struct SshConnection {
     pub updated_at: String,
 }
 
+/// A scheduled task entry.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ScheduledTask {
+    pub id: i64,
+    pub name: String,
+    pub description: String,
+    pub cron_expr: String,
+    pub task_type: String,          // ssh_exec | script
+    pub task_config: String,         // JSON config
+    pub target_host_id: Option<String>,
+    pub enabled: bool,
+    pub last_run_at: Option<String>,
+    pub next_run_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// A task execution history record.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TaskExecution {
+    pub id: i64,
+    pub task_id: i64,
+    pub status: String,     // running | success | failed
+    pub output: Option<String>,
+    pub error_message: Option<String>,
+    pub started_at: String,
+    pub finished_at: Option<String>,
+}
+
 // ─── Schema definitions ──────────────────────────────────────────
 
-const SCHEMA_V1: &str = "
+const SCHEMA_V1: &str = r#"
 CREATE TABLE IF NOT EXISTS audit_logs (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp TEXT    NOT NULL,
@@ -547,9 +815,9 @@ CREATE TABLE IF NOT EXISTS alerts (
     value     REAL    NOT NULL,
     threshold REAL    NOT NULL
 );
-";
+"#;
 
-const SCHEMA_V2: &str = "
+const SCHEMA_V2: &str = r#"
 CREATE TABLE IF NOT EXISTS vault_entries (
     id              TEXT    PRIMARY KEY,
     name            TEXT    NOT NULL,
@@ -569,9 +837,9 @@ CREATE TABLE IF NOT EXISTS notification_channels (
     created_at  TEXT    NOT NULL,
     updated_at  TEXT    NOT NULL
 );
-";
+"#;
 
-const SCHEMA_V3: &str = "
+const SCHEMA_V3: &str = r#"
 CREATE TABLE IF NOT EXISTS ssh_connections (
     id          TEXT    PRIMARY KEY,
     name        TEXT    NOT NULL,
@@ -584,7 +852,35 @@ CREATE TABLE IF NOT EXISTS ssh_connections (
     created_at  TEXT    NOT NULL,
     updated_at  TEXT    NOT NULL
 );
-";
+"#;
+
+const SCHEMA_V4: &str = r#"
+CREATE TABLE IF NOT EXISTS scheduled_tasks (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT    NOT NULL,
+    description     TEXT    DEFAULT '',
+    cron_expr       TEXT    NOT NULL,
+    task_type       TEXT    NOT NULL CHECK(task_type IN ('ssh_exec','script')),
+    task_config     TEXT    NOT NULL DEFAULT '{}',
+    target_host_id  TEXT,
+    enabled         INTEGER NOT NULL DEFAULT 1,
+    last_run_at     TEXT,
+    next_run_at     TEXT,
+    created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS task_execution_history (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id         INTEGER NOT NULL,
+    status          TEXT    NOT NULL CHECK(status IN ('running','success','failed')),
+    output          TEXT,
+    error_message   TEXT,
+    started_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+    finished_at     TEXT,
+    FOREIGN KEY (task_id) REFERENCES scheduled_tasks(id)
+);
+"#;
 
 #[cfg(test)]
 mod tests {

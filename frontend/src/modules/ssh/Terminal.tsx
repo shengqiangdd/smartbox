@@ -166,7 +166,9 @@ export default function TerminalView({
   // ─── 移动端：选择文本模态框（textarea 让用户自由选择复制） ───
   const [selectModalText, setSelectModalText] = useState<string | null>(null)
   const selectModalRef = useRef<HTMLTextAreaElement>(null)
-  // 快捷键防抖 ref
+  // 快捷键防抖 ref（方向键专用，更短的间隔支持连续按）
+  const lastArrowKeyTime = useRef(0)
+  // 其他快捷键防抖 ref
   const lastShortcutTime = useRef(0)
   // 用 ref 避免 event handler 中的闭包过期
   const onConnectedRef = useRef(onConnected)
@@ -1113,6 +1115,8 @@ export default function TerminalView({
           WebkitUserSelect: 'none',
           WebkitTouchCallout: 'none',
           touchAction: 'manipulation',
+          // 防止输入法弹出
+          WebkitInputMethod: 'none',
         }}
       >
         {/* 第一行：控制键 */}
@@ -1130,6 +1134,7 @@ export default function TerminalView({
               key={label}
               onPointerDown={(e) => {
                 e.preventDefault()
+                e.stopPropagation()
                 // 防抖：50ms 内不重复发送，防止快速连击导致 WS 断连
                 const now = Date.now()
                 if (now - lastShortcutTime.current < 50) return
@@ -1137,6 +1142,9 @@ export default function TerminalView({
                 const encoded = btoa(unescape(encodeURIComponent(seq)))
                 termWsRef.current?.send({ type: 'exec', connectionId, data: encoded })
                 onTerminalData?.(encoded)
+                // 阻止输入法触发
+                e.currentTarget.blur()
+                containerRef.current?.focus()
               }}
               className="flex h-8 flex-1 items-center justify-center rounded bg-slate-800/80 font-mono text-[11px] text-slate-300 active:bg-slate-700 active:text-white"
             >
@@ -1144,7 +1152,7 @@ export default function TerminalView({
             </button>
           ))}
         </div>
-        {/* 第二行：方向键 + Home/End */}
+        {/* 第二行：方向键 + Home/End（支持连续按，防抖间隔更短） */}
         <div className="flex gap-px px-0.5 pt-0.5">
           {(
             [
@@ -1160,12 +1168,17 @@ export default function TerminalView({
               key={label}
               onPointerDown={(e) => {
                 e.preventDefault()
+                e.stopPropagation()
+                // 方向键防抖间隔更短（30ms），支持快速连续按
                 const now = Date.now()
-                if (now - lastShortcutTime.current < 50) return
-                lastShortcutTime.current = now
+                if (now - lastArrowKeyTime.current < 30) return
+                lastArrowKeyTime.current = now
                 const encoded = btoa(unescape(encodeURIComponent(seq)))
                 termWsRef.current?.send({ type: 'exec', connectionId, data: encoded })
                 onTerminalData?.(encoded)
+                // 阻止输入法触发
+                e.currentTarget.blur()
+                containerRef.current?.focus()
               }}
               className="flex h-8 flex-1 items-center justify-center rounded bg-slate-800/80 font-mono text-[11px] text-slate-300 active:bg-slate-700 active:text-white"
             >
@@ -1188,12 +1201,16 @@ export default function TerminalView({
               key={label}
               onPointerDown={(e) => {
                 e.preventDefault()
+                e.stopPropagation()
                 const now = Date.now()
                 if (now - lastShortcutTime.current < 50) return
                 lastShortcutTime.current = now
                 const encoded = btoa(unescape(encodeURIComponent(seq)))
                 termWsRef.current?.send({ type: 'exec', connectionId, data: encoded })
                 onTerminalData?.(encoded)
+                // 阻止输入法触发
+                e.currentTarget.blur()
+                containerRef.current?.focus()
               }}
               className="flex h-8 flex-1 items-center justify-center rounded bg-slate-800/80 font-mono text-[11px] text-slate-300 active:bg-slate-700 active:text-white"
             >

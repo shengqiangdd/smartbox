@@ -335,8 +335,9 @@ async fn handle_terminal_connect(socket: &mut WebSocket, state: &Arc<AppState>, 
 
     // ─── Terminal I/O Loop with output batching ───
     // Batching reduces WebSocket message count by accumulating SSH output
-    // and flushing on size threshold (16KB) or time interval (50ms).
-    let flush_timer = tokio::time::sleep(std::time::Duration::from_millis(50));
+    // and flushing on size threshold (8KB) or time interval (16ms).
+    // 使用更短的刷新间隔和更小的缓冲区，减少历史命令和Tab补全的显示延迟。
+    let flush_timer = tokio::time::sleep(std::time::Duration::from_millis(16));
     tokio::pin!(flush_timer);
     let mut output_buffer: Vec<u8> = Vec::new();
 
@@ -402,8 +403,9 @@ async fn handle_terminal_connect(socket: &mut WebSocket, state: &Arc<AppState>, 
                 match msg {
                     Some(ChannelMsg::Data { ref data }) => {
                         output_buffer.extend_from_slice(data);
-                        // Flush immediately if buffer exceeds 16KB threshold
-                        if output_buffer.len() > 16_384 {
+                        // Flush immediately if buffer exceeds 8KB threshold
+                        // 使用更小的阈值减少显示延迟，特别是对于历史命令和Tab补全
+                        if output_buffer.len() > 8_192 {
                             let encoded = base64::engine::general_purpose::STANDARD.encode(&output_buffer);
                             output_buffer.clear();
                             let output = build_terminal_output_msg(&connection_id, &encoded);
@@ -428,7 +430,8 @@ async fn handle_terminal_connect(socket: &mut WebSocket, state: &Arc<AppState>, 
                 }
             }
 
-            // Periodic flush timer — ensures max 50ms latency for small chunks
+            // Periodic flush timer — ensures max 16ms latency for small chunks
+            // 更短的刷新间隔减少历史命令和Tab补全的显示延迟
             _ = &mut flush_timer => {
                 if !output_buffer.is_empty() {
                     let encoded = base64::engine::general_purpose::STANDARD.encode(&output_buffer);
@@ -439,7 +442,7 @@ async fn handle_terminal_connect(socket: &mut WebSocket, state: &Arc<AppState>, 
                     }
                 }
                 flush_timer.as_mut().reset(
-                    tokio::time::Instant::now() + std::time::Duration::from_millis(50)
+                    tokio::time::Instant::now() + std::time::Duration::from_millis(16)
                 );
             }
         }

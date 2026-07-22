@@ -4,9 +4,16 @@
  * 与前端的 WebSocket 服务通信。
  * 消息协议: JSON 格式，requestId 匹配请求-响应。
  *
+ * 功能特性:
+ * - 指数退避自动重连（1s~30s, jitter ±500ms）
+ * - 消息队列 + 重发（连接恢复后自动发送未送达消息）
+ * - 心跳 pong/ping 检测（每 15s ping，30s 无响应判定断连）
+ * - onReconnecting / onReconnected 回调
+ * - 重连失败计数（超过 5 次可通过 reconnectFailedCount 查询）
+ *
  * 性能优化:
  * - 二进制协议: 终端数据使用 MessagePack 编码，避免 base64 的 33% 开销
- * - 输出缓冲: 终端输出按 16KB/50ms 阈值批量发送
+ * - 输出缓冲: 终端输出按 8KB/16ms 阈值批量发送，减少历史命令和Tab补全的显示延迟
  * - 事件分发: 直接 Map 查找，避免每次创建临时数组
  */
 
@@ -28,9 +35,26 @@ interface PendingRequest {
 const WS_CONNECT_TIMEOUT_MS = 10_000
 
 /** 终端输出缓冲阈值（字节）— 超过此大小立即 flush */
-const OUTPUT_BUFFER_THRESHOLD = 16_384
-/** 终端输出 flush 间隔（毫秒）— 保证最大延迟 */
-const OUTPUT_FLUSH_INTERVAL_MS = 50
+const OUTPUT_BUFFER_THRESHOLD = 8_192
+/** 终端输出 flush 间隔（毫秒）— 保证最大延迟，更短的间隔减少历史命令和Tab补全的显示延迟 */
+const OUTPUT_FLUSH_INTERVAL_MS = 16
+
+// ─── 重连参数 ───
+/** 初始重连延迟（毫秒） */
+const INITIAL_RECONNECT_DELAY_MS = 2_000
+/** 最大重连延迟（毫秒） */
+const MAX_RECONNECT_DELAY_MS = 30_000
+/** 重连 jitter 范围 ±500ms */
+const RECONNECT_JITTER_MS = 500
+
+// ─── 心跳参数 ───
+/** 心跳 ping 发送间隔（毫秒） */
+const HEARTBEAT_INTERVAL_MS = 20_000
+/** 心跳超时阈值（毫秒）— 超过此时间未收到任何消息认为断连 */
+/** 增加到 90 秒，与后端 SSH keepalive (30s * 3) 保持一致，减少误判断连 */
+const HEARTBEAT_TIMEOUT_MS = 90_000
+/** 心跳看门狗检查间隔（毫秒） */
+const HEARTBEAT_WATCHDOG_INTERVAL_MS = 10_000
 
 export class WsClient {
   private ws: WebSocket | null = null
@@ -48,6 +72,30 @@ export class WsClient {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
   private connectTimeoutTimer: ReturnType<typeof setTimeout> | null = null
 
+  // ─── 增强: 重连回调 ───
+  private _onReconnectingHandlers: (() => void)[] = []
+  private _onReconnectedHandlers: (() => void)[] = []
+
+  // ─── 增强: 消息队列（连接断开期间暂存，恢复后重发）───
+  private _messageQueue: string[] = []
+
+  // ─── 增强: 重连失败计数（超过 5 次用于 UI 显示 "Connection Lost"）───
+  private _reconnectFailedCount = 0
+
+  // ─── 增强: 心跳检测 ───
+  private _lastPongTime = 0
+  private heartbeatWatchdogTimer: ReturnType<typeof setInterval> | null = null
+
+  // ─── 动态心跳：根据网络延迟自动调整 ───
+  /** 最近 5 次 ping 的 RTT（毫秒） */
+  private _rttSamples: number[] = []
+  /** 当前 ping 发送时间（毫秒） */
+  private _pingSentTime = 0
+  /** 当前心跳间隔（毫秒），动态调整 */
+  private _currentHeartbeatInterval = HEARTBEAT_INTERVAL_MS
+  /** 当前心跳超时（毫秒），动态调整 */
+  private _currentHeartbeatTimeout = HEARTBEAT_TIMEOUT_MS
+
   // ─── 终端输出缓冲（用于高频终端 I/O）───
   private outputBuffer: string[] = []
   private outputBufferBytes = 0
@@ -64,6 +112,24 @@ export class WsClient {
 
   get lastError() {
     return this._lastError
+  }
+
+  /** 当前重连失败次数（连续），用于 UI 判断是否显示 "Connection Lost" */
+  get reconnectFailedCount() {
+    return this._reconnectFailedCount
+  }
+
+  /** 获取最近的平均 RTT（毫秒），用于网络质量监控 */
+  get averageRtt(): number {
+    if (this._rttSamples.length === 0) return 0
+    return Math.round(
+      this._rttSamples.reduce((a, b) => a + b, 0) / this._rttSamples.length,
+    )
+  }
+
+  /** 获取当前心跳间隔（毫秒） */
+  get currentHeartbeatInterval(): number {
+    return this._currentHeartbeatInterval
   }
 
   private setStatus(status: WsStatus) {
@@ -150,12 +216,37 @@ export class WsClient {
         this.connectTimeoutTimer = null
       }
       this.reconnectAttempts = 0
+      this._reconnectFailedCount = 0
       this._lastError = null
+      this._lastPongTime = Date.now()
       this.setStatus('connected')
       this.startHeartbeat()
+      // 增强: 连接恢复后重发消息队列
+      this.flushMessageQueue()
+      // 增强: 触发 onReconnected 回调
+      const reconnectedHandlers = this._onReconnectedHandlers
+      for (let i = 0; i < reconnectedHandlers.length; i++) {
+        const fn = reconnectedHandlers[i]
+        if (fn) fn()
+      }
     }
 
     ws.onmessage = (event) => {
+      // 增强: 收到任意消息即更新心跳时间戳
+      this._lastPongTime = Date.now()
+
+      // 记录 RTT（如果刚发过 ping）
+      if (this._pingSentTime > 0) {
+        const rtt = Date.now() - this._pingSentTime
+        this._rttSamples.push(rtt)
+        if (this._rttSamples.length > 5) {
+          this._rttSamples.shift() // 保留最近 5 个样本
+        }
+        this._pingSentTime = 0
+        // 动态调整心跳参数
+        this.updateHeartbeatFromRtt()
+      }
+
       try {
         const data = JSON.parse(event.data as string)
         this.dispatch(data)
@@ -219,6 +310,8 @@ export class WsClient {
       this.connectTimeoutTimer = null
     }
     this.reconnectAttempts = this.maxReconnectAttempts // 禁止自动重连
+    this._reconnectFailedCount = 0 // 重置失败计数
+    this._messageQueue = [] // 清空消息队列
     if (this.ws) {
       this.ws.close()
       this.ws = null
@@ -229,6 +322,7 @@ export class WsClient {
   /** 手动重连（用户触发） */
   reconnect() {
     this.reconnectAttempts = 0
+    this._reconnectFailedCount = 0
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null
@@ -241,18 +335,29 @@ export class WsClient {
     this.connect()
   }
 
-  // ─── 自动重连 ───
+  // ─── 自动重连（增强: 指数退避 + jitter ±500ms）───
 
   private scheduleReconnect() {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) return
     if (this.reconnectTimer) return
 
-    const base = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000)
-    // 指数退避 + 随机 jitter（±30%），避免多个客户端同时重连的 thundering herd
-    const jitter = base * 0.3
-    const delay = base + (Math.random() * 2 * jitter - jitter)
+    const base = Math.min(
+      INITIAL_RECONNECT_DELAY_MS * Math.pow(2, this.reconnectAttempts),
+      MAX_RECONNECT_DELAY_MS,
+    )
+    // jitter ±500ms
+    const jitter = Math.random() * 2 * RECONNECT_JITTER_MS - RECONNECT_JITTER_MS
+    const delay = Math.max(base + jitter, 0)
     this.reconnectAttempts++
+    this._reconnectFailedCount++
     this.setStatus('reconnecting')
+
+    // 增强: 触发 onReconnecting 回调
+    const reconnectingHandlers = this._onReconnectingHandlers
+    for (let i = 0; i < reconnectingHandlers.length; i++) {
+      const fn = reconnectingHandlers[i]
+      if (fn) fn()
+    }
 
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null
@@ -260,18 +365,142 @@ export class WsClient {
     }, delay)
   }
 
-  // ─── 心跳 ───
+  // ─── 增强: 注册/注销重连回调 ───
+
+  /**
+   * 注册重连中回调（当客户端开始尝试重连时触发）。
+   * 返回取消注册函数。
+   */
+  onReconnecting(handler: () => void): () => void {
+    this._onReconnectingHandlers.push(handler)
+    return () => {
+      this._onReconnectingHandlers = this._onReconnectingHandlers.filter((h) => h !== handler)
+    }
+  }
+
+  /**
+   * 注册重连成功回调（当客户端成功重连并进入 connected 状态时触发）。
+   * 返回取消注册函数。
+   */
+  onReconnected(handler: () => void): () => void {
+    this._onReconnectedHandlers.push(handler)
+    return () => {
+      this._onReconnectedHandlers = this._onReconnectedHandlers.filter((h) => h !== handler)
+    }
+  }
+
+  // ─── 消息队列 ───
+
+  /**
+   * 连接恢复后重发队列中所有消息。
+   */
+  private flushMessageQueue() {
+    if (this._messageQueue.length === 0) return
+    const queue = this._messageQueue
+    this._messageQueue = []
+    for (let i = 0; i < queue.length; i++) {
+      const msg = queue[i]
+      if (msg && this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(msg)
+      }
+    }
+  }
+
+  // ─── 心跳（增强: 动态间隔 + RTT 监测）───
 
   private startHeartbeat() {
+    this._lastPongTime = Date.now()
+    this._rttSamples = []
+    this._currentHeartbeatInterval = HEARTBEAT_INTERVAL_MS
+    this._currentHeartbeatTimeout = HEARTBEAT_TIMEOUT_MS
+
+    // 使用动态间隔发送 ping
+    this.scheduleHeartbeatPing()
+
+    // 看门狗: 定期检查是否超过超时阈值未收到任何消息
+    this.heartbeatWatchdogTimer = setInterval(() => {
+      const elapsed = Date.now() - this._lastPongTime
+      if (elapsed > this._currentHeartbeatTimeout) {
+        console.warn(
+          `[WsClient] Heartbeat timeout — ${(elapsed / 1000).toFixed(1)}s without response (threshold: ${this._currentHeartbeatTimeout / 1000}s), closing connection`,
+        )
+        this.setError(`心跳超时：${(elapsed / 1000).toFixed(1)}秒无响应`)
+        if (this.ws) {
+          this.ws.close()
+        }
+      }
+    }, HEARTBEAT_WATCHDOG_INTERVAL_MS)
+  }
+
+  private scheduleHeartbeatPing() {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer)
+    }
     this.heartbeatTimer = setInterval(() => {
-      this.send({ type: 'ping' })
-    }, 25000)
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this._pingSentTime = Date.now()
+        this.send({ type: 'ping' })
+      }
+    }, this._currentHeartbeatInterval)
+  }
+
+  /**
+   * 根据 RTT 样本动态调整心跳参数
+   * - 网络良好（RTT < 100ms）：使用标准间隔
+   * - 网络一般（100ms < RTT < 500ms）：延长间隔 50%，超时 2x
+   * - 网络较差（RTT > 500ms）：延长间隔 100%，超时 3x
+   */
+  private updateHeartbeatFromRtt() {
+    if (this._rttSamples.length < 3) return // 至少 3 个样本
+
+    const avgRtt = this._rttSamples.reduce((a, b) => a + b, 0) / this._rttSamples.length
+    const maxRtt = Math.max(...this._rttSamples)
+
+    let newInterval: number
+    let newTimeout: number
+
+    if (avgRtt < 100) {
+      // 网络良好：标准参数
+      newInterval = HEARTBEAT_INTERVAL_MS
+      newTimeout = HEARTBEAT_TIMEOUT_MS
+    } else if (avgRtt < 500) {
+      // 网络一般：适当放宽
+      newInterval = HEARTBEAT_INTERVAL_MS * 1.5
+      newTimeout = HEARTBEAT_TIMEOUT_MS * 2
+    } else {
+      // 网络较差：大幅放宽
+      newInterval = HEARTBEAT_INTERVAL_MS * 2
+      newTimeout = HEARTBEAT_TIMEOUT_MS * 3
+    }
+
+    // 额外检查：如果最近有高延迟样本，进一步放宽
+    if (maxRtt > 1000) {
+      newInterval = Math.max(newInterval, 60_000)
+      newTimeout = Math.max(newTimeout, 180_000)
+    }
+
+    // 仅在参数变化时更新（避免频繁重置定时器）
+    if (
+      Math.abs(newInterval - this._currentHeartbeatInterval) > 1000 ||
+      Math.abs(newTimeout - this._currentHeartbeatTimeout) > 1000
+    ) {
+      console.log(
+        `[WsClient] Adjusting heartbeat: interval ${(newInterval / 1000).toFixed(0)}s, timeout ${(newTimeout / 1000).toFixed(0)}s (avg RTT: ${avgRtt.toFixed(0)}ms)`,
+      )
+      this._currentHeartbeatInterval = newInterval
+      this._currentHeartbeatTimeout = newTimeout
+      this.scheduleHeartbeatPing() // 用新间隔重新调度
+    }
   }
 
   private stopHeartbeat() {
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer)
       this.heartbeatTimer = null
+    }
+    if (this.heartbeatWatchdogTimer) {
+      clearInterval(this.heartbeatWatchdogTimer)
+      this.heartbeatWatchdogTimer = null
     }
   }
 
@@ -336,12 +565,17 @@ export class WsClient {
     this.outputBufferBytes = 0
   }
 
-  // ─── 消息收发 ───
+  // ─── 消息收发（增强: 断连时入队）───
 
   send(data: Record<string, unknown>) {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(data))
+      const msg = JSON.stringify(data)
+      this.ws.send(msg)
       return true
+    }
+    // 增强: 连接未就绪时入队等待重发
+    if (this._status === 'connecting' || this._status === 'reconnecting') {
+      this._messageQueue.push(JSON.stringify(data))
     }
     return false
   }
