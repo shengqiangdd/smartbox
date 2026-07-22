@@ -2144,20 +2144,35 @@ ${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n...还有 ${errors.leng
             >
               <Home size={11} />
             </button>
-            {breadcrumb.map((crumb, i) => (
-              <span key={crumb.path} className="flex items-center">
-                <span className="mx-0.5 text-slate-700">/</span>
-                <button
-                  onClick={() => navigateTo(crumb.path)}
-                  className={`shrink-0 rounded px-0.5 py-0 hover:text-slate-300 ${
-                    i === breadcrumb.length - 1 ? 'text-slate-400' : 'text-slate-600'
-                  }`}
-                  title={crumb.path}
-                >
-                  {crumb.label}
-                </button>
-              </span>
-            ))}
+            {breadcrumb.map((crumb, i) => {
+              // 路径很深时，中间的项用省略号缩短
+              const isLast = i === breadcrumb.length - 1
+              const isFirst = i === 0
+              const isEllipsis = breadcrumb.length > 5 && !isFirst && !isLast && i !== 1 && i !== breadcrumb.length - 2
+              if (isEllipsis && i === 2) {
+                return (
+                  <span key="ellipsis" className="flex items-center">
+                    <span className="mx-0.5 text-slate-700">/</span>
+                    <span className="shrink-0 rounded px-0.5 py-0 text-slate-700">…</span>
+                  </span>
+                )
+              }
+              if (isEllipsis) return null
+              return (
+                <span key={crumb.path} className="flex items-center">
+                  <span className="mx-0.5 text-slate-700">/</span>
+                  <button
+                    onClick={() => navigateTo(crumb.path)}
+                    className={`shrink-0 truncate rounded px-0.5 py-0 hover:text-slate-300 max-w-[120px] ${
+                      isLast ? 'text-slate-400' : 'text-slate-600'
+                    }`}
+                    title={crumb.path}
+                  >
+                    {crumb.label}
+                  </button>
+                </span>
+              )
+            })}
             <span
               className="ml-auto cursor-pointer px-1 text-[10px] text-slate-700 hover:text-slate-500"
               title="点击编辑路径"

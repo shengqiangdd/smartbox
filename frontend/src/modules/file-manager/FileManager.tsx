@@ -227,30 +227,25 @@ function FileManagerInner() {
   /** 核心：尝试从缓存恢复 SFTP session */
   const tryRestoreSession = useCallback(async (): Promise<boolean> => {
     const cached = useAppStore.getState().fmSftpState
-    console.log(`[FileManager] tryRestoreSession called, cached:`, cached)
     if (!cached.connId || connectingRef.current) {
-      console.log(`[FileManager] tryRestoreSession early return: connId=${cached.connId}, connecting=${connectingRef.current}`)
       return false
     }
 
     // 等待 WsClient 就绪（token 可能还没加载完）
     const client = wsClientRef.current
     if (!client) {
-      console.log(`[FileManager] tryRestoreSession: no wsClient`)
       return false
     }
 
     const connArr = useSshStore.getState().connections
     const conn = connArr.find((c) => c.id === cached.connId)
     if (!conn) {
-      console.log(`[FileManager] tryRestoreSession: connection ${cached.connId} not found`)
       setFmState({ connId: null, sessionId: null, pathCache: cached.pathCache })
       return false
     }
 
     // 🔧 使用 SshSessionManager 智能复用会话
     const sessArr = useSshStore.getState().sessions
-    console.log(`[FileManager] tryRestoreSession: sessions =`, sessArr.map(s => `${s.id} (connId: ${s.connectionId}, status: ${s.status})`))
 
     // 优先查找已有的 SSH session（功能更完整）
     const existingSshSession = sessArr.find(
@@ -261,7 +256,6 @@ function FileManagerInner() {
 
     if (existingSshSession) {
       // 直接复用 SSH 页面的 session，无需重新连接
-      console.log('[FileManager] Found existing SSH session, reusing:', existingSshSession.id)
       setFmState({
         connId: cached.connId,
         sessionId: existingSshSession.id,
@@ -278,7 +272,6 @@ function FileManagerInner() {
     // 不再断开其他主机的 session — 支持多主机并存
     for (const sess of sessArr) {
       if (sess.connectionId === cached.connId && sess.id.startsWith('sftp_')) {
-        console.log(`[FileManager] Disconnecting old SFTP session: ${sess.id}`)
         client.send({ type: 'disconnect', connectionId: sess.id })
         removeSession(sess.id)
       }
@@ -288,7 +281,6 @@ function FileManagerInner() {
       if (msg) dispatch({ statusMsg: msg })
     })
     
-    console.log(`[FileManager] tryRestoreSession: ensureSftpSession returned sid: ${sid}`)
 
     if (sid) {
       setFmState({
@@ -323,11 +315,9 @@ function FileManagerInner() {
   // 当 sessions 变化且当前 session 无效时自动重试
   // 解决 Zustand persist 异步恢复的问题
   useEffect(() => {
-    console.log(`[FileManager] sessions useEffect triggered, fmState:`, fmState, `sessions:`, sessions.map(s => s.id))
     
     // 🔧 修复：如果正在连接中，不干预（避免 connectAndSftp 的竞态覆盖）
     if (connectingRef.current) {
-      console.log(`[FileManager] sessions useEffect: connecting in progress, skipping`)
       return
     }
 
@@ -336,7 +326,6 @@ function FileManagerInner() {
       fmState.sessionId &&
       sessions.some((s) => s.id === fmState.sessionId && s.status === 'connected')
     ) {
-      console.log(`[FileManager] sessions useEffect: valid session exists, skipping`)
       return
     }
 
@@ -350,7 +339,6 @@ function FileManagerInner() {
 
       if (existingSshSession) {
         // 直接复用 SSH 页面的 session，无需重新连接
-        console.log('[FileManager] Found existing SSH session, reusing:', existingSshSession.id)
         setFmState({
           ...fmState,
           sessionId: existingSshSession.id,
@@ -364,7 +352,6 @@ function FileManagerInner() {
         (s) => s.connectionId === fmState.connId && s.status === 'connected' && s.id.startsWith('sftp_'),
       )
       if (hasValidSftpSession) {
-        console.log(`[FileManager] sessions useEffect: has valid SFTP session, skipping`)
         return
       }
 
@@ -421,12 +408,8 @@ function FileManagerInner() {
       const conn = useSshStore.getState().connections.find((c) => c.id === connId)
       const client = wsClientRef.current
       const currentSessions = useSshStore.getState().sessions  // 🔧 实时获取 sessions
-      console.log(`[FileManager] connectAndSftp called for connId: ${connId}`)
-      console.log(`[FileManager] Current sessions:`, currentSessions.map(s => `${s.id} (connId: ${s.connectionId})`))
-      console.log(`[FileManager] Current fmState:`, useAppStore.getState().fmSftpState)
       
       if (!conn || !client || connectingRef.current) {
-        console.log(`[FileManager] connectAndSftp early return: conn=${!!conn}, client=${!!client}, connecting=${connectingRef.current}`)
         return
       }
 
@@ -437,7 +420,6 @@ function FileManagerInner() {
       // 不再断开其他主机的 session — 支持多主机并存
       for (const sess of currentSessions) {
         if (sess.connectionId === connId) {
-          console.log(`[FileManager] Disconnecting old session: ${sess.id}`)
           client.send({ type: 'disconnect', connectionId: sess.id })
           removeSession(sess.id)
         }
@@ -448,11 +430,9 @@ function FileManagerInner() {
         if (msg) dispatch({ statusMsg: msg })
       })
       
-      console.log(`[FileManager] ensureSftpSession returned sid: ${sid}`)
 
       if (sid) {
         const currentCache = useAppStore.getState().fmSftpState.pathCache
-        console.log(`[FileManager] Setting fmState to connId=${connId}, sessionId=${sid}`)
         setFmState({
           connId,
           sessionId: sid,
