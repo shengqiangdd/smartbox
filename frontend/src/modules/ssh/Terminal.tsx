@@ -163,6 +163,8 @@ export default function TerminalView({
   } | null>(null)
   // contextMenuRef 用于点击外部关闭
   const contextMenuRef = useRef<HTMLDivElement>(null)
+  // ─── 移动端快捷键工具栏 ref（用于 ColorOS 长按阻止） ───
+  const toolbarRef = useRef<HTMLDivElement>(null)
   // ─── 移动端：选择文本模态框（textarea 让用户自由选择复制） ───
   const [selectModalText, setSelectModalText] = useState<string | null>(null)
   const selectModalRef = useRef<HTMLTextAreaElement>(null)
@@ -863,6 +865,56 @@ export default function TerminalView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connectionId, sessionId])
 
+  // ─── ColorOS / Android WebView 长按阻止（工具栏区域） ───
+  // ColorOS 浏览器无视 touch-action: manipulation，长按按钮会弹出浏览器默认右键菜单。
+  // 通过 capture-phase contextmenu + touchstart 监听器在工具栏区域彻底阻断。
+  useEffect(() => {
+    const toolbar = toolbarRef.current
+    if (!toolbar) return
+
+    // Capture-phase contextmenu：阻止浏览器弹出长按菜单
+    const blockContextMenu = (e: Event) => {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+
+    // Non-passive touchstart：在 capture 阶段阻止 ColorOS 的长按手势识别。
+    // ⚠️ 这只在工具栏区域内生效，不影响终端输入区。
+    // 按钮的 onPointerDown 在 touchstart 之后、浏览器识别长按之前触发，
+    // 所以按钮功能不受影响。
+    let longPressTimer: ReturnType<typeof setTimeout> | null = null
+    const handleToolbarTouchStart = (e: TouchEvent) => {
+      // 清除之前的定时器
+      if (longPressTimer) clearTimeout(longPressTimer)
+      // 350ms 后如果手指还没抬起/移动，阻止默认行为（阻断 ColorOS 长按识别）
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null
+        // 此时浏览器正在准备显示长按菜单，preventDefault 可以阻止它
+        // 但对已经触发的 pointerdown 无影响（已经处理完毕）
+        e.preventDefault()
+      }, 350)
+    }
+    const handleToolbarTouchEnd = () => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer)
+        longPressTimer = null
+      }
+    }
+
+    toolbar.addEventListener('contextmenu', blockContextMenu, true)
+    toolbar.addEventListener('touchstart', handleToolbarTouchStart, { capture: true, passive: false })
+    toolbar.addEventListener('touchend', handleToolbarTouchEnd, { capture: true, passive: true })
+    toolbar.addEventListener('touchcancel', handleToolbarTouchEnd, { capture: true, passive: true })
+
+    return () => {
+      toolbar.removeEventListener('contextmenu', blockContextMenu, true)
+      toolbar.removeEventListener('touchstart', handleToolbarTouchStart, true)
+      toolbar.removeEventListener('touchend', handleToolbarTouchEnd, true)
+      toolbar.removeEventListener('touchcancel', handleToolbarTouchEnd, true)
+      if (longPressTimer) clearTimeout(longPressTimer)
+    }
+  }, []) // 只挂载一次，toolbar DOM 不变
+
   // ─── 搜索函数 ───
   const doSearch = useCallback((query: string, dir: 'next' | 'prev' = 'next') => {
     const sa = searchAddonRef.current
@@ -1142,6 +1194,7 @@ export default function TerminalView({
 
       {/* 移动端快捷键工具栏 — 三行紧凑布局 */}
       <div
+        ref={toolbarRef}
         className="flex shrink-0 flex-col border-t border-slate-700/30 bg-slate-900/95 md:hidden"
         style={{
           // 禁用长按选中复制（快捷键按钮不需要）
@@ -1149,9 +1202,7 @@ export default function TerminalView({
           WebkitUserSelect: 'none',
           WebkitTouchCallout: 'none',
           touchAction: 'manipulation',
-          // 防止输入法弹出
-          WebkitInputMethod: 'none',
-        }}
+        } as React.CSSProperties}
       >
         {/* 第一行：控制键 */}
         <div className="flex gap-px px-0.5 pt-0.5">
@@ -1181,6 +1232,7 @@ export default function TerminalView({
                 containerRef.current?.focus()
               }}
               className="flex h-8 flex-1 items-center justify-center rounded bg-slate-800/80 font-mono text-[11px] text-slate-300 active:bg-slate-700 active:text-white"
+              style={{ touchAction: 'manipulation', WebkitTouchCallout: 'none' }}
             >
               {label}
             </button>
@@ -1215,6 +1267,7 @@ export default function TerminalView({
                 containerRef.current?.focus()
               }}
               className="flex h-8 flex-1 items-center justify-center rounded bg-slate-800/80 font-mono text-[11px] text-slate-300 active:bg-slate-700 active:text-white"
+              style={{ touchAction: 'manipulation', WebkitTouchCallout: 'none' }}
             >
               {label}
             </button>
@@ -1247,6 +1300,7 @@ export default function TerminalView({
                 containerRef.current?.focus()
               }}
               className="flex h-8 flex-1 items-center justify-center rounded bg-slate-800/80 font-mono text-[11px] text-slate-300 active:bg-slate-700 active:text-white"
+              style={{ touchAction: 'manipulation', WebkitTouchCallout: 'none' }}
             >
               {label}
             </button>
