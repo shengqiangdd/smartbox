@@ -265,8 +265,13 @@ function FileManagerInner() {
     connectingRef.current = true
     dispatch({ connecting: true })
 
-    // 清理旧的 sftp session
+    // 清理旧的 sftp session（所有非目标 connId 的 sftp session 都清理，避免残留）
     for (const sess of sessArr) {
+      if (sess.id.startsWith('sftp_') && sess.connectionId !== cached.connId) {
+        client.send({ type: 'disconnect', connectionId: sess.id })
+        removeSession(sess.id)
+        sshSessionManager.disconnectAll(sess.connectionId)
+      }
       if (sess.connectionId === cached.connId && sess.id.startsWith('sftp_')) {
         client.send({ type: 'disconnect', connectionId: sess.id })
         removeSession(sess.id)
@@ -309,8 +314,10 @@ function FileManagerInner() {
 
   // 当 sessions 变化且当前 session 无效时自动重试
   // 解决 Zustand persist 异步恢复的问题
-  // 🔧 修复：增加 debounce 和更智能的重试逻辑
   useEffect(() => {
+    // 🔧 修复：如果正在连接中，不干预（避免 connectAndSftp 的竞态覆盖）
+    if (connectingRef.current) return
+
     // 如果已有有效 session，不做任何事
     if (
       fmState.sessionId &&
@@ -319,8 +326,9 @@ function FileManagerInner() {
       return
     }
 
-    // 如果 connId 还在且 sessions 非空（persist 已恢复），尝试重建
-    if (fmState.connId && sessions.length > 0 && !connectingRef.current && wsClientRef.current) {
+    // 🔧 修复：如果 fmState.connId 为空（被 reset 过），不再尝试恢复
+    // 只有当 connId 有效且 sessions 已恢复时才重建
+    if (fmState.connId && sessions.length > 0 && wsClientRef.current) {
       // 🔧 修复：检查是否有可复用的 SSH session（从 SSH 页面已连接的）
       const existingSshSession = sessions.find(
         (s) => s.connectionId === fmState.connId && s.status === 'connected' && !s.id.startsWith('sftp_'),
@@ -336,10 +344,17 @@ function FileManagerInner() {
         return
       }
 
+      // 🔧 修复：如果当前 fmState 已有有效的 sftp session 在 sessions 中，
+      // 不再重试（避免 sessions 变化导致的无意义重连）
+      const hasValidSftpSession = sessions.some(
+        (s) => s.connectionId === fmState.connId && s.status === 'connected' && s.id.startsWith('sftp_'),
+      )
+      if (hasValidSftpSession) return
+
       // 没有可复用的 session，尝试重建 SFTP 连接
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
       retryTimerRef.current = setTimeout(() => {
-        if (mountedRef.current) tryRestoreSession()
+        if (mountedRef.current && !connectingRef.current) tryRestoreSession()
       }, 800)
     }
   }, [sessions, fmState.sessionId, fmState.connId, tryRestoreSession, wsReady])
@@ -393,9 +408,16 @@ function FileManagerInner() {
       connectingRef.current = true
       dispatch({ connecting: true })
 
-      // 清除旧 session
+      // 🔧 修复：清除【所有】旧的 sftp session（不限于目标 connId），
+      // 避免切换主机后旧 session 残留在后端 state.connections 中
       const storeSessions = useSshStore.getState().sessions
       for (const sess of storeSessions) {
+        if (sess.id.startsWith('sftp_') && sess.connectionId !== connId) {
+          client.send({ type: 'disconnect', connectionId: sess.id })
+          removeSession(sess.id)
+          sshSessionManager.disconnectAll(sess.connectionId)
+        }
+        // 清理同一主机的旧 sftp session（重连场景）
         if (sess.connectionId === connId && sess.id.startsWith('sftp_')) {
           client.send({ type: 'disconnect', connectionId: sess.id })
           removeSession(sess.id)
