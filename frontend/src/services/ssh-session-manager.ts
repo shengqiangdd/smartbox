@@ -456,6 +456,9 @@ class SshSessionManager {
    * 获取或创建 SFTP session
    *
    * 优先复用已有的 SSH session（通过 SFTP API 验证），如果没有则创建新的
+   *
+   * 🔧 修复：如果复用的是 useSshStore 中的 session（SSH 页面创建的），
+   * 将其同步到 SshSessionManager.sessions 中，确保后续查找能命中
    */
   async getOrCreateSftpSession(
     connectionId: string,
@@ -475,6 +478,15 @@ class SshSessionManager {
         const sftpReady = await this.verifySftpReady(existingSession.id)
         if (sftpReady) {
           onStatus?.('SFTP 已就绪，复用现有连接')
+
+          // 🔧 关键：如果该 session 不在 SshSessionManager.sessions 中（来自 useSshStore），
+          // 将其同步过来，确保后续查找能命中
+          if (!this.sessions.has(existingSession.id)) {
+            this.sessions.set(existingSession.id, existingSession)
+            this.savePersistedState()
+            console.log(`[SshSessionManager] Synced session from useSshStore: ${existingSession.id}`)
+          }
+
           return existingSession.id
         }
         onStatus?.('SFTP 未就绪，创建新连接...')
@@ -487,9 +499,12 @@ class SshSessionManager {
 
   /**
    * 查找可复用的 session
+   *
+   * 🔧 修复：同时查找 SshSessionManager 内部和 useSshStore 中的 session，
+   * 确保能复用 SSH 页面创建的连接
    */
   private findReusableSession(connectionId: string): SessionInfo | null {
-    // 优先查找 SSH session（功能更完整）
+    // 1. 优先在 SshSessionManager 内部查找 SSH session（功能更完整）
     for (const [, session] of this.sessions) {
       if (session.connectionId === connectionId && 
           session.type === 'ssh' && 
@@ -498,12 +513,34 @@ class SshSessionManager {
       }
     }
 
-    // 其次查找 SFTP session
+    // 2. 其次在 SshSessionManager 内部查找 SFTP session
     for (const [, session] of this.sessions) {
       if (session.connectionId === connectionId && 
           session.type === 'sftp' && 
           session.status === 'connected') {
         return session
+      }
+    }
+
+    // 3. 🔧 关键修复：查找 useSshStore 中的 session（SSH 页面创建的）
+    //    SSH 页面创建的 session 不在 SshSessionManager.sessions 中，
+    //    但它们是有效的、可复用的连接
+    const storeSessions = useSshStore.getState().sessions
+    for (const storeSession of storeSessions) {
+      if (storeSession.connectionId === connectionId && 
+          storeSession.status === 'connected') {
+        // 转换为 SessionInfo 格式
+        const type = storeSession.id.startsWith('sftp_') ? 'sftp' : 'ssh'
+        const conn = useSshStore.getState().connections.find(c => c.id === connectionId)
+        return {
+          id: storeSession.id,
+          connectionId,
+          type,
+          status: 'connected',
+          host: conn?.host || storeSession.host,
+          port: conn?.port || 22,
+          username: conn?.username || '',
+        }
       }
     }
 
