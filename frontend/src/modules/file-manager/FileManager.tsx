@@ -265,13 +265,9 @@ function FileManagerInner() {
     connectingRef.current = true
     dispatch({ connecting: true })
 
-    // 清理旧的 sftp session（所有非目标 connId 的 sftp session 都清理，避免残留）
+    // 🔧 修复：只清理同一主机的旧 sftp session（重连场景），
+    // 不再断开其他主机的 session — 支持多主机并存
     for (const sess of sessArr) {
-      if (sess.id.startsWith('sftp_') && sess.connectionId !== cached.connId) {
-        client.send({ type: 'disconnect', connectionId: sess.id })
-        removeSession(sess.id)
-        sshSessionManager.disconnectAll(sess.connectionId)
-      }
       if (sess.connectionId === cached.connId && sess.id.startsWith('sftp_')) {
         client.send({ type: 'disconnect', connectionId: sess.id })
         removeSession(sess.id)
@@ -408,16 +404,10 @@ function FileManagerInner() {
       connectingRef.current = true
       dispatch({ connecting: true })
 
-      // 🔧 修复：清除【所有】旧的 sftp session（不限于目标 connId），
-      // 避免切换主机后旧 session 残留在后端 state.connections 中
+      // 🔧 修复：只清理同一主机的旧 sftp session（重连场景），
+      // 不再断开其他主机的 session — 支持多主机并存
       const storeSessions = useSshStore.getState().sessions
       for (const sess of storeSessions) {
-        if (sess.id.startsWith('sftp_') && sess.connectionId !== connId) {
-          client.send({ type: 'disconnect', connectionId: sess.id })
-          removeSession(sess.id)
-          sshSessionManager.disconnectAll(sess.connectionId)
-        }
-        // 清理同一主机的旧 sftp session（重连场景）
         if (sess.connectionId === connId && sess.id.startsWith('sftp_')) {
           client.send({ type: 'disconnect', connectionId: sess.id })
           removeSession(sess.id)
