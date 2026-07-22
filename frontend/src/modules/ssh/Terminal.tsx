@@ -263,6 +263,13 @@ export default function TerminalView({
     const container = containerRef.current
     term.open(container)
 
+    // ─── 阻止终端容器的默认浏览器行为 ───
+    // 长按方向键时浏览器可能触发右键菜单或文本选择
+    const preventContextMenu = (e: Event) => e.preventDefault()
+    const preventSelectStart = (e: Event) => e.preventDefault()
+    container.addEventListener('contextmenu', preventContextMenu)
+    container.addEventListener('selectstart', preventSelectStart)
+
     // ─── 自定义触摸滚动处理器（含惯性滚动） ───
     // xterm.js 的 .xterm-screen 覆盖在 .xterm-viewport 之上，
     // 触摸事件被 screen 层拦截，无法到达 viewport 的滚动机制。
@@ -811,6 +818,9 @@ export default function TerminalView({
       container.removeEventListener('touchend', handleLongPressEnd)
       container.removeEventListener('touchcancel', handleLongPressEnd)
       document.removeEventListener('selectionchange', handleSelectionChange)
+      // 移除阻止默认行为的监听器
+      container.removeEventListener('contextmenu', preventContextMenu)
+      container.removeEventListener('selectstart', preventSelectStart)
       // 断开并清理独立 WebSocket
       if (termWsRef.current) {
         termWsRef.current.disconnect()
@@ -948,6 +958,7 @@ export default function TerminalView({
           // 阻止浏览器默认触摸行为，由自定义触摸滚动处理器接管
           touchAction: 'none',
         }}
+        onContextMenu={(e) => e.preventDefault()}
       />
       {/* ─── 桌面端：选中文本后在右上角浮现复制按钮 ─── */}
       <button
